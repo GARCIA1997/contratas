@@ -26,11 +26,21 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env*.local
+!.env.example
 
-# vercel
-.vercel
+# next-pwa (service worker generado)
+/public/sw.js
+/public/sw.js.map
+/public/workbox-*.js
+/public/workbox-*.js.map
+/public/worker-*.js
+/public/worker-*.js.map
+/public/fallback-*.js
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma

@@ -1,0 +1,300 @@
+import { db } from "@/lib/offline/db";
+
+type ContrataApi = {
+  id: string;
+  ownerId: string;
+  clienteId: string;
+  tipo: "SEMANAL" | "QUINCENAL" | "MENSUAL";
+  monto: number;
+  abono: number;
+  fechaInicio: string;
+  numCuotas: number;
+  mes: string;
+  notas: string | null;
+  convertidaADeuda: boolean;
+  deudorId: string | null;
+  creadoEn: string;
+  cliente: {
+    id: string;
+    nombre: string;
+    telefono: string | null;
+    direccion: string | null;
+    referencia: string | null;
+    notas: string | null;
+    creadoEn: string;
+  };
+  pagos: {
+    id: string;
+    numeroCuota: number;
+    fechaProgramada: string;
+    fechaPago: string | null;
+    pagado: boolean;
+    montoAbonado: number;
+  }[];
+};
+
+/**
+ * Pull-sync: trae el snapshot de contratas del servidor y hace upsert en
+ * Dexie, sin pisar filas locales con escrituras aún no confirmadas
+ * (`_dirty`). El servidor sigue siendo la fuente de verdad final — esto
+ * solo alimenta la caché de lectura offline.
+ */
+export async function syncContratas(ownerId: string): Promise<void> {
+  const database = db;
+  if (!database) return;
+  const res = await fetch("/api/contratas", { cache: "no-store" });
+  if (!res.ok) return;
+  const contratas: ContrataApi[] = await res.json();
+
+  await database.transaction(
+    "rw",
+    [database.contratas, database.pagos, database.clientes],
+    async () => {
+    for (const c of contratas) {
+      const local = await database.contratas.get(c.id);
+      if (local?._dirty) continue; // hay una escritura local sin confirmar, no pisar
+
+      await database.contratas.put({
+        id: c.id,
+        ownerId: c.ownerId,
+        clienteId: c.clienteId,
+        clienteNombre: c.cliente.nombre,
+        clienteTelefono: c.cliente.telefono,
+        tipo: c.tipo,
+        monto: c.monto,
+        abono: c.abono,
+        fechaInicio: c.fechaInicio,
+        numCuotas: c.numCuotas,
+        mes: c.mes,
+        notas: c.notas,
+        convertidaADeuda: c.convertidaADeuda,
+        deudorId: c.deudorId,
+        creadoEn: c.creadoEn,
+      });
+
+      await database.clientes.put({
+        id: c.cliente.id,
+        ownerId,
+        nombre: c.cliente.nombre,
+        telefono: c.cliente.telefono,
+        direccion: c.cliente.direccion,
+        referencia: c.cliente.referencia,
+        notas: c.cliente.notas,
+        creadoEn: c.cliente.creadoEn,
+      });
+
+      const existentesIds = new Set(
+        (await database.pagos.where("contrataId").equals(c.id).toArray()).map(
+          (p) => p.id
+        )
+      );
+      for (const p of c.pagos) {
+        existentesIds.delete(p.id);
+        await database.pagos.put({
+          id: p.id,
+          contrataId: c.id,
+          ownerId,
+          numeroCuota: p.numeroCuota,
+          fechaProgramada: p.fechaProgramada,
+          fechaPago: p.fechaPago,
+          pagado: p.pagado,
+          montoAbonado: p.montoAbonado,
+        });
+      }
+      // Pagos que ya no vienen del servidor (recalendarizados) se eliminan.
+      if (existentesIds.size > 0) {
+        await database.pagos.bulkDelete(Array.from(existentesIds));
+      }
+    }
+  });
+}
+
+type ClienteApi = {
+  id: string;
+  ownerId: string;
+  nombre: string;
+  telefono: string | null;
+  direccion: string | null;
+  referencia: string | null;
+  notas: string | null;
+  creadoEn: string;
+};
+
+/** Trae el catálogo completo de clientes (incluye los que aún no tienen contrata). */
+export async function syncClientes(ownerId: string): Promise<void> {
+  const database = db;
+  if (!database) return;
+  const res = await fetch("/api/clientes", { cache: "no-store" });
+  if (!res.ok) return;
+  const clientes: ClienteApi[] = await res.json();
+
+  await database.transaction("rw", [database.clientes], async () => {
+    for (const c of clientes) {
+      const local = await database.clientes.get(c.id);
+      if (local?._dirty) continue;
+      await database.clientes.put({
+        id: c.id,
+        ownerId,
+        nombre: c.nombre,
+        telefono: c.telefono,
+        direccion: c.direccion,
+        referencia: c.referencia,
+        notas: c.notas,
+        creadoEn: c.creadoEn,
+      });
+    }
+  });
+}
+
+type DeudorResumenApi = {
+  id: string;
+  nombre: string;
+  deudaInicial: number;
+  totalAbonado: number;
+  saldoActual: number;
+  numAbonos: number;
+};
+
+export async function syncDeudores(ownerId: string): Promise<void> {
+  const database = db;
+  if (!database) return;
+  const res = await fetch("/api/deudores", { cache: "no-store" });
+  if (!res.ok) return;
+  const data: { deudores: DeudorResumenApi[] } = await res.json();
+
+  await database.transaction("rw", [database.deudores], async () => {
+    const existentesIds = new Set(
+      (await database.deudores.where("ownerId").equals(ownerId).toArray()).map(
+        (d) => d.id
+      )
+    );
+    for (const d of data.deudores) {
+      existentesIds.delete(d.id);
+      const local = await database.deudores.get(d.id);
+      if (local?._dirty) continue;
+      await database.deudores.put({
+        id: d.id,
+        ownerId,
+        nombre: d.nombre,
+        deudaInicial: d.deudaInicial,
+        notas: local?.notas ?? null,
+        creadoEn: local?.creadoEn ?? new Date().toISOString(),
+        saldoActual: d.saldoActual,
+        numAbonos: d.numAbonos,
+      });
+    }
+    if (existentesIds.size > 0) {
+      await database.deudores.bulkDelete(Array.from(existentesIds));
+    }
+  });
+}
+
+type DeudorDetalleApi = {
+  id: string;
+  ownerId: string;
+  nombre: string;
+  deudaInicial: number;
+  notas: string | null;
+  creadoEn: string;
+  abonos: {
+    id: string;
+    fecha: string;
+    monto: number;
+    restante: number;
+    notas: string | null;
+  }[];
+};
+
+/** Sincroniza un deudor puntual con su historial completo de abonos (detalle). */
+export async function syncDeudorDetalle(
+  ownerId: string,
+  deudorId: string
+): Promise<void> {
+  const database = db;
+  if (!database) return;
+  const res = await fetch(`/api/deudores/${deudorId}`, { cache: "no-store" });
+  if (!res.ok) return;
+  const d: DeudorDetalleApi = await res.json();
+  const totalAbonado = Math.round(
+    d.abonos.reduce((s, a) => s + a.monto, 0) * 100
+  ) / 100;
+
+  await database.transaction(
+    "rw",
+    [database.deudores, database.abonosDeudor],
+    async () => {
+      await database.deudores.put({
+        id: d.id,
+        ownerId,
+        nombre: d.nombre,
+        deudaInicial: d.deudaInicial,
+        notas: d.notas,
+        creadoEn: d.creadoEn,
+        saldoActual: Math.round((d.deudaInicial - totalAbonado) * 100) / 100,
+        numAbonos: d.abonos.length,
+      });
+      const existentesIds = new Set(
+        (
+          await database.abonosDeudor.where("deudorId").equals(d.id).toArray()
+        ).map((a) => a.id)
+      );
+      for (const a of d.abonos) {
+        existentesIds.delete(a.id);
+        await database.abonosDeudor.put({
+          id: a.id,
+          deudorId: d.id,
+          ownerId,
+          fecha: a.fecha,
+          monto: a.monto,
+          restante: a.restante,
+          notas: a.notas,
+        });
+      }
+      if (existentesIds.size > 0) {
+        await database.abonosDeudor.bulkDelete(Array.from(existentesIds));
+      }
+    }
+  );
+}
+
+type ConfiguracionApi = {
+  nombreApp: string;
+  tasaSemanal: number;
+  tasaQuincenal: number;
+  tasaMensual: number;
+  cuotasPorDefecto: number;
+  maxCuotas: number;
+  modoFechasQuincenal: string;
+  diaCobroSemanal: number;
+  colorPrimario: string;
+  logoUrl: string | null;
+};
+
+export async function syncConfiguracion(ownerId: string): Promise<void> {
+  const database = db;
+  if (!database) return;
+  const res = await fetch("/api/configuracion", { cache: "no-store" });
+  if (!res.ok) return;
+  const cfg: ConfiguracionApi = await res.json();
+  await database.configuracion.put({ ownerId, ...cfg });
+}
+
+let syncing = false;
+
+/** Sincroniza todas las entidades cubiertas por la capa offline. Evita solapes. */
+export async function syncAll(ownerId: string): Promise<void> {
+  if (syncing || typeof navigator === "undefined" || !navigator.onLine) return;
+  syncing = true;
+  try {
+    await Promise.all([
+      syncContratas(ownerId),
+      syncClientes(ownerId),
+      syncDeudores(ownerId),
+      syncConfiguracion(ownerId),
+    ]);
+  } catch {
+    // Sin red o error del servidor: la app sigue funcionando desde caché local.
+  } finally {
+    syncing = false;
+  }
+}

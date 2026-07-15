@@ -1,0 +1,223 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { Combine, FileText, Pencil, Plus, ArrowLeft } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { EliminarCliente } from "@/components/clientes/eliminar-cliente";
+import { HistorialContratas } from "@/components/clientes/historial-contratas";
+import { CobroVencido } from "@/components/clientes/cobro-vencido";
+import { formatMoneda } from "@/lib/utils";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { getClientePerfil, getCobroVencidoPreview } from "@/lib/offline/repo";
+
+type ExtrasOnline = {
+  cobroPreview: { total: number; items: unknown[] } | null;
+  nombreApp: string | null;
+};
+
+/**
+ * "Cobro vencido" requiere datos que no viven en la caché offline (Fase B
+ * no lo cubre) — se pide aparte, solo cuando hay red, y se oculta si la
+ * petición falla (sin conexión, por ejemplo).
+ */
+function useExtrasOnline(clienteId: string, esAdmin: boolean): ExtrasOnline {
+  const [extras, setExtras] = useState<ExtrasOnline>({
+    cobroPreview: null,
+    nombreApp: null,
+  });
+
+  useEffect(() => {
+    if (!esAdmin) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        const [cobroRes, configRes] = await Promise.all([
+          fetch(`/api/clientes/${clienteId}/cobrar-vencidas`),
+          fetch("/api/configuracion"),
+        ]);
+        if (cancelado) return;
+        const cobroPreview = cobroRes.ok ? await cobroRes.json() : null;
+        const config = configRes.ok ? await configRes.json() : null;
+        setExtras({ cobroPreview, nombreApp: config?.nombreApp ?? null });
+      } catch {
+        // Sin red: el widget simplemente no aparece.
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+  }, [clienteId, esAdmin]);
+
+  return extras;
+}
+
+export default function ClientePerfilPage() {
+  const claims = useAuthClaims();
+  const params = useParams<{ id: string }>();
+  const ownerId = claims.ready ? claims.ownerId : null;
+  const esAdmin = claims.ready ? claims.esAdmin : false;
+
+  const perfil = useLiveQuery(
+    () => (ownerId ? getClientePerfil(ownerId, params.id) : undefined),
+    [ownerId, params.id]
+  );
+
+  const extras = useExtrasOnline(params.id, esAdmin);
+  // Respaldo offline: si no se pudo pedir el preview real al servidor
+  // (sin red), se calcula localmente sobre los datos ya sincronizados.
+  const previewLocal = useLiveQuery(
+    () =>
+      !extras.cobroPreview && ownerId
+        ? getCobroVencidoPreview(ownerId, params.id)
+        : undefined,
+    [extras.cobroPreview, ownerId, params.id]
+  );
+
+  if (perfil === undefined) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Cargando…
+      </p>
+    );
+  }
+
+  if (perfil === null) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Cliente no encontrado.
+      </p>
+    );
+  }
+
+  const { totales } = perfil;
+  const elegiblesUnificar = perfil.contratas.filter(
+    (c) => c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA" && c.saldo > 0
+  ).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/clientes">
+            <ArrowLeft className="size-4" /> Clientes
+          </Link>
+        </Button>
+        {esAdmin && (
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/clientes/${perfil.id}/editar`}>
+                <Pencil className="size-4" /> Editar
+              </Link>
+            </Button>
+            <EliminarCliente
+              id={perfil.id}
+              deshabilitado={perfil.contratas.length > 0}
+            />
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">{perfil.nombre}</h1>
+        {perfil.telefono && (
+          <p className="text-sm text-muted-foreground">{perfil.telefono}</p>
+        )}
+        {perfil.direccion && (
+          <p className="text-sm text-muted-foreground">{perfil.direccion}</p>
+        )}
+        {perfil.referencia && (
+          <p className="text-sm text-muted-foreground">
+            Referencia: {perfil.referencia}
+          </p>
+        )}
+        {perfil.notas && (
+          <p className="text-sm text-muted-foreground">{perfil.notas}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Capital prestado</p>
+            <p className="text-lg font-bold">
+              {formatMoneda(totales.capitalPrestado)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Saldo pendiente</p>
+            <p className="text-lg font-bold text-primary">
+              {formatMoneda(totales.saldoPendiente)}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Activas</p>
+            <p className="text-lg font-bold">{totales.contratasActivas}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Liquidadas</p>
+            <p className="text-lg font-bold">{totales.contratasLiquidadas}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {esAdmin && extras.cobroPreview && extras.nombreApp && (
+        <CobroVencido
+          clienteId={perfil.id}
+          nombreApp={extras.nombreApp}
+          totalInicial={extras.cobroPreview.total}
+          cuotasInicial={extras.cobroPreview.items.length}
+          ownerId={ownerId}
+        />
+      )}
+
+      {esAdmin && !extras.cobroPreview && previewLocal && previewLocal.total > 0 && (
+        <CobroVencido
+          clienteId={perfil.id}
+          nombreApp="Kredired"
+          totalInicial={previewLocal.total}
+          cuotasInicial={previewLocal.items}
+          ownerId={ownerId}
+        />
+      )}
+
+      <Button className="w-full" variant="outline" asChild>
+        <Link href={`/clientes/${perfil.id}/estado-cuenta`}>
+          <FileText className="size-4" /> Estado de cuenta
+        </Link>
+      </Button>
+
+      {esAdmin && (
+        <Button className="w-full" variant="outline" asChild>
+          <Link href={`/contratas/nueva?clienteId=${perfil.id}`}>
+            <Plus className="size-4" /> Nueva contrata
+          </Link>
+        </Button>
+      )}
+
+      {esAdmin && elegiblesUnificar >= 2 && (
+        <Button className="w-full" variant="outline" asChild>
+          <Link href={`/clientes/${perfil.id}/unificar`}>
+            <Combine className="size-4" /> Unificar contratas
+          </Link>
+        </Button>
+      )}
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+          Historial de contratas
+        </h2>
+        <HistorialContratas contratas={perfil.contratas} />
+      </div>
+    </div>
+  );
+}

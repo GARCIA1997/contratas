@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.env
+.env*.local
+*.md
+!DEPLOY.md
+.DS_Store
+npm-debug.log*
+coverage

@@ -2,26 +2,143 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Kredired — Gris claro #F5F8FC / Gris oscuro #0A1020 */
+    --background: 214 54% 97%;
+    --foreground: 224 52% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 224 52% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 52% 8%;
+
+    /* Primario configurable — default Azul Corporativo #0F7BFF */
+    --primary: 213 100% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 40% 94%;
+    --secondary-foreground: 224 52% 8%;
+
+    --muted: 214 40% 94%;
+    --muted-foreground: 220 15% 45%;
+
+    --accent: 214 40% 94%;
+    --accent-foreground: 224 52% 8%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 214 32% 89%;
+    --input: 214 32% 89%;
+    --ring: 213 100% 53%;
+
+    /* Estados de dominio — Verde fintech #00D68F / rojo de alerta */
+    --estado-pagado: 160 100% 42%;
+    --estado-vencido: 0 72% 51%;
+    --estado-pendiente: 220 9% 46%;
+
+    --radius: 1.15rem;
+
+    /* Vidrio (Liquid Glass) */
+    --glass-bg: 255 255 255;
+    --glass-bg-alpha: 0.55;
+    --glass-border-alpha: 0.6;
+    --glass-highlight-alpha: 0.8;
+  }
+
+  :root[data-theme="dark"] {
+    /* Kredired — Azul Marino Profundo #021B4D / Azul Noche #032967 */
+    --background: 220 95% 15%;
+    --foreground: 210 40% 98%;
+
+    --card: 217 94% 21%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 217 94% 21%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 213 100% 53%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217 55% 24%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217 45% 20%;
+    --muted-foreground: 215 25% 72%;
+
+    --accent: 217 45% 22%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217 45% 28%;
+    --input: 217 45% 28%;
+    --ring: 213 100% 53%;
+
+    /* Verde fintech #00D68F pop sobre azul marino */
+    --estado-pagado: 160 100% 42%;
+    --estado-vencido: 0 72% 60%;
+    --estado-pendiente: 220 15% 65%;
+
+    /* Vidrio con tinte azul noche #032967 */
+    --glass-bg: 3 41 103;
+    --glass-bg-alpha: 0.5;
+    --glass-border-alpha: 0.25;
+    --glass-highlight-alpha: 0.1;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(ellipse 60% 40% at 15% -5%, hsl(var(--primary) / 0.16), transparent),
+      radial-gradient(ellipse 55% 35% at 100% 15%, hsl(var(--primary) / 0.1), transparent);
+    background-attachment: fixed;
+  }
 }
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
+  /* Superficie de vidrio esmerilado estilo iOS (Liquid Glass). */
+  .glass {
+    background-color: rgb(var(--glass-bg) / var(--glass-bg-alpha));
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border: 1px solid rgb(var(--glass-bg) / var(--glass-border-alpha));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / var(--glass-highlight-alpha)),
+      0 1px 2px rgb(0 0 0 / 0.04);
+  }
+  [data-theme="dark"] .glass {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / var(--glass-highlight-alpha)),
+      0 1px 2px rgb(0 0 0 / 0.3);
+  }
+
+  /* Variante más translúcida para barras flotantes (nav, header). */
+  .glass-nav {
+    background-color: rgb(var(--glass-bg) / 0.72);
+  }
+  [data-theme="dark"] .glass-nav {
+    background-color: rgb(var(--glass-bg) / 0.72);
+  }
+
+  .glass-card {
+    background-color: rgb(var(--glass-bg) / 0.65);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    backdrop-filter: saturate(180%) blur(16px);
+    border: 1px solid rgb(var(--glass-bg) / var(--glass-border-alpha));
+  }
+  [data-theme="dark"] .glass-card {
+    background-color: rgb(var(--glass-bg) / 0.6);
   }
 }

@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-contratas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-contratas}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-contratas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # No se expone el puerto 5432 al host: solo la app de la red interna
+    # necesita hablar con Postgres. Descomenta si quieres acceder desde fuera.
+    # ports:
+    #   - "5432:5432"
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-contratas}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-contratas}?schema=public
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:

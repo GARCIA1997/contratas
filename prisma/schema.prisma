@@ -1,0 +1,232 @@
+// ContratasApp — Prisma schema
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+enum Rol {
+  ADMIN
+  VIEWER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  nombre        String?
+  email         String    @unique
+  passwordHash  String?
+  rol           Rol       @default(VIEWER)
+  image         String?
+  emailVerified DateTime?
+  accounts      Account[]
+  sessions      Session[]
+  clientes      Cliente[]
+  contratas     Contrata[]
+  deudores      Deudor[]
+  configuracion Configuracion?
+  suscripciones PushSubscription[]
+  creadoEn      DateTime  @default(now())
+
+  // Espacio de trabajo: null = dueño de su propio espacio (registro público);
+  // con valor = miembro invitado del espacio de ese dueño (creado desde
+  // Configuración → Usuarios). Todos los datos del miembro se scopean al
+  // ownerId del dueño, no al suyo.
+  workspaceOwner   User?   @relation("EspacioMiembros", fields: [workspaceOwnerId], references: [id], onDelete: Cascade)
+  workspaceOwnerId String?
+  miembros         User[]  @relation("EspacioMiembros")
+
+  @@index([workspaceOwnerId])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId   String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  creadoEn  DateTime @default(now())
+
+  @@index([ownerId])
+}
+
+// NextAuth adapter models (Google OAuth + sessions)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------------------------------------------------------------------------
+// Dominio: Contratas
+// ---------------------------------------------------------------------------
+
+enum TipoContrata {
+  SEMANAL
+  QUINCENAL
+  MENSUAL
+}
+
+enum ModoQuincenal {
+  QUINCE_DIAS
+  DIAS_15_Y_ULTIMO
+  DIAS_1_Y_15
+}
+
+model Cliente {
+  id         String     @id @default(cuid())
+  owner      User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId    String
+  nombre     String
+  telefono   String?
+  direccion  String?
+  referencia String?
+  notas      String?
+  contratas  Contrata[]
+  creadoEn   DateTime   @default(now())
+
+  @@index([ownerId])
+}
+
+model Contrata {
+  id               String       @id @default(cuid())
+  owner            User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId          String
+  cliente          Cliente      @relation(fields: [clienteId], references: [id])
+  clienteId        String
+  tipo             TipoContrata
+  monto            Float
+  abono            Float
+  fechaInicio      DateTime
+  numCuotas        Int          @default(10)
+  mes              String
+  notas            String?
+  pagos            Pago[]
+  /// Se marcó el saldo pendiente como deuda (proceso manual, ver Deudor).
+  convertidaADeuda Boolean      @default(false)
+  deudor           Deudor?      @relation(fields: [deudorId], references: [id], onDelete: SetNull)
+  deudorId         String?
+  creadoEn         DateTime     @default(now())
+
+  @@index([clienteId])
+  @@index([ownerId])
+  @@index([deudorId])
+}
+
+model Pago {
+  id              String    @id @default(cuid())
+  contrata        Contrata  @relation(fields: [contrataId], references: [id], onDelete: Cascade)
+  contrataId      String
+  numeroCuota     Int
+  fechaProgramada DateTime
+  fechaPago       DateTime?
+  pagado          Boolean   @default(false)
+  montoAbonado    Float     @default(0)
+
+  @@index([contrataId])
+}
+
+// ---------------------------------------------------------------------------
+// Dominio: Deudores
+// ---------------------------------------------------------------------------
+
+model Deudor {
+  id           String        @id @default(cuid())
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId      String
+  nombre       String
+  deudaInicial Float         @default(0)
+  notas        String?
+  abonos       AbonoDeudor[]
+  contratas    Contrata[]
+  creadoEn     DateTime      @default(now())
+
+  @@index([ownerId])
+}
+
+model AbonoDeudor {
+  id       String   @id @default(cuid())
+  deudor   Deudor   @relation(fields: [deudorId], references: [id], onDelete: Cascade)
+  deudorId String
+  fecha    DateTime
+  monto    Float
+  restante Float
+  notas    String?
+
+  @@index([deudorId])
+}
+
+// ---------------------------------------------------------------------------
+// Configuración
+// ---------------------------------------------------------------------------
+
+model Configuracion {
+  id                  String        @id @default(cuid())
+  owner               User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId             String        @unique
+  nombreApp           String        @default("Kredired")
+  tasaSemanal         Float         @default(125)
+  tasaQuincenal       Float         @default(135)
+  tasaMensual         Float         @default(200)
+  cuotasPorDefecto    Int           @default(10)
+  maxCuotas           Int           @default(52)
+  modoFechasQuincenal ModoQuincenal @default(QUINCE_DIAS)
+  diaCobroSemanal     Int           @default(1)
+  colorPrimario       String        @default("#0F7BFF")
+  logoUrl             String?
+}
+
+// ---------------------------------------------------------------------------
+// Offline: idempotencia de escrituras encoladas
+// ---------------------------------------------------------------------------
+
+/// Registra una idempotency key ya procesada para que un reintento de la cola
+/// de escritura offline (misma key) no vuelva a aplicar la mutación.
+model ProcessedOperation {
+  /// Idempotency key generada por el cliente (uuid).
+  id        String   @id
+  ownerId   String
+  endpoint  String
+  resultado Json
+  creadoEn  DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([creadoEn])
+}

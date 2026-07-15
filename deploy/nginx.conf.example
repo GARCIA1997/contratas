@@ -1,0 +1,34 @@
+# Ejemplo de reverse proxy para Nginx en el VPS.
+# Copiar a /etc/nginx/sites-available/kredired y enlazar en sites-enabled:
+#   sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/kredired
+#   sudo ln -s /etc/nginx/sites-available/kredired /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+# Luego SSL con certbot:
+#   sudo certbot --nginx -d tu-dominio.com
+
+server {
+    listen 80;
+    server_name tu-dominio.com;
+
+    # Límite razonable para subir imágenes/adjuntos si se agregan a futuro.
+    client_max_body_size 10M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # El service worker de la PWA debe servirse sin cache agresivo.
+    location = /sw.js {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        add_header Cache-Control "no-cache";
+    }
+}
