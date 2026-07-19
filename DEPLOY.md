@@ -40,7 +40,7 @@ sudo apt-get install -y docker-compose-plugin
 git clone <tu-repo> kredired && cd kredired
 cp .env.example .env
 # Edita .env: DATABASE_URL, NEXTAUTH_SECRET (openssl rand -base64 32),
-# NEXTAUTH_URL="https://kredired.spartans-dev.io", ADMIN_EMAIL/ADMIN_PASSWORD, etc.
+# NEXTAUTH_URL="https://kredired.cloud", ADMIN_EMAIL/ADMIN_PASSWORD, etc.
 ```
 
 ### 3a. Opción Docker Compose
@@ -72,11 +72,11 @@ pm2 save && pm2 startup   # para que arranque solo tras reiniciar el VPS
 
 ```bash
 sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/kredired
-# Ya trae server_name kredired.spartans-dev.io — solo revisa que apunte
+# Ya trae server_name kredired.cloud — solo revisa que apunte
 # a tu dominio si en algún momento cambia.
 sudo ln -s /etc/nginx/sites-available/kredired /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d kredired.spartans-dev.io
+sudo certbot --nginx -d kredired.cloud
 ```
 
 ### 5. Recordatorio diario
