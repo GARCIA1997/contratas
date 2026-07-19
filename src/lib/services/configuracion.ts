@@ -10,9 +10,11 @@ export async function updateConfig(ownerId: string, input: ConfigInput) {
     nombreApp: input.nombreApp,
     tasaSemanal: input.tasaSemanal,
     tasaQuincenal: input.tasaQuincenal,
+    tasaMensual: input.tasaMensual,
     cuotasPorDefecto: input.cuotasPorDefecto,
     maxCuotas: input.maxCuotas,
     modoFechasQuincenal: input.modoFechasQuincenal,
+    diaCobroSemanal: input.diaCobroSemanal,
     colorPrimario: input.colorPrimario,
     logoUrl,
   };
