@@ -27,12 +27,20 @@ export default async function EstadoCuentaClientePage({
           contratas: cliente.contratas.map((c) => ({
             id: c.id,
             tipo: c.tipo,
+            monto: c.monto,
+            abono: c.abono,
             numCuotas: c.numCuotas,
             pagados: c.pagados,
             total: c.total,
             saldo: c.saldo,
             estado: c.estado,
             totalAbonado: c.totalAbonado,
+            pagos: c.pagos.map((p) => ({
+              numeroCuota: p.numeroCuota,
+              fechaProgramada: p.fechaProgramada.toISOString(),
+              pagado: p.pagado,
+              montoAbonado: p.montoAbonado,
+            })),
           })),
         }}
       />

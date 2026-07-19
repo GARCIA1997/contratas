@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { BottomNav } from "@/components/bottom-nav";
 import { OfflineBootstrap } from "@/components/offline/offline-bootstrap";
 import { SyncStatusBadge } from "@/components/offline/sync-status-badge";
+import { RefreshButton } from "@/components/offline/refresh-button";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 
 export default function AppLayout({
@@ -36,8 +37,9 @@ export default function AppLayout({
     <div className="min-h-dvh">
       <OfflineBootstrap ownerId={ownerId} />
       <AppHeader />
-      <div className="mx-auto flex max-w-lg justify-end px-4 pt-2">
+      <div className="mx-auto flex max-w-lg items-center justify-end gap-2 px-4 pt-2">
         <SyncStatusBadge ownerId={ownerId} />
+        <RefreshButton ownerId={ownerId} />
       </div>
       <main className="mx-auto max-w-lg px-4 pb-32 pt-2">{children}</main>
       <BottomNav />

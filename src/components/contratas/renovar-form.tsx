@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { syncAll } from "@/lib/offline/sync";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -40,6 +42,7 @@ export function RenovarForm({
   maxCuotas: number;
 }) {
   const router = useRouter();
+  const claims = useAuthClaims();
   const [incluirOtras, setIncluirOtras] = useState(false);
   const [tipo, setTipo] = useState<TipoContrata>(tipoOriginal);
   const [monto, setMonto] = useState("");
@@ -116,6 +119,7 @@ export function RenovarForm({
       return;
     }
     const data = await res.json();
+    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
     router.push(`/contratas/${data.nuevaContrata.id}`);
     router.refresh();
   }

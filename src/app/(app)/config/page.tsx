@@ -34,7 +34,21 @@ export default function ConfigPage() {
         </Card>
       )}
 
-      <ConfigForm inicial={config ?? CONFIG_DEFAULTS} soloLectura={!esAdmin} />
+      {/*
+        ConfigForm siembra su estado desde `inicial` solo al montar (useState
+        initializer). Si esta página monta antes de que useLiveQuery resuelva
+        la config real desde IndexedDB, `config` llega undefined por un
+        instante y el formulario quedaría anclado a CONFIG_DEFAULTS aunque
+        luego lleguen los valores reales. La key fuerza exactamente un
+        remount cuando pasa de "cargando" a "cargado", sin resetear lo que el
+        usuario esté escribiendo en saves posteriores (config ya no es
+        undefined después del primero).
+      */}
+      <ConfigForm
+        key={config ? "cargado" : "cargando"}
+        inicial={config ?? CONFIG_DEFAULTS}
+        soloLectura={!esAdmin}
+      />
 
       {esAdmin && (
         <Button variant="outline" className="w-full" asChild>

@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { syncAll } from "@/lib/offline/sync";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -39,6 +41,7 @@ export function UnificarForm({
   maxCuotas: number;
 }) {
   const router = useRouter();
+  const claims = useAuthClaims();
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
   const [tipo, setTipo] = useState<TipoContrata>(contratas[0]?.tipo ?? "SEMANAL");
   const [monto, setMonto] = useState("");
@@ -138,6 +141,7 @@ export function UnificarForm({
       return;
     }
     const data = await res.json();
+    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
     router.push(`/contratas/${data.nuevaContrata.id}`);
     router.refresh();
   }

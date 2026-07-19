@@ -39,6 +39,7 @@ export default async function ReciboPage({
           totalEsperado,
           totalAbonado,
           saldo,
+          convertidaADeuda: c.convertidaADeuda,
           pagos: c.pagos.map((p) => ({
             numeroCuota: p.numeroCuota,
             fechaProgramada: p.fechaProgramada.toISOString(),

@@ -49,6 +49,20 @@ const nextConfig = {
       static: 3600,
     },
   },
+  // El service worker nunca debe quedar cacheado por el navegador o un
+  // proxy intermedio (CDN, nginx) — si un despliegue nuevo cambia su
+  // contenido y un cliente sigue sirviendo la versión vieja, la app queda
+  // atascada en el build anterior indefinidamente. Esto es la fuente de
+  // verdad (Next la sirve directo); nginx en el VPS repite la misma
+  // cabecera como defensa adicional (ver deploy/nginx.conf.example).
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache, must-revalidate" }],
+      },
+    ];
+  },
 };
 
 export default withPWA(nextConfig);

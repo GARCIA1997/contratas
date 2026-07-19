@@ -3,20 +3,25 @@ import type { TipoContrata } from "@prisma/client";
 
 /**
  * Calcula el abono periódico sugerido a partir de la tasa configurada.
- * La tasa se interpreta como "interés total por cada $1,000 prestados,
- * en un plazo de `cuotasBase` pagos" (por defecto 10, el mismo valor que
- * "Cuotas por defecto" en Configuración).
+ * La tasa se interpreta como "abono por cada $1,000 prestados, por cada
+ * pago, en un plazo de `cuotasBase` pagos" (por defecto 10, el mismo valor
+ * que "Cuotas por defecto" en Configuración) — es decir, para un plazo de
+ * exactamente `cuotasBase` pagos el abono sugerido es directamente
+ * `(monto / 1000) * tasa`, sin ningún reparto adicional.
  *
  * Si la contrata pactada tiene más o menos plazos que `cuotasBase`, el
- * interés total escala proporcionalmente (regla de tres): una contrata a
- * 20 semanas paga el doble de interés que una a 10 semanas, no el mismo
- * interés repartido en más pagos.
+ * interés total pactado a `cuotasBase` escala proporcionalmente (regla de
+ * tres) según cuántos pagos de más o de menos tenga: una contrata al doble
+ * de plazo paga el doble de interés total, no el mismo interés repartido
+ * en más pagos.
  *
- *   interésBase  = (monto / 1000) * tasa            (para cuotasBase pagos)
- *   interésTotal = interésBase * (numCuotas / cuotasBase)
+ *   abonoBase    = (monto / 1000) * tasa                  (a cuotasBase pagos)
+ *   interésBase  = abonoBase * cuotasBase - monto          (interés total a cuotasBase pagos)
+ *   interésTotal = interésBase * (numCuotas / cuotasBase)  (regla de tres si el plazo cambia)
  *   total        = monto + interésTotal
  *   abono        = total / numCuotas
  *
+ * Con numCuotas === cuotasBase esto se reduce exactamente a abonoBase.
  * El resultado es editable manualmente en el formulario.
  */
 export function calcularAbono(
@@ -35,7 +40,8 @@ export function calcularAbono(
       : tipo === "QUINCENAL"
         ? tasaQuincenal
         : tasaMensual;
-  const interesBase = (monto / 1000) * tasa;
+  const abonoBase = (monto / 1000) * tasa;
+  const interesBase = abonoBase * cuotasBase - monto;
   const interesTotal = interesBase * (numCuotas / cuotasBase);
   const total = monto + interesTotal;
   return Math.round((total / numCuotas) * 100) / 100;
@@ -78,6 +84,52 @@ export function estadoContrata(
   if (hayProximo) return "PROXIMO";
 
   return "AL_CORRIENTE";
+}
+
+export type CuotaAtrasada = { numeroCuota: number; fechaProgramada: Date };
+export type CuotaIncompleta = {
+  numeroCuota: number;
+  montoAbonado: number;
+  faltante: number;
+};
+export type DesgloseCuotas = {
+  atrasadas: CuotaAtrasada[];
+  incompletas: CuotaIncompleta[];
+};
+
+/**
+ * Desglose de cuotas problemáticas de una contrata: atrasadas (pendientes
+ * cuya fecha ya pasó, con o sin abono parcial) e incompletas (pendientes
+ * con algún abono parcial, vencidas o no). Una cuota puede aparecer en
+ * ambas listas. Pensado para el mensaje de WhatsApp de recibo/estado de
+ * cuenta — solo tiene sentido mostrarlo en contratas activas.
+ */
+export function desgloseCuotas(
+  pagos: (PagoLike & { numeroCuota: number })[],
+  abono: number,
+  hoy: Date = new Date()
+): DesgloseCuotas {
+  const base = startOfDay(hoy);
+  const pendientes = pagos.filter((p) => !p.pagado);
+
+  const atrasadas = pendientes
+    .filter(
+      (p) => differenceInCalendarDays(startOfDay(p.fechaProgramada), base) < 0
+    )
+    .map((p) => ({
+      numeroCuota: p.numeroCuota,
+      fechaProgramada: p.fechaProgramada,
+    }));
+
+  const incompletas = pendientes
+    .filter((p) => (p.montoAbonado ?? 0) > 0)
+    .map((p) => ({
+      numeroCuota: p.numeroCuota,
+      montoAbonado: p.montoAbonado ?? 0,
+      faltante: Math.round((abono - (p.montoAbonado ?? 0)) * 100) / 100,
+    }));
+
+  return { atrasadas, incompletas };
 }
 
 /**

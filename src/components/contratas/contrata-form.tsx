@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { syncAll } from "@/lib/offline/sync";
 
 export type ClienteOpcion = { id: string; nombre: string };
 
@@ -46,6 +48,7 @@ export function ContrataForm({
   volverHref?: string;
 }) {
   const router = useRouter();
+  const claims = useAuthClaims();
   const editando = !!inicial;
   const clienteFijo = !editando && !!clientePreseleccionado;
 
@@ -158,6 +161,9 @@ export function ContrataForm({
       return;
     }
     const guardada = await res.json();
+    // La UI lee de IndexedDB (offline-first): sin este sync la contrata
+    // nueva no aparece en listas/dashboard hasta la próxima recarga completa.
+    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
     router.push(`/contratas/${guardada.id}`);
     router.refresh();
   }

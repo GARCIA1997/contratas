@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { syncAll } from "@/lib/offline/sync";
 
 export function EliminarCliente({
   id,
@@ -13,6 +15,7 @@ export function EliminarCliente({
   deshabilitado: boolean;
 }) {
   const router = useRouter();
+  const claims = useAuthClaims();
   const [borrando, setBorrando] = useState(false);
 
   async function eliminar() {
@@ -24,6 +27,7 @@ export function EliminarCliente({
     setBorrando(true);
     const res = await fetch(`/api/clientes/${id}`, { method: "DELETE" });
     if (res.ok) {
+      if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
       router.push("/clientes");
       router.refresh();
     } else {

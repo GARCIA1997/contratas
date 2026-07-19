@@ -7,17 +7,30 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { linkWhatsApp } from "@/lib/whatsapp";
-import type { EstadoContrata } from "@/lib/contrata";
+import { desgloseCuotas, type EstadoContrata } from "@/lib/contrata";
+import { anclarFechaCliente } from "@/lib/fechas";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+
+type PagoUI = {
+  numeroCuota: number;
+  fechaProgramada: string;
+  pagado: boolean;
+  montoAbonado: number;
+};
 
 type ContrataUI = {
   id: string;
   tipo: TipoContrata;
+  monto: number;
+  abono: number;
   numCuotas: number;
   pagados: number;
   total: number;
   saldo: number;
   estado: EstadoContrata;
   totalAbonado: number;
+  pagos: PagoUI[];
 };
 
 type EstadoCuentaUI = {
@@ -48,6 +61,10 @@ const ESTADO_LABEL: Record<EstadoContrata, string> = {
 
 const DIVISOR = "──────────────";
 
+function fechaDeDate(d: Date) {
+  return format(d, "d MMM yyyy", { locale: es });
+}
+
 function construirMensaje(nombreApp: string, c: EstadoCuentaUI) {
   const lineas = [
     `🧾 *${nombreApp}*`,
@@ -62,17 +79,39 @@ function construirMensaje(nombreApp: string, c: EstadoCuentaUI) {
   } else {
     c.contratas.forEach((ct, i) => {
       lineas.push(
-        `${i + 1}. ${TIPO_LABEL[ct.tipo]} — ${ct.pagados}/${ct.total} cuotas — Saldo: ${formatMoneda(ct.saldo)}`
+        `${i + 1}. ${TIPO_LABEL[ct.tipo]} — ${ct.pagados}/${ct.total} cuotas — Monto: ${formatMoneda(ct.monto)}`
       );
+
+      const activa = ct.estado !== "LIQUIDADA" && ct.estado !== "EN_DEUDA";
+      if (!activa) return;
+
+      const { atrasadas, incompletas } = desgloseCuotas(
+        ct.pagos.map((p) => ({
+          numeroCuota: p.numeroCuota,
+          fechaProgramada: anclarFechaCliente(p.fechaProgramada),
+          pagado: p.pagado,
+          montoAbonado: p.montoAbonado,
+        })),
+        ct.abono
+      );
+
+      if (atrasadas.length > 0) {
+        const detalle = atrasadas
+          .map((a) => `Cuota ${a.numeroCuota} (${fechaDeDate(a.fechaProgramada)})`)
+          .join(", ");
+        lineas.push(`   ⚠️ Atrasadas: ${detalle}`);
+      }
+      if (incompletas.length > 0) {
+        const detalle = incompletas
+          .map(
+            (inc) =>
+              `Cuota ${inc.numeroCuota} — abonado ${formatMoneda(inc.montoAbonado)} (falta ${formatMoneda(inc.faltante)})`
+          )
+          .join(", ");
+        lineas.push(`   🔸 Incompletas: ${detalle}`);
+      }
     });
   }
-
-  lineas.push(
-    DIVISOR,
-    `💰 Capital prestado: ${formatMoneda(c.totales.capitalPrestado)}`,
-    `✅ Total abonado: ${formatMoneda(c.totales.totalAbonado)}`,
-    `🔸 Saldo pendiente total: *${formatMoneda(c.totales.saldoPendiente)}*`
-  );
 
   return lineas.join("\n");
 }

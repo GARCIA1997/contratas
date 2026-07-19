@@ -17,9 +17,23 @@ export function SwRegister() {
     ) {
       return;
     }
-    navigator.serviceWorker.register("/sw.js").catch((err) => {
-      console.error("[PWA] No se pudo registrar el service worker:", err);
-    });
+
+    function registrar() {
+      navigator.serviceWorker.register("/sw.js").catch((err) => {
+        console.error("[PWA] No se pudo registrar el service worker:", err);
+      });
+    }
+
+    // Se registra en `load` (no directo en el efecto): es la recomendación
+    // estándar (evita competir con el render inicial) y de paso es más
+    // resiliente en navegadores/PWAs que difieren la ejecución de JS de
+    // pestañas en segundo plano o recién abiertas antes de `load`.
+    if (document.readyState === "complete") {
+      registrar();
+    } else {
+      window.addEventListener("load", registrar, { once: true });
+      return () => window.removeEventListener("load", registrar);
+    }
   }, []);
 
   return null;

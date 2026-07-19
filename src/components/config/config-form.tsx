@@ -9,6 +9,8 @@ import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import type { ConfigView } from "@/lib/config";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { syncConfiguracion } from "@/lib/offline/sync";
 
 export function ConfigForm({
   inicial,
@@ -18,6 +20,7 @@ export function ConfigForm({
   soloLectura: boolean;
 }) {
   const router = useRouter();
+  const claims = useAuthClaims();
   const [c, setC] = useState({
     tasaSemanal: String(inicial.tasaSemanal),
     tasaQuincenal: String(inicial.tasaQuincenal),
@@ -64,6 +67,7 @@ export function ConfigForm({
       setError(data.error ?? "No se pudo guardar");
       return;
     }
+    if (claims.ready && claims.ownerId) await syncConfiguracion(claims.ownerId);
     setOk(true);
     router.refresh();
   }

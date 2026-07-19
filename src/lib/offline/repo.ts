@@ -62,6 +62,7 @@ export type ContrataDetalleLocal = {
   fechaInicio: string;
   notas: string | null;
   convertidaADeuda: boolean;
+  creadoEn: string;
   pagos: {
     numeroCuota: number;
     fechaProgramada: string;
@@ -92,6 +93,7 @@ export async function getContrata(
     fechaInicio: c.fechaInicio,
     notas: c.notas,
     convertidaADeuda: c.convertidaADeuda,
+    creadoEn: c.creadoEn,
     pagos: pagos.map((p) => ({
       numeroCuota: p.numeroCuota,
       fechaProgramada: p.fechaProgramada,

@@ -7,6 +7,8 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { syncAll } from "@/lib/offline/sync";
 
 export type DeudorInicial = {
   id: string;
@@ -17,6 +19,7 @@ export type DeudorInicial = {
 
 export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
   const router = useRouter();
+  const claims = useAuthClaims();
   const editando = !!inicial;
 
   const [nombre, setNombre] = useState(inicial?.nombre ?? "");
@@ -54,6 +57,7 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
       return;
     }
     const guardado = await res.json();
+    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
     router.push(`/deudores/${guardado.id}`);
     router.refresh();
   }

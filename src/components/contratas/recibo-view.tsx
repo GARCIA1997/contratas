@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { estadoContrata, desgloseCuotas } from "@/lib/contrata";
 
 type PagoUI = {
   numeroCuota: number;
@@ -32,6 +33,7 @@ type ReciboContrata = {
   totalEsperado: number;
   totalAbonado: number;
   saldo: number;
+  convertidaADeuda: boolean;
   pagos: PagoUI[];
 };
 
@@ -45,9 +47,24 @@ function fecha(iso: string) {
   return format(anclarFechaCliente(iso), "d MMM yyyy", { locale: es });
 }
 
+/** Como `fecha()` pero para un Date ya anclado (evita re-anclar dos veces). */
+function fechaDeDate(d: Date) {
+  return format(d, "d MMM yyyy", { locale: es });
+}
+
 const DIVISOR = "──────────────";
 
 function construirMensaje(nombreApp: string, c: ReciboContrata) {
+  const estado = c.convertidaADeuda
+    ? "EN_DEUDA"
+    : estadoContrata(
+        c.pagos.map((p) => ({
+          fechaProgramada: anclarFechaCliente(p.fechaProgramada),
+          pagado: p.pagado,
+        }))
+      );
+  const activa = estado !== "LIQUIDADA" && estado !== "EN_DEUDA";
+
   const lineas = [
     `🧾 *${nombreApp}*`,
     `*Recibo de pago*`,
@@ -58,10 +75,36 @@ function construirMensaje(nombreApp: string, c: ReciboContrata) {
     `💰 Monto prestado: ${formatMoneda(c.monto)}`,
     `📆 Abono por cuota: ${formatMoneda(c.abono)}`,
     `✅ Cuotas pagadas: ${c.cuotasPagadas}/${c.numCuotas}`,
-    DIVISOR,
-    `✅ Total abonado: ${formatMoneda(c.totalAbonado)}`,
-    `🔸 Saldo pendiente: *${formatMoneda(c.saldo)}*`,
   ];
+
+  if (activa) {
+    const { atrasadas, incompletas } = desgloseCuotas(
+      c.pagos.map((p) => ({
+        numeroCuota: p.numeroCuota,
+        fechaProgramada: anclarFechaCliente(p.fechaProgramada),
+        pagado: p.pagado,
+        montoAbonado: p.montoAbonado,
+      })),
+      c.abono
+    );
+
+    if (atrasadas.length > 0) {
+      lineas.push(DIVISOR, `⚠️ *Cuotas atrasadas:*`);
+      atrasadas.forEach((a) => {
+        lineas.push(`Cuota ${a.numeroCuota} — ${fechaDeDate(a.fechaProgramada)}`);
+      });
+    }
+
+    if (incompletas.length > 0) {
+      lineas.push(DIVISOR, `🔸 *Cuotas incompletas:*`);
+      incompletas.forEach((inc) => {
+        lineas.push(
+          `Cuota ${inc.numeroCuota} — abonado ${formatMoneda(inc.montoAbonado)} (falta ${formatMoneda(inc.faltante)})`
+        );
+      });
+    }
+  }
+
   return lineas.join("\n");
 }
 

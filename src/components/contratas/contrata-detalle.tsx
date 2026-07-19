@@ -44,6 +44,7 @@ type ContrataUI = {
   fechaInicio: string;
   notas: string | null;
   convertidaADeuda: boolean;
+  creadoEn: string;
   pagos: PagoUI[];
 };
 
@@ -312,6 +313,9 @@ export function ContrataDetalle({
           {TIPO_LABEL[contrata.tipo]} · inicio{" "}
           {fecha(contrata.fechaInicio)}
         </p>
+        <p className="text-xs text-muted-foreground">
+          Contrata entregada el {fecha(contrata.creadoEn)}
+        </p>
       </div>
 
       <Card>
@@ -438,6 +442,11 @@ export function ContrataDetalle({
                 </div>
                 {esAdmin && seleccionada === p.numeroCuota && (
                   <div className="mt-1.5 rounded-2xl border border-dashed border-border p-3">
+                    {p.pagado && p.fechaPago && (
+                      <p className="mb-2 text-xs text-muted-foreground">
+                        Pagado el {fecha(p.fechaPago)}
+                      </p>
+                    )}
                     <div className="flex flex-wrap items-end gap-2">
                       <div className="min-w-[140px] flex-1 space-y-1">
                         <label className="text-xs text-muted-foreground">
