@@ -38,7 +38,11 @@ function LoginForm() {
     });
     setLoading(false);
     if (res?.error) {
-      setError("Usuario o contraseña incorrectos.");
+      setError(
+        res.error === "RATE_LIMIT"
+          ? "Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo."
+          : "Usuario o contraseña incorrectos."
+      );
       return;
     }
     router.push(callbackUrl);

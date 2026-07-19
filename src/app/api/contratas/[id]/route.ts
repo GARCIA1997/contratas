@@ -3,6 +3,7 @@ import { requireUser, requireAdmin } from "@/lib/session";
 import { handleApiError } from "@/lib/api";
 import { withIdempotency } from "@/lib/idempotency";
 import { contrataUpdateSchema } from "@/lib/validaciones";
+import { registrarAuditoria, ipDeRequest } from "@/lib/audit";
 import {
   actualizarContrata,
   eliminarContrata,
@@ -36,6 +37,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAdmin();
+    // Se lee antes de borrar para dejar en la bitácora de quién era.
+    const previa = await getContrata(user.ownerId, params.id).catch(() => null);
     const resultado = await withIdempotency(
       req,
       user.ownerId,
@@ -45,6 +48,16 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         return { ok: true };
       }
     );
+    await registrarAuditoria({
+      actor: user,
+      accion: "contrata.eliminar",
+      entidad: "Contrata",
+      entidadId: params.id,
+      detalle: previa
+        ? { cliente: previa.cliente.nombre, monto: previa.monto }
+        : undefined,
+      ip: ipDeRequest(req),
+    });
     return NextResponse.json(resultado);
   } catch (error) {
     return handleApiError(error);

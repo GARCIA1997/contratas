@@ -3,6 +3,7 @@ import { requireAdmin, HttpError } from "@/lib/session";
 import { handleApiError } from "@/lib/api";
 import { withIdempotency } from "@/lib/idempotency";
 import { abonarPago, limpiarPago } from "@/lib/services/contratas";
+import { registrarAuditoria, ipDeRequest } from "@/lib/audit";
 
 type Params = { params: { id: string; cuota: string } };
 
@@ -44,6 +45,14 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       `contratas/${params.id}/pagos/${numeroCuota}/abonar/revertir`,
       () => limpiarPago(user.ownerId, params.id, numeroCuota)
     );
+    await registrarAuditoria({
+      actor: user,
+      accion: "pago.revertir",
+      entidad: "Contrata",
+      entidadId: params.id,
+      detalle: { cliente: contrata.cliente.nombre, cuota: numeroCuota },
+      ip: ipDeRequest(req),
+    });
     return NextResponse.json(contrata);
   } catch (error) {
     return handleApiError(error);

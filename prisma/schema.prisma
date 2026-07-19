@@ -230,3 +230,38 @@ model ProcessedOperation {
   @@index([ownerId])
   @@index([creadoEn])
 }
+
+// ---------------------------------------------------------------------------
+// Seguridad: rate limiting de login y bitácora de auditoría
+// ---------------------------------------------------------------------------
+
+/// Cada intento de inicio de sesión (exitoso o fallido), para frenar ataques
+/// de fuerza bruta. No se scopea por espacio: un intento fallido puede no
+/// corresponder a ningún usuario. Se puede purgar periódicamente.
+model LoginAttempt {
+  id       String   @id @default(cuid())
+  email    String
+  ip       String
+  exitoso  Boolean
+  creadoEn DateTime @default(now())
+
+  @@index([email, creadoEn])
+  @@index([ip, creadoEn])
+}
+
+/// Bitácora de acciones sensibles dentro de un espacio de trabajo (eliminar,
+/// marcar deuda, cambios de usuario, etc.). Guarda quién, qué y cuándo.
+model AuditLog {
+  id          String   @id @default(cuid())
+  ownerId     String
+  actorId     String
+  actorNombre String?
+  accion      String
+  entidad     String?
+  entidadId   String?
+  detalle     Json?
+  ip          String?
+  creadoEn    DateTime @default(now())
+
+  @@index([ownerId, creadoEn])
+}

@@ -4,6 +4,7 @@ import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { loginBloqueado, registrarIntentoLogin } from "@/lib/rate-limit";
 import type { Rol } from "@prisma/client";
 
 const googleEnabled =
@@ -22,16 +23,30 @@ export const authOptions: NextAuthOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Contraseña", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) return null;
+        const email = credentials.email.toLowerCase();
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email.toLowerCase() },
-        });
-        if (!user?.passwordHash) return null;
+        // IP real del cliente (detrás de nginx: X-Forwarded-For / X-Real-IP).
+        const xff = req?.headers?.["x-forwarded-for"];
+        const ip =
+          (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0].trim() ||
+          (req?.headers?.["x-real-ip"] as string | undefined) ||
+          "desconocida";
 
-        const ok = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!ok) return null;
+        // Freno anti fuerza bruta: si este email o IP acumuló demasiados
+        // fallos recientes, se rechaza sin siquiera comparar la contraseña.
+        if (await loginBloqueado(email, ip)) {
+          throw new Error("RATE_LIMIT");
+        }
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        const ok =
+          !!user?.passwordHash &&
+          (await bcrypt.compare(credentials.password, user.passwordHash));
+
+        await registrarIntentoLogin(email, ip, ok);
+        if (!ok || !user) return null;
 
         return {
           id: user.id,

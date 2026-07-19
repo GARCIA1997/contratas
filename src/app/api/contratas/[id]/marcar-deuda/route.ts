@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/session";
 import { handleApiError } from "@/lib/api";
 import { withIdempotency } from "@/lib/idempotency";
 import { convertirADeuda } from "@/lib/services/contratas";
+import { registrarAuditoria, ipDeRequest } from "@/lib/audit";
 
 type Params = { params: { id: string } };
 
@@ -18,6 +19,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       `contratas/${params.id}/marcar-deuda`,
       () => convertirADeuda(user.ownerId, params.id)
     );
+    await registrarAuditoria({
+      actor: user,
+      accion: "contrata.marcarDeuda",
+      entidad: "Contrata",
+      entidadId: params.id,
+      detalle: resultado as Record<string, unknown>,
+      ip: ipDeRequest(req),
+    });
     return NextResponse.json(resultado);
   } catch (error) {
     return handleApiError(error);

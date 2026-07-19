@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Users } from "lucide-react";
+import { Users, ScrollText } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -51,11 +51,18 @@ export default function ConfigPage() {
       />
 
       {esAdmin && (
-        <Button variant="outline" className="w-full" asChild>
-          <Link href="/config/usuarios">
-            <Users className="size-4" /> Gestión de usuarios
-          </Link>
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/config/usuarios">
+              <Users className="size-4" /> Usuarios
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/config/auditoria">
+              <ScrollText className="size-4" /> Actividad
+            </Link>
+          </Button>
+        </div>
       )}
 
       <div className="space-y-2 pt-2">
