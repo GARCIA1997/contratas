@@ -13,8 +13,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
-    # No se expone el puerto 5432 al host: solo la app de la red interna
-    # necesita hablar con Postgres. Descomenta si quieres acceder desde fuera.
+    # No se expone el puerto 5432 aquí (ver docker-compose.override.yml,
+    # que no va en git, para el caso puntual del VPS): así el compose
+    # compartido no choca con un Postgres nativo que ya use ese puerto en
+    # tu máquina local.
     # ports:
     #   - "5432:5432"
 

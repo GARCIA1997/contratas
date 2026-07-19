@@ -107,3 +107,42 @@ npm ci && npm run build && pm2 restart kredired
 - [ ] Seed del admin ejecutado
 - [ ] Crontab del recordatorio diario instalado (`deploy/crontab.example`)
 - [ ] `pm2 startup` / `docker compose` con `restart: unless-stopped` para sobrevivir reinicios del VPS
+
+## Deploy automático (CI/CD)
+
+`.github/workflows/deploy.yml` corre en cada push a `main`: se conecta al VPS
+por SSH, hace `git reset --hard origin/main`, reconstruye la imagen Docker y
+reinicia el contenedor. Las migraciones de Prisma se aplican solas en el
+entrypoint — no hace falta ningún paso manual.
+
+Requiere estos secrets en el repo de GitHub (Settings → Secrets and
+variables → Actions), ya configurados para este VPS:
+
+- `VPS_HOST` — IP del servidor
+- `VPS_USER` — usuario de deploy (no root)
+- `VPS_SSH_KEY` — llave privada dedicada solo para CI/CD (distinta de tu
+  llave personal; su llave pública está en `~deploy/.ssh/authorized_keys`
+  del VPS)
+
+Si el pipeline falla o necesitas forzar un redeploy sin pushear código, usa
+`deploy/deploy.sh` (ver abajo).
+
+## Scripts de automatización (`deploy/`)
+
+Todos asumen que ya tienes acceso SSH por llave al VPS (`deploy@<IP>`, sin
+contraseña). Edita la IP/usuario al inicio del script si cambian.
+
+- **`deploy/deploy.sh`** — deploy manual (lo mismo que hace el CI/CD): git
+  reset + rebuild + restart. Útil para forzar un redeploy o depurar un
+  fallo del pipeline.
+- **`deploy/logs.sh [servicio]`** — logs en vivo del VPS (`app` por
+  defecto, o `db` para Postgres).
+- **`deploy/backup-db.sh`** — descarga un respaldo (`pg_dump`) de la base de
+  producción a tu máquina, con fecha en el nombre. Los `.dump` están en
+  `.gitignore` — bórralos cuando ya no los necesites.
+- **`deploy/db-tunnel.sh`** — abre un túnel SSH para conectar tu IDE/cliente
+  SQL local (TablePlus, DataGrip, DBeaver, `psql`) a la base de producción
+  sin exponerla a internet: Postgres solo escucha en el loopback del VPS
+  (`docker-compose.override.yml`, no versionado, solo existe ahí). Conecta
+  tu cliente a `localhost:5433` con las credenciales de `.env` del VPS
+  mientras el túnel esté abierto.
