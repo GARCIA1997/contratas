@@ -1,0 +1,30 @@
+name: Deploy a producción
+
+# Se dispara solo cuando algo entra a main (push directo o merge de un PR).
+# Los PR abiertos NO disparan deploy — solo el merge final.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy por SSH al VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/kredired
+            git fetch origin
+            git reset --hard origin/main
+            sudo docker compose build app
+            sudo docker compose up -d
+            sudo docker image prune -f
