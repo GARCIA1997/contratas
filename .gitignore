@@ -47,3 +47,4 @@ next-env.d.ts
 
 # Respaldos de base de datos (contienen datos reales/sensibles)
 *.dump
+*.pdf
