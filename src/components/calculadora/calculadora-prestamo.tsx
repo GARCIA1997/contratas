@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -37,53 +37,51 @@ export function CalculadoraPrestamo({
   const [fechaInicio, setFechaInicio] = useState(hoyISO());
   const [abonoSugerido, setAbonoSugerido] = useState<number | null>(null);
   const [fechas, setFechas] = useState<string[]>([]);
+  const [montoCalculado, setMontoCalculado] = useState(0);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Solo calcula cuando se toca el botón — con todos los factores tomados
+  // en ese momento. Nada de recalcular sobre la marcha mientras se escribe.
+  async function calcular() {
     const montoNum = parseFloat(monto);
-    if (!montoNum || montoNum <= 0 || !fechaInicio || numCuotas < 1) {
-      setAbonoSugerido(null);
-      setFechas([]);
+    if (!montoNum || montoNum <= 0) {
+      setError("Ingresa un monto válido");
       return;
     }
-    let cancelado = false;
+    if (!fechaInicio) {
+      setError("Elige una fecha de inicio");
+      return;
+    }
+    if (!numCuotas || numCuotas < 1) {
+      setError("El número de cuotas debe ser al menos 1");
+      return;
+    }
+
     setCargando(true);
     setError(null);
-    // Debounce: sin esto, cada tecla dispara un fetch y un re-render
-    // (cargando/error) a mitad de la escritura — en inputs numéricos eso
-    // puede correr el cursor y hacer que se sienta como si solo el primer
-    // dígito "pegara". Esperar a que el usuario deje de teclear evita el
-    // problema y de paso ahorra requests.
-    const timer = setTimeout(() => {
-      (async () => {
-        try {
-          const res = await fetch("/api/contratas/preview", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
-          });
-          if (cancelado) return;
-          if (!res.ok) throw new Error("No se pudo calcular");
-          const data = await res.json();
-          setAbonoSugerido(data.abonoSugerido);
-          setFechas(data.fechas);
-        } catch {
-          if (!cancelado) setError("No se pudo calcular. Intenta de nuevo.");
-        } finally {
-          if (!cancelado) setCargando(false);
-        }
-      })();
-    }, 400);
-    return () => {
-      cancelado = true;
-      clearTimeout(timer);
-    };
-  }, [tipo, monto, fechaInicio, numCuotas]);
+    try {
+      const res = await fetch("/api/contratas/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+      });
+      if (!res.ok) throw new Error("No se pudo calcular");
+      const data = await res.json();
+      setAbonoSugerido(data.abonoSugerido);
+      setFechas(data.fechas);
+      setMontoCalculado(montoNum);
+    } catch {
+      setError("No se pudo calcular. Intenta de nuevo.");
+      setAbonoSugerido(null);
+      setFechas([]);
+    } finally {
+      setCargando(false);
+    }
+  }
 
-  const montoNum = parseFloat(monto) || 0;
   const totalAPagar = abonoSugerido ? abonoSugerido * numCuotas : 0;
-  const interesTotal = abonoSugerido ? totalAPagar - montoNum : 0;
+  const interesTotal = abonoSugerido ? totalAPagar - montoCalculado : 0;
   const ultimaFecha = fechas.length > 0 ? fechas[fechas.length - 1] : null;
 
   return (
@@ -106,49 +104,56 @@ export function CalculadoraPrestamo({
         ))}
       </div>
 
-      <Card>
-        <CardContent className="space-y-3 p-4">
-          <div>
-            <Label htmlFor="calc-monto">Monto a prestar</Label>
-            <Input
-              id="calc-monto"
-              type="number"
-              inputMode="decimal"
-              placeholder="0.00"
-              value={monto}
-              onChange={(e) => setMonto(e.target.value)}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void calcular();
+        }}
+      >
+        <Card>
+          <CardContent className="space-y-3 p-4">
             <div>
-              <Label htmlFor="calc-cuotas"># de cuotas</Label>
+              <Label htmlFor="calc-monto">Monto a prestar</Label>
               <Input
-                id="calc-cuotas"
+                id="calc-monto"
                 type="number"
-                min={1}
-                max={maxCuotas}
-                value={numCuotas}
-                onChange={(e) => setNumCuotas(parseInt(e.target.value, 10) || 1)}
+                inputMode="decimal"
+                placeholder="0.00"
+                value={monto}
+                onChange={(e) => setMonto(e.target.value)}
               />
             </div>
-            <div>
-              <Label htmlFor="calc-fecha">Fecha de inicio</Label>
-              <Input
-                id="calc-fecha"
-                type="date"
-                value={fechaInicio}
-                onChange={(e) => setFechaInicio(e.target.value)}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="calc-cuotas"># de cuotas</Label>
+                <Input
+                  id="calc-cuotas"
+                  type="number"
+                  min={1}
+                  max={maxCuotas}
+                  value={numCuotas}
+                  onChange={(e) => setNumCuotas(parseInt(e.target.value, 10) || 1)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="calc-fecha">Fecha de inicio</Label>
+                <Input
+                  id="calc-fecha"
+                  type="date"
+                  value={fechaInicio}
+                  onChange={(e) => setFechaInicio(e.target.value)}
+                />
+              </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {cargando && (
-        <p className="text-center text-xs text-muted-foreground">
-          Calculando…
-        </p>
-      )}
+        <Button type="submit" className="mt-3 w-full" disabled={cargando}>
+          <Calculator className="size-4" />
+          {cargando ? "Calculando…" : "Calcular"}
+        </Button>
+      </form>
+
       {error && <p className="text-xs text-vencido">{error}</p>}
 
       {abonoSugerido !== null && (
