@@ -1,5 +1,6 @@
 import { startOfDay, differenceInCalendarDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -62,7 +63,8 @@ export function aggregarRutaDelDia(
       if (c.convertidaADeuda) continue;
       for (const p of c.pagos) {
         if (p.pagado) continue;
-        if (startOfDay(p.fechaProgramada) > base) continue;
+        const fechaCuota = anclarFechaCliente(p.fechaProgramada);
+        if (fechaCuota > base) continue;
         const pendiente = round(c.abono - p.montoAbonado);
         if (pendiente <= 0) continue;
         cuotas.push({
@@ -70,10 +72,7 @@ export function aggregarRutaDelDia(
           numeroCuota: p.numeroCuota,
           pendiente,
           fechaProgramada: p.fechaProgramada.toISOString(),
-          diasAtraso: Math.max(
-            0,
-            differenceInCalendarDays(base, p.fechaProgramada)
-          ),
+          diasAtraso: Math.max(0, differenceInCalendarDays(base, fechaCuota)),
         });
       }
     }

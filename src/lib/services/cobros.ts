@@ -2,6 +2,7 @@ import { startOfDay } from "date-fns";
 import type { TipoContrata } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -42,7 +43,7 @@ export async function previewCobroVencidas(
   for (const c of contratas) {
     for (const p of c.pagos) {
       if (p.pagado) continue;
-      if (startOfDay(p.fechaProgramada) > base) continue;
+      if (anclarFechaCliente(p.fechaProgramada) > base) continue;
       const pendiente = round(c.abono - p.montoAbonado);
       if (pendiente <= 0) continue;
       items.push({
