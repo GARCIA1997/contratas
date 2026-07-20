@@ -15,6 +15,7 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { enqueue } from "@/lib/offline/queue";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -26,6 +27,7 @@ type OtraContrata = { id: string; tipo: TipoContrata; saldo: number };
 
 export function RenovarForm({
   contrataId,
+  ownerId,
   clienteNombre,
   tipoOriginal,
   saldoOriginal,
@@ -34,6 +36,8 @@ export function RenovarForm({
   maxCuotas,
 }: {
   contrataId: string;
+  /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
+  ownerId?: string | null;
   clienteNombre: string;
   tipoOriginal: TipoContrata;
   saldoOriginal: number;
@@ -44,6 +48,7 @@ export function RenovarForm({
   const router = useRouter();
   const claims = useAuthClaims();
   const [incluirOtras, setIncluirOtras] = useState(false);
+  const [pendienteSync, setPendienteSync] = useState(false);
   const [tipo, setTipo] = useState<TipoContrata>(tipoOriginal);
   const [monto, setMonto] = useState("");
   const [numCuotas, setNumCuotas] = useState(cuotasPorDefecto);
@@ -98,19 +103,36 @@ export function RenovarForm({
         `El monto debe cubrir el saldo pendiente (${formatMoneda(saldoTotal)})`
       );
 
+    const input = {
+      tipo,
+      monto: montoNum,
+      abono: abonoNum,
+      fechaInicio,
+      numCuotas,
+      notas: notas.trim() || null,
+      incluirOtras,
+    };
+
     setGuardando(true);
+
+    // Renovar crea una contrata nueva — sin conexión no se conoce su id
+    // todavía, así que se encola y se avisa "pendiente" en vez de navegar a
+    // una pantalla que no existe hasta que el servidor confirme.
+    if (ownerId) {
+      await enqueue(ownerId, "contrata.renovar", {
+        contrataId,
+        otrasIds: incluirOtras ? otras.map((o) => o.id) : [],
+        input,
+      });
+      setGuardando(false);
+      setPendienteSync(true);
+      return;
+    }
+
     const res = await fetch(`/api/contratas/${contrataId}/renovar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tipo,
-        monto: montoNum,
-        abono: abonoNum,
-        fechaInicio,
-        numCuotas,
-        notas: notas.trim() || null,
-        incluirOtras,
-      }),
+      body: JSON.stringify(input),
     });
     setGuardando(false);
     if (!res.ok) {
@@ -122,6 +144,31 @@ export function RenovarForm({
     if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
     router.push(`/contratas/${data.nuevaContrata.id}`);
     router.refresh();
+  }
+
+  if (pendienteSync) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Renovación pendiente
+          </h1>
+          <p className="text-sm text-muted-foreground">{clienteNombre}</p>
+        </div>
+        <Card className="border-pendiente/30">
+          <CardContent className="space-y-2 p-4 text-sm">
+            <p>
+              Sin conexión — la renovación se aplicará sola en cuanto el
+              dispositivo vuelva a tener señal. No hace falta hacer nada
+              más.
+            </p>
+          </CardContent>
+        </Card>
+        <Button className="w-full" asChild>
+          <Link href={`/contratas/${contrataId}`}>Volver a la contrata</Link>
+        </Button>
+      </div>
+    );
   }
 
   return (

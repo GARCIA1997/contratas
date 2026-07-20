@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { enqueue } from "@/lib/offline/queue";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -29,12 +30,15 @@ function siguienteMillar(n: number) {
 
 export function UnificarForm({
   clienteId,
+  ownerId,
   clienteNombre,
   contratas,
   cuotasPorDefecto,
   maxCuotas,
 }: {
   clienteId: string;
+  /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
+  ownerId?: string | null;
   clienteNombre: string;
   contratas: ContrataElegible[];
   cuotasPorDefecto: number;
@@ -43,6 +47,7 @@ export function UnificarForm({
   const router = useRouter();
   const claims = useAuthClaims();
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
+  const [pendienteSync, setPendienteSync] = useState(false);
   const [tipo, setTipo] = useState<TipoContrata>(contratas[0]?.tipo ?? "SEMANAL");
   const [monto, setMonto] = useState("");
   const [montoTocado, setMontoTocado] = useState(false);
@@ -120,19 +125,31 @@ export function UnificarForm({
         `El monto debe cubrir el saldo seleccionado (${formatMoneda(saldoSeleccionado)})`
       );
 
+    const contrataIds = Array.from(seleccionadas);
+    const input = {
+      tipo,
+      monto: montoNum,
+      abono: abonoNum,
+      fechaInicio,
+      numCuotas,
+      notas: notas.trim() || null,
+    };
+
     setGuardando(true);
+
+    // Unificar crea una contrata nueva — igual que renovar, sin conexión no
+    // se conoce su id todavía, así que se encola y se avisa "pendiente".
+    if (ownerId) {
+      await enqueue(ownerId, "cliente.unificar", { clienteId, contrataIds, input });
+      setGuardando(false);
+      setPendienteSync(true);
+      return;
+    }
+
     const res = await fetch(`/api/clientes/${clienteId}/unificar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contrataIds: Array.from(seleccionadas),
-        tipo,
-        monto: montoNum,
-        abono: abonoNum,
-        fechaInicio,
-        numCuotas,
-        notas: notas.trim() || null,
-      }),
+      body: JSON.stringify({ contrataIds, ...input }),
     });
     setGuardando(false);
     if (!res.ok) {
@@ -144,6 +161,31 @@ export function UnificarForm({
     if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
     router.push(`/contratas/${data.nuevaContrata.id}`);
     router.refresh();
+  }
+
+  if (pendienteSync) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Unificación pendiente
+          </h1>
+          <p className="text-sm text-muted-foreground">{clienteNombre}</p>
+        </div>
+        <Card className="border-pendiente/30">
+          <CardContent className="space-y-2 p-4 text-sm">
+            <p>
+              Sin conexión — la unificación se aplicará sola en cuanto el
+              dispositivo vuelva a tener señal. No hace falta hacer nada
+              más.
+            </p>
+          </CardContent>
+        </Card>
+        <Button className="w-full" asChild>
+          <Link href={`/clientes/${clienteId}`}>Volver al cliente</Link>
+        </Button>
+      </div>
+    );
   }
 
   return (

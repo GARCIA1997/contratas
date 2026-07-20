@@ -1,30 +1,45 @@
-import { notFound } from "next/navigation";
-import { HttpError, requireUser } from "@/lib/session";
-import { getHistorialCliente } from "@/lib/services/clientes";
+"use client";
+
+import { useParams } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { HistorialView } from "@/components/clientes/historial-view";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { getHistorialCliente } from "@/lib/offline/repo";
 
-export const dynamic = "force-dynamic";
+export default function HistorialClientePage() {
+  const claims = useAuthClaims();
+  const params = useParams<{ id: string }>();
+  const ownerId = claims.ready ? claims.ownerId : null;
 
-export default async function HistorialClientePage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const user = await requireUser();
-  try {
-    const historial = await getHistorialCliente(user.ownerId, params.id);
+  const historial = useLiveQuery(
+    () => (ownerId ? getHistorialCliente(ownerId, params.id) : undefined),
+    [ownerId, params.id]
+  );
+
+  if (historial === undefined) {
     return (
-      <HistorialView
-        clienteId={historial.id}
-        nombre={historial.nombre}
-        eventos={historial.eventos.map((e) => ({
-          ...e,
-          fecha: e.fecha.toISOString(),
-        }))}
-      />
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Cargando…
+      </p>
     );
-  } catch (error) {
-    if (error instanceof HttpError && error.status === 404) notFound();
-    throw error;
   }
+
+  if (historial === null) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Cliente no encontrado.
+      </p>
+    );
+  }
+
+  return (
+    <HistorialView
+      clienteId={historial.id}
+      nombre={historial.nombre}
+      eventos={historial.eventos.map((e) => ({
+        ...e,
+        fecha: e.fecha.toISOString(),
+      }))}
+    />
+  );
 }

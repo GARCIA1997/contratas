@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -78,6 +78,18 @@ export function ContrataDetalle({
   const [error, setError] = useState<string | null>(null);
   const [marcandoDeuda, setMarcandoDeuda] = useState(false);
   const [mensajeDeuda, setMensajeDeuda] = useState<string | null>(null);
+
+  // El prefetch automático de <Link> (al entrar en viewport) no siempre
+  // alcanza a poblar la caché del service worker antes de que el usuario
+  // toque el botón — sobre todo justo después de registrar un abono, que es
+  // el momento típico de ir a ver el recibo. Forzarlo aquí (apenas se monta
+  // la pantalla) asegura que "Ver recibo" funcione aunque se pierda la
+  // conexión un segundo después.
+  useEffect(() => {
+    router.prefetch(`/contratas/${contrata.id}/recibo`);
+    router.prefetch(`/contratas/${contrata.id}/editar`);
+    router.prefetch(`/contratas/${contrata.id}/renovar`);
+  }, [router, contrata.id]);
 
   const estado = useMemo(
     () =>

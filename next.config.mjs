@@ -1,33 +1,11 @@
-import withPWAInit from "next-pwa";
-import defaultCache from "next-pwa/cache.js";
+import withSerwistInit from "@serwist/next";
 
-const withPWA = withPWAInit({
-  dest: "public",
-  register: true,
-  skipWaiting: true,
+const withSerwist = withSerwistInit({
+  swSrc: "src/sw.ts",
+  swDest: "public/sw.js",
   // El service worker solo se genera en producción para no interferir en dev.
   disable: process.env.NODE_ENV === "development",
-  // Página mostrada cuando se navega sin conexión y no hay caché.
-  fallbacks: {
-    document: "/offline",
-  },
-  runtimeCaching: [
-    // Red de seguridad adicional para el pull-sync (Fase A): si la petición
-    // de sincronización se hace con la red inestable, sirve la última copia
-    // cacheada. La fuente de verdad real del offline es IndexedDB (ver
-    // src/lib/offline/*), esto es solo un respaldo, no el mecanismo principal.
-    {
-      urlPattern: /^\/api\/(contratas|clientes|deudores|configuracion|ruta|dashboard\/(kpis|tendencia))(\?.*)?$/,
-      method: "GET",
-      handler: "NetworkFirst",
-      options: {
-        cacheName: "api-get-safety-net",
-        networkTimeoutSeconds: 5,
-        expiration: { maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 },
-      },
-    },
-    ...defaultCache,
-  ],
+  reloadOnOnline: true,
 });
 
 /** @type {import('next').NextConfig} */
@@ -65,4 +43,4 @@ const nextConfig = {
   },
 };
 
-export default withPWA(nextConfig);
+export default withSerwist(nextConfig);

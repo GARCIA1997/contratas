@@ -7,6 +7,7 @@ import { BottomNav } from "@/components/bottom-nav";
 import { OfflineBootstrap } from "@/components/offline/offline-bootstrap";
 import { SyncStatusBadge } from "@/components/offline/sync-status-badge";
 import { RefreshButton } from "@/components/offline/refresh-button";
+import { OfflineToast } from "@/components/offline/offline-toast";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 
 export default function AppLayout({
@@ -35,6 +36,7 @@ export default function AppLayout({
 
   return (
     <div className="min-h-dvh">
+      <OfflineToast />
       <OfflineBootstrap ownerId={ownerId} />
       <AppHeader />
       <div className="mx-auto flex max-w-lg items-center justify-end gap-2 px-4 pt-2">

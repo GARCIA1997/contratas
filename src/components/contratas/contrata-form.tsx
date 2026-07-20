@@ -15,6 +15,7 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { enqueue } from "@/lib/offline/queue";
 import {
   ContrataCreadaPanel,
   type ContrataCreada,
@@ -155,6 +156,21 @@ export function ContrataForm({
     };
 
     setGuardando(true);
+
+    // Editar sí puede hacerse sin conexión (se hace en campo, con el
+    // cliente presente) — se encola y se aplica optimista en Dexie. Crear
+    // sigue requiriendo red (fuera de este alcance): necesita el id real
+    // que asigna el servidor para la confirmación/WhatsApp de entrega.
+    if (editando && claims.ready && claims.ownerId) {
+      await enqueue(claims.ownerId, "contrata.editar", {
+        contrataId: inicial!.id,
+        input: payload,
+      });
+      setGuardando(false);
+      router.push(`/contratas/${inicial!.id}`);
+      return;
+    }
+
     const res = await fetch(
       editando ? `/api/contratas/${inicial!.id}` : "/api/contratas",
       {

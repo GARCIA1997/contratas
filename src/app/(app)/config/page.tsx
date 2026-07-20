@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { Users, ScrollText, FileBarChart } from "lucide-react";
+import { OfflineAwareLink } from "@/components/offline/offline-aware-link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -54,19 +54,19 @@ export default function ConfigPage() {
       {esAdmin && (
         <div className="grid grid-cols-2 gap-2">
           <Button variant="outline" asChild>
-            <Link href="/config/usuarios">
+            <OfflineAwareLink href="/config/usuarios">
               <Users className="size-4" /> Usuarios
-            </Link>
+            </OfflineAwareLink>
           </Button>
           <Button variant="outline" asChild>
-            <Link href="/config/auditoria">
+            <OfflineAwareLink href="/config/auditoria">
               <ScrollText className="size-4" /> Actividad
-            </Link>
+            </OfflineAwareLink>
           </Button>
           <Button variant="outline" className="col-span-2" asChild>
-            <Link href="/config/corte-caja">
+            <OfflineAwareLink href="/config/corte-caja">
               <FileBarChart className="size-4" /> Estado de resultados
-            </Link>
+            </OfflineAwareLink>
           </Button>
         </div>
       )}

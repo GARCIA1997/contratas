@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
-import type { EventoHistorial } from "@/lib/services/clientes";
+import type { EventoHistorial } from "@/lib/contrata";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
