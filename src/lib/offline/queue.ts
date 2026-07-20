@@ -30,6 +30,33 @@ const ENDPOINTS: Record<
     url: `/api/contratas/${p.contrataId}`,
     init: { method: "DELETE" },
   }),
+  "contrata.editar": (p) => ({
+    url: `/api/contratas/${p.contrataId}`,
+    init: {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p.input),
+    },
+  }),
+  "contrata.renovar": (p) => ({
+    url: `/api/contratas/${p.contrataId}/renovar`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p.input),
+    },
+  }),
+  "cliente.unificar": (p) => ({
+    url: `/api/clientes/${p.clienteId}/unificar`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contrataIds: p.contrataIds,
+        ...(p.input as Record<string, unknown>),
+      }),
+    },
+  }),
   "deudor.abonar": (p) => ({
     url: `/api/deudores/${p.deudorId}/abonos`,
     init: {
@@ -146,6 +173,17 @@ async function reconciliarTrasExito(
 ) {
   if (type === "contrata.marcarDeuda") {
     await Promise.all([syncContratas(ownerId), syncDeudores(ownerId)]);
+    return;
+  }
+  if (
+    type === "contrata.editar" ||
+    type === "contrata.renovar" ||
+    type === "cliente.unificar"
+  ) {
+    // El efecto optimista es deliberadamente incompleto (no recalcula el
+    // calendario de cuotas ni conoce el id de la contrata nueva) — el
+    // pull-sync trae el resultado real ya confirmado por el servidor.
+    await syncContratas(ownerId);
     return;
   }
   if (type === "deudor.abonar") {

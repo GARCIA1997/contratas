@@ -15,6 +15,7 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { enqueue } from "@/lib/offline/queue";
 import {
   ContrataCreadaPanel,
   type ContrataCreada,
@@ -107,19 +108,24 @@ export function ContrataForm({
       return;
     }
     let cancelado = false;
-    (async () => {
-      const res = await fetch("/api/contratas/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
-      });
-      if (!res.ok || cancelado) return;
-      const data = await res.json();
-      setFechas(data.fechas);
-      if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
-    })();
+    // Debounce: evita que cada tecla dispare un fetch (y el re-render que
+    // viene con él) a mitad de la escritura.
+    const timer = setTimeout(() => {
+      (async () => {
+        const res = await fetch("/api/contratas/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+        });
+        if (!res.ok || cancelado) return;
+        const data = await res.json();
+        setFechas(data.fechas);
+        if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
+      })();
+    }, 400);
     return () => {
       cancelado = true;
+      clearTimeout(timer);
     };
   }, [tipo, monto, fechaInicio, numCuotas]);
 
@@ -155,6 +161,21 @@ export function ContrataForm({
     };
 
     setGuardando(true);
+
+    // Editar sí puede hacerse sin conexión (se hace en campo, con el
+    // cliente presente) — se encola y se aplica optimista en Dexie. Crear
+    // sigue requiriendo red (fuera de este alcance): necesita el id real
+    // que asigna el servidor para la confirmación/WhatsApp de entrega.
+    if (editando && claims.ready && claims.ownerId) {
+      await enqueue(claims.ownerId, "contrata.editar", {
+        contrataId: inicial!.id,
+        input: payload,
+      });
+      setGuardando(false);
+      router.push(`/contratas/${inicial!.id}`);
+      return;
+    }
+
     const res = await fetch(
       editando ? `/api/contratas/${inicial!.id}` : "/api/contratas",
       {

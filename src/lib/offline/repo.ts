@@ -3,8 +3,11 @@ import { db, type ContrataLocal, type PagoLocal } from "@/lib/offline/db";
 import {
   estadoContrata,
   saldoPendiente,
+  montoVencidoOVigente,
   calcularScorePago,
+  construirHistorial,
   type ResultadoScorePago,
+  type EventoHistorial,
 } from "@/lib/contrata";
 import {
   aggregateKpis,
@@ -114,6 +117,78 @@ export async function getContrata(
       montoAbonado: p.montoAbonado,
     })),
   };
+}
+
+export type ContrataConSaldoLocal = {
+  id: string;
+  tipo: TipoContrata;
+  saldo: number;
+};
+
+async function contratasDelClienteParaSaldo(
+  ownerId: string,
+  clienteId: string,
+  excluirId?: string
+) {
+  if (!db) return [];
+  const contratas = (
+    await db.contratas.where("clienteId").equals(clienteId).toArray()
+  ).filter(
+    (c) =>
+      !c._deletedAt &&
+      c.ownerId === ownerId &&
+      !c.convertidaADeuda &&
+      c.id !== excluirId
+  );
+  return Promise.all(
+    contratas.map(async (c) => ({
+      contrata: c,
+      pagos: await pagosDeContrata(c.id),
+    }))
+  );
+}
+
+/** Espejo offline de `contratasConSaldo` (usado por "unificar"): saldo total restante. */
+export async function getContratasConSaldo(
+  ownerId: string,
+  clienteId: string,
+  excluirId?: string
+): Promise<ContrataConSaldoLocal[]> {
+  const conPagos = await contratasDelClienteParaSaldo(ownerId, clienteId, excluirId);
+  return conPagos
+    .map(({ contrata, pagos }) => ({
+      id: contrata.id,
+      tipo: contrata.tipo,
+      saldo: saldoPendiente(
+        pagos.map((p) => ({ ...p, fechaProgramada: new Date(p.fechaProgramada) })),
+        contrata.abono
+      ),
+    }))
+    .filter((c) => c.saldo > 0);
+}
+
+/** Espejo offline de `contratasConVencido` (usado por "renovar"): solo lo vencido/vigente. */
+export async function getContratasConVencido(
+  ownerId: string,
+  clienteId: string,
+  excluirId?: string,
+  hoy: Date = new Date()
+): Promise<ContrataConSaldoLocal[]> {
+  const conPagos = await contratasDelClienteParaSaldo(ownerId, clienteId, excluirId);
+  return conPagos
+    .map(({ contrata, pagos }) => ({
+      id: contrata.id,
+      tipo: contrata.tipo,
+      saldo: montoVencidoOVigente(
+        pagos.map((p) => ({
+          ...p,
+          fechaProgramada: new Date(p.fechaProgramada),
+        })),
+        contrata.abono,
+        hoy
+      ),
+    }))
+    .filter((c) => c.saldo > 0);
 }
 
 export async function getKpis(
@@ -306,6 +381,124 @@ export async function getClientePerfil(
     contratas,
     totales,
     scorePago,
+  };
+}
+
+export type EstadoCuentaClienteLocal = {
+  id: string;
+  nombre: string;
+  telefono: string | null;
+  contratas: {
+    id: string;
+    tipo: TipoContrata;
+    monto: number;
+    abono: number;
+    numCuotas: number;
+    pagados: number;
+    total: number;
+    saldo: number;
+    estado: ReturnType<typeof estadoContrata> | "EN_DEUDA";
+    totalAbonado: number;
+    pagos: {
+      numeroCuota: number;
+      fechaProgramada: string;
+      fechaPago: string | null;
+      pagado: boolean;
+      montoAbonado: number;
+    }[];
+  }[];
+  totales: {
+    capitalPrestado: number;
+    totalAbonado: number;
+    saldoPendiente: number;
+  };
+};
+
+/** Espejo offline de `getEstadoCuentaCliente`: mismos datos, leídos de IndexedDB. */
+export async function getEstadoCuentaCliente(
+  ownerId: string,
+  clienteId: string
+): Promise<EstadoCuentaClienteLocal | null> {
+  if (!db) return null;
+  const cliente = await db.clientes.get(clienteId);
+  if (!cliente || cliente.ownerId !== ownerId || cliente._deletedAt) return null;
+
+  const contratasRaw = (
+    await db.contratas.where("clienteId").equals(clienteId).toArray()
+  ).filter((c) => !c._deletedAt);
+
+  const contratas = await Promise.all(
+    contratasRaw.map(async (c) => {
+      const pagos = await pagosDeContrata(c.id);
+      const pagosParaCalculo = pagos.map((p) => ({
+        ...p,
+        fechaProgramada: new Date(p.fechaProgramada),
+        fechaPago: p.fechaPago ? new Date(p.fechaPago) : null,
+      }));
+      return {
+        id: c.id,
+        tipo: c.tipo,
+        monto: c.monto,
+        abono: c.abono,
+        numCuotas: c.numCuotas,
+        pagados: pagos.filter((p) => p.pagado).length,
+        total: pagos.length,
+        saldo: c.convertidaADeuda ? 0 : saldoPendiente(pagosParaCalculo, c.abono),
+        estado: c.convertidaADeuda
+          ? ("EN_DEUDA" as const)
+          : estadoContrata(pagosParaCalculo),
+        totalAbonado: round2(pagos.reduce((s, p) => s + p.montoAbonado, 0)),
+        pagos,
+      };
+    })
+  );
+  contratas.sort((a, b) => b.id.localeCompare(a.id));
+
+  return {
+    id: cliente.id,
+    nombre: cliente.nombre,
+    telefono: cliente.telefono,
+    contratas,
+    totales: {
+      capitalPrestado: round2(contratas.reduce((s, c) => s + c.monto, 0)),
+      totalAbonado: round2(contratas.reduce((s, c) => s + c.totalAbonado, 0)),
+      saldoPendiente: round2(contratas.reduce((s, c) => s + c.saldo, 0)),
+    },
+  };
+}
+
+/** Espejo offline de `getHistorialCliente`: mismos datos, leídos de IndexedDB. */
+export async function getHistorialCliente(
+  ownerId: string,
+  clienteId: string
+): Promise<{ id: string; nombre: string; eventos: EventoHistorial[] } | null> {
+  if (!db) return null;
+  const cliente = await db.clientes.get(clienteId);
+  if (!cliente || cliente.ownerId !== ownerId || cliente._deletedAt) return null;
+
+  const contratasRaw = (
+    await db.contratas.where("clienteId").equals(clienteId).toArray()
+  ).filter((c) => !c._deletedAt);
+
+  const contratas = await Promise.all(
+    contratasRaw.map(async (c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      monto: c.monto,
+      fechaInicio: new Date(c.fechaInicio),
+      pagos: (await pagosDeContrata(c.id)).map((p) => ({
+        numeroCuota: p.numeroCuota,
+        fechaPago: p.fechaPago ? new Date(p.fechaPago) : null,
+        pagado: p.pagado,
+        montoAbonado: p.montoAbonado,
+      })),
+    }))
+  );
+
+  return {
+    id: cliente.id,
+    nombre: cliente.nombre,
+    eventos: construirHistorial(contratas),
   };
 }
 

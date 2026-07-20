@@ -1,57 +1,79 @@
-import { notFound } from "next/navigation";
-import { HttpError, requireUser } from "@/lib/session";
-import { getContrata } from "@/lib/services/contratas";
-import { getConfig } from "@/lib/config";
-import { saldoPendiente } from "@/lib/contrata";
+"use client";
+
+import { useParams } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { ReciboView } from "@/components/contratas/recibo-view";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { getContrata, getConfiguracion } from "@/lib/offline/repo";
+import { saldoPendiente } from "@/lib/contrata";
 
-export const dynamic = "force-dynamic";
+function round(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
-export default async function ReciboPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const user = await requireUser();
-  try {
-    const c = await getContrata(user.ownerId, params.id);
-    const config = await getConfig(user.ownerId);
+export default function ReciboPage() {
+  const claims = useAuthClaims();
+  const params = useParams<{ id: string }>();
+  const ownerId = claims.ready ? claims.ownerId : null;
 
-    const totalAbonado =
-      Math.round(c.pagos.reduce((s, p) => s + p.montoAbonado, 0) * 100) / 100;
-    const totalEsperado = Math.round(c.abono * c.numCuotas * 100) / 100;
-    const saldo = saldoPendiente(c.pagos, c.abono);
-    const cuotasPagadas = c.pagos.filter((p) => p.pagado).length;
+  const contrata = useLiveQuery(
+    () => (ownerId ? getContrata(ownerId, params.id) : undefined),
+    [ownerId, params.id]
+  );
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
 
+  if (contrata === undefined || config === undefined) {
     return (
-      <ReciboView
-        nombreApp={config.nombreApp}
-        contrata={{
-          id: c.id,
-          clienteId: c.cliente.id,
-          clienteNombre: c.cliente.nombre,
-          clienteTelefono: c.cliente.telefono,
-          tipo: c.tipo,
-          monto: c.monto,
-          abono: c.abono,
-          numCuotas: c.numCuotas,
-          cuotasPagadas,
-          totalEsperado,
-          totalAbonado,
-          saldo,
-          convertidaADeuda: c.convertidaADeuda,
-          pagos: c.pagos.map((p) => ({
-            numeroCuota: p.numeroCuota,
-            fechaProgramada: p.fechaProgramada.toISOString(),
-            fechaPago: p.fechaPago ? p.fechaPago.toISOString() : null,
-            pagado: p.pagado,
-            montoAbonado: p.montoAbonado,
-          })),
-        }}
-      />
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Cargando…
+      </p>
     );
-  } catch (error) {
-    if (error instanceof HttpError && error.status === 404) notFound();
-    throw error;
   }
+
+  if (contrata === null) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Contrata no encontrada.
+      </p>
+    );
+  }
+
+  const totalAbonado = round(
+    contrata.pagos.reduce((s, p) => s + p.montoAbonado, 0)
+  );
+  const totalEsperado = round(contrata.abono * contrata.numCuotas);
+  const saldo = saldoPendiente(
+    contrata.pagos.map((p) => ({
+      ...p,
+      fechaProgramada: new Date(p.fechaProgramada),
+      fechaPago: p.fechaPago ? new Date(p.fechaPago) : null,
+    })),
+    contrata.abono
+  );
+  const cuotasPagadas = contrata.pagos.filter((p) => p.pagado).length;
+
+  return (
+    <ReciboView
+      nombreApp={config?.nombreApp ?? "Kredired"}
+      contrata={{
+        id: contrata.id,
+        clienteId: contrata.clienteId,
+        clienteNombre: contrata.clienteNombre,
+        clienteTelefono: contrata.clienteTelefono,
+        tipo: contrata.tipo,
+        monto: contrata.monto,
+        abono: contrata.abono,
+        numCuotas: contrata.numCuotas,
+        cuotasPagadas,
+        totalEsperado,
+        totalAbonado,
+        saldo,
+        convertidaADeuda: contrata.convertidaADeuda,
+        pagos: contrata.pagos,
+      }}
+    />
+  );
 }

@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   FileStack,
@@ -30,6 +31,17 @@ const items: NavItem[] = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  // El prefetch automático de <Link> (en viewport) no siempre alcanza a
+  // poblar la caché del service worker a tiempo — al ser la navegación
+  // principal de la app, forzarlo aquí garantiza que las 5 pestañas
+  // funcionen sin conexión desde el primer momento, no solo tras visitarlas.
+  useEffect(() => {
+    for (const { href } of items) {
+      if (href !== pathname) router.prefetch(href);
+    }
+  }, [router, pathname]);
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">

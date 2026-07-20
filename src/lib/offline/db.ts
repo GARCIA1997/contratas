@@ -110,6 +110,9 @@ export type QueueOpType =
   | "contrata.pago.revertir"
   | "contrata.marcarDeuda"
   | "contrata.eliminar"
+  | "contrata.editar"
+  | "contrata.renovar"
+  | "cliente.unificar"
   | "deudor.abonar"
   | "cliente.cobrarVencidas";
 

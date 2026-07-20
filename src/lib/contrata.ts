@@ -250,3 +250,64 @@ export function calcularScorePago(pagos: PagoConFecha[]): ResultadoScorePago {
     diasPromedioAtraso: Math.round(promedio * 10) / 10,
   };
 }
+
+export type EventoHistorial =
+  | {
+      tipo: "CONTRATA_CREADA";
+      fecha: Date;
+      contrataId: string;
+      contrataTipo: TipoContrata;
+      monto: number;
+    }
+  | {
+      tipo: "PAGO";
+      fecha: Date;
+      contrataId: string;
+      contrataTipo: TipoContrata;
+      numeroCuota: number;
+      monto: number;
+    };
+
+/**
+ * Aplana todas las contratas de un cliente en una sola línea de tiempo
+ * (creación de contrata + cada pago recibido), más reciente primero — la
+ * vista de conjunto que no da el perfil normal (que solo resume por
+ * contrata, no cruza fechas entre ellas). Pura — vive aquí (no en
+ * services/clientes.ts) para que el espejo offline en repo.ts la pueda
+ * importar sin arrastrar Prisma/next-auth al bundle del cliente.
+ */
+export function construirHistorial(
+  contratas: {
+    id: string;
+    tipo: TipoContrata;
+    monto: number;
+    fechaInicio: Date;
+    pagos: { numeroCuota: number; fechaPago: Date | null; pagado: boolean; montoAbonado: number }[];
+  }[]
+): EventoHistorial[] {
+  const eventos: EventoHistorial[] = [];
+
+  for (const c of contratas) {
+    eventos.push({
+      tipo: "CONTRATA_CREADA",
+      fecha: c.fechaInicio,
+      contrataId: c.id,
+      contrataTipo: c.tipo,
+      monto: c.monto,
+    });
+    for (const p of c.pagos) {
+      if (!p.pagado || !p.fechaPago) continue;
+      eventos.push({
+        tipo: "PAGO",
+        fecha: p.fechaPago,
+        contrataId: c.id,
+        contrataTipo: c.tipo,
+        numeroCuota: p.numeroCuota,
+        monto: p.montoAbonado,
+      });
+    }
+  }
+
+  eventos.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+  return eventos;
+}

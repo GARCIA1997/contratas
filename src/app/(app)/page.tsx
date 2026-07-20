@@ -17,6 +17,7 @@ import type { FiltroDashboard } from "@/lib/services/dashboard";
 import { formatMoneda, cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 const FILTROS: { key: FiltroDashboard; label: string }[] = [
   { key: "TODAS", label: "Todas" },
@@ -235,10 +236,13 @@ export default function DashboardPage() {
         <CardContent className="grid grid-cols-4 gap-2 p-4 pt-2">
           {kpis.flujoProyectado.map((b, i) => (
             <div key={b.desde} className="min-w-0 text-center">
-              <p className="text-[10px] text-muted-foreground">
-                {i === 0
-                  ? "Esta semana"
-                  : format(new Date(b.desde), "d MMM", { locale: es })}
+              <p className="text-[10px] font-medium text-muted-foreground">
+                {i === 0 ? "Esta semana" : `Semana ${i + 1}`}
+              </p>
+              <p className="truncate text-[10px] text-muted-foreground">
+                {format(anclarFechaCliente(b.desde), "d MMM", { locale: es })}
+                {" – "}
+                {format(anclarFechaCliente(b.hasta), "d MMM", { locale: es })}
               </p>
               <p className="truncate text-sm font-semibold sm:text-base">
                 {formatMoneda(b.monto)}

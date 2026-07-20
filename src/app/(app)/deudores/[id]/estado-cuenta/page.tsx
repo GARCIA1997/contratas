@@ -1,40 +1,56 @@
-import { notFound } from "next/navigation";
-import { HttpError, requireUser } from "@/lib/session";
-import { getDeudor, saldoActual } from "@/lib/services/deudores";
-import { getConfig } from "@/lib/config";
+"use client";
+
+import { useParams } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { EstadoCuentaDeudorView } from "@/components/deudores/estado-cuenta-deudor-view";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { getDeudor, getConfiguracion } from "@/lib/offline/repo";
 
-export const dynamic = "force-dynamic";
+export default function EstadoCuentaDeudorPage() {
+  const claims = useAuthClaims();
+  const params = useParams<{ id: string }>();
+  const ownerId = claims.ready ? claims.ownerId : null;
 
-export default async function EstadoCuentaDeudorPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const user = await requireUser();
-  try {
-    const d = await getDeudor(user.ownerId, params.id);
-    const config = await getConfig(user.ownerId);
+  const deudor = useLiveQuery(
+    () => (ownerId ? getDeudor(ownerId, params.id) : undefined),
+    [ownerId, params.id]
+  );
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
 
+  if (deudor === undefined || config === undefined) {
     return (
-      <EstadoCuentaDeudorView
-        nombreApp={config.nombreApp}
-        deudor={{
-          id: d.id,
-          nombre: d.nombre,
-          deudaInicial: d.deudaInicial,
-          saldoActual: saldoActual(d),
-          abonos: d.abonos.map((a) => ({
-            id: a.id,
-            fecha: a.fecha.toISOString(),
-            monto: a.monto,
-            restante: a.restante,
-          })),
-        }}
-      />
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Cargando…
+      </p>
     );
-  } catch (error) {
-    if (error instanceof HttpError && error.status === 404) notFound();
-    throw error;
   }
+
+  if (deudor === null) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Deudor no encontrado.
+      </p>
+    );
+  }
+
+  return (
+    <EstadoCuentaDeudorView
+      nombreApp={config?.nombreApp ?? "Kredired"}
+      deudor={{
+        id: deudor.id,
+        nombre: deudor.nombre,
+        deudaInicial: deudor.deudaInicial,
+        saldoActual: deudor.saldoActual,
+        abonos: deudor.abonos.map((a) => ({
+          id: a.id,
+          fecha: a.fecha,
+          monto: a.monto,
+          restante: a.restante,
+        })),
+      }}
+    />
+  );
 }

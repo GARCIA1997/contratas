@@ -90,6 +90,61 @@ export async function applyLocalEffect(
     return;
   }
 
+  if (type === "contrata.editar") {
+    const { contrataId, input } = payload as {
+      contrataId: string;
+      input: {
+        tipo?: "SEMANAL" | "QUINCENAL" | "MENSUAL";
+        monto?: number;
+        abono?: number;
+        numCuotas?: number;
+        fechaInicio?: string;
+        notas?: string | null;
+      };
+    };
+    // Efecto optimista simplificado: solo los campos simples. Si cambió
+    // tipo/numCuotas/fechaInicio el calendario de cuotas real (que el
+    // servidor recalcula borrando y recreando Pago) se deja tal cual hasta
+    // el próximo pull-sync — replicar `calcularFechasPago` aquí duplicaría
+    // lógica financiera con más riesgo que beneficio.
+    await db.contratas.update(contrataId, {
+      ...(input.tipo !== undefined ? { tipo: input.tipo } : {}),
+      ...(input.monto !== undefined ? { monto: input.monto } : {}),
+      ...(input.abono !== undefined ? { abono: input.abono } : {}),
+      ...(input.numCuotas !== undefined ? { numCuotas: input.numCuotas } : {}),
+      ...(input.fechaInicio !== undefined
+        ? { fechaInicio: input.fechaInicio }
+        : {}),
+      ...(input.notas !== undefined ? { notas: input.notas } : {}),
+      _dirty: true,
+    });
+    return;
+  }
+
+  if (type === "contrata.renovar") {
+    const { contrataId, otrasIds } = payload as {
+      contrataId: string;
+      otrasIds: string[];
+    };
+    // No se crea la contrata nueva localmente (no se conoce su id ni sus
+    // fechas reales todavía) — solo se marcan como "sincronizando" las
+    // contratas involucradas. El pull-sync tras confirmar trae la contrata
+    // nueva real y el estado final de las demás.
+    await db.contratas.update(contrataId, { _dirty: true });
+    for (const id of otrasIds) {
+      await db.contratas.update(id, { _dirty: true });
+    }
+    return;
+  }
+
+  if (type === "cliente.unificar") {
+    const { contrataIds } = payload as { contrataIds: string[] };
+    for (const id of contrataIds) {
+      await db.contratas.update(id, { _dirty: true });
+    }
+    return;
+  }
+
   if (type === "contrata.eliminar") {
     const { contrataId } = payload as { contrataId: string };
     await db.contratas.update(contrataId, {

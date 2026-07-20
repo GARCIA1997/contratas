@@ -1,44 +1,57 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import type { TipoContrata } from "@prisma/client";
-import { requireUser } from "@/lib/session";
-import { listClientes } from "@/lib/services/clientes";
-import { getConfig } from "@/lib/config";
 import { ContrataForm } from "@/components/contratas/contrata-form";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { getClientes, getConfiguracion } from "@/lib/offline/repo";
+import { CONFIG_DEFAULTS } from "@/lib/config";
 
-export const dynamic = "force-dynamic";
+export default function NuevaContrataPage() {
+  const claims = useAuthClaims();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const ownerId = claims.ready ? claims.ownerId : null;
+  const esAdmin = claims.ready && claims.esAdmin;
 
-export default async function NuevaContrataPage({
-  searchParams,
-}: {
-  searchParams: { tipo?: string; clienteId?: string };
-}) {
-  const user = await requireUser();
-  if (user.rol !== "ADMIN") redirect("/contratas");
+  useEffect(() => {
+    if (claims.ready && !esAdmin) router.replace("/contratas");
+  }, [claims.ready, esAdmin, router]);
 
-  const [clientes, config] = await Promise.all([
-    listClientes(user.ownerId),
-    getConfig(user.ownerId),
-  ]);
+  const clientes = useLiveQuery(
+    () => (ownerId ? getClientes(ownerId) : undefined),
+    [ownerId]
+  );
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
 
+  if (!claims.ready || !esAdmin || !clientes || !config) return null;
+
+  const tipoParam = searchParams.get("tipo");
   const tipoInicial: TipoContrata =
-    searchParams.tipo === "QUINCENAL"
+    tipoParam === "QUINCENAL"
       ? "QUINCENAL"
-      : searchParams.tipo === "MENSUAL"
+      : tipoParam === "MENSUAL"
         ? "MENSUAL"
         : "SEMANAL";
 
+  const clienteIdParam = searchParams.get("clienteId");
   const opciones = clientes.map((c) => ({ id: c.id, nombre: c.nombre }));
-  const clientePreseleccionado = searchParams.clienteId
-    ? opciones.find((c) => c.id === searchParams.clienteId)
+  const clientePreseleccionado = clienteIdParam
+    ? opciones.find((c) => c.id === clienteIdParam)
     : undefined;
 
   return (
     <ContrataForm
       clientes={opciones}
-      cuotasPorDefecto={config.cuotasPorDefecto}
-      maxCuotas={config.maxCuotas}
+      cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
+      maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
       tipoInicial={tipoInicial}
-      nombreApp={config.nombreApp}
+      nombreApp={config?.nombreApp ?? "Kredired"}
       clientePreseleccionado={clientePreseleccionado}
       volverHref={
         clientePreseleccionado

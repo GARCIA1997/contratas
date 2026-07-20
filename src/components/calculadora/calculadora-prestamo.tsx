@@ -50,26 +50,34 @@ export function CalculadoraPrestamo({
     let cancelado = false;
     setCargando(true);
     setError(null);
-    (async () => {
-      try {
-        const res = await fetch("/api/contratas/preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
-        });
-        if (cancelado) return;
-        if (!res.ok) throw new Error("No se pudo calcular");
-        const data = await res.json();
-        setAbonoSugerido(data.abonoSugerido);
-        setFechas(data.fechas);
-      } catch {
-        if (!cancelado) setError("No se pudo calcular. Intenta de nuevo.");
-      } finally {
-        if (!cancelado) setCargando(false);
-      }
-    })();
+    // Debounce: sin esto, cada tecla dispara un fetch y un re-render
+    // (cargando/error) a mitad de la escritura — en inputs numéricos eso
+    // puede correr el cursor y hacer que se sienta como si solo el primer
+    // dígito "pegara". Esperar a que el usuario deje de teclear evita el
+    // problema y de paso ahorra requests.
+    const timer = setTimeout(() => {
+      (async () => {
+        try {
+          const res = await fetch("/api/contratas/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          });
+          if (cancelado) return;
+          if (!res.ok) throw new Error("No se pudo calcular");
+          const data = await res.json();
+          setAbonoSugerido(data.abonoSugerido);
+          setFechas(data.fechas);
+        } catch {
+          if (!cancelado) setError("No se pudo calcular. Intenta de nuevo.");
+        } finally {
+          if (!cancelado) setCargando(false);
+        }
+      })();
+    }, 400);
     return () => {
       cancelado = true;
+      clearTimeout(timer);
     };
   }, [tipo, monto, fechaInicio, numCuotas]);
 

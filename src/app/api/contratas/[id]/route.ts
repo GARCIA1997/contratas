@@ -27,7 +27,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const user = await requireAdmin();
     const body = await req.json();
     const input = contrataUpdateSchema.parse(body);
-    const contrata = await actualizarContrata(user.ownerId, params.id, input);
+    // Defensa en profundidad para la cola offline: actualizarContrata ya es
+    // naturalmente idempotente (regenera el calendario de forma
+    // determinista), pero evita trabajo repetido en un reintento.
+    const contrata = await withIdempotency(
+      req,
+      user.ownerId,
+      `contratas/${params.id}/editar`,
+      () => actualizarContrata(user.ownerId, params.id, input)
+    );
     return NextResponse.json(contrata);
   } catch (error) {
     return handleApiError(error);

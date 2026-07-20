@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Combine, FileText, History, Pencil, Plus, ArrowLeft } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,7 @@ function useExtrasOnline(clienteId: string, esAdmin: boolean): ExtrasOnline {
 export default function ClientePerfilPage() {
   const claims = useAuthClaims();
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready ? claims.esAdmin : false;
 
@@ -66,6 +67,20 @@ export default function ClientePerfilPage() {
     () => (ownerId ? getClientePerfil(ownerId, params.id) : undefined),
     [ownerId, params.id]
   );
+
+  // Igual que en ContrataDetalle: adelanta el prefetch de las pantallas de
+  // solo lectura del perfil para que sigan funcionando si se pierde la
+  // conexión justo después de abrirlo.
+  useEffect(() => {
+    router.prefetch(`/clientes/${params.id}/historial`);
+    router.prefetch(`/clientes/${params.id}/estado-cuenta`);
+    const elegibles = perfil?.contratas.filter(
+      (c) => c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA" && c.saldo > 0
+    ).length;
+    if (elegibles !== undefined && elegibles >= 2) {
+      router.prefetch(`/clientes/${params.id}/unificar`);
+    }
+  }, [router, params.id, perfil]);
 
   const extras = useExtrasOnline(params.id, esAdmin);
   // Respaldo offline: si no se pudo pedir el preview real al servidor

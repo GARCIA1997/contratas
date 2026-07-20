@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { DeudorDetalle } from "@/components/deudores/deudor-detalle";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
@@ -11,6 +11,7 @@ import { syncDeudorDetalle } from "@/lib/offline/sync";
 export default function DeudorDetallePage() {
   const claims = useAuthClaims();
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
 
   const deudor = useLiveQuery(
@@ -23,6 +24,10 @@ export default function DeudorDetallePage() {
     // se trae completo al entrar al detalle, si hay red.
     if (ownerId) void syncDeudorDetalle(ownerId, params.id);
   }, [ownerId, params.id]);
+
+  useEffect(() => {
+    router.prefetch(`/deudores/${params.id}/estado-cuenta`);
+  }, [router, params.id]);
 
   if (deudor === undefined) {
     return (

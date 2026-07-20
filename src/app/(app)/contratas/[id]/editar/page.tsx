@@ -1,48 +1,70 @@
-import { notFound, redirect } from "next/navigation";
-import { HttpError, requireUser } from "@/lib/session";
-import { getContrata } from "@/lib/services/contratas";
-import { listClientes } from "@/lib/services/clientes";
-import { getConfig } from "@/lib/config";
+"use client";
+
+import { useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { ContrataForm } from "@/components/contratas/contrata-form";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { getContrata, getClientes, getConfiguracion } from "@/lib/offline/repo";
+import { CONFIG_DEFAULTS } from "@/lib/config";
 
-export const dynamic = "force-dynamic";
+export default function EditarContrataPage() {
+  const claims = useAuthClaims();
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const ownerId = claims.ready ? claims.ownerId : null;
+  const esAdmin = claims.ready && claims.esAdmin;
 
-export default async function EditarContrataPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const user = await requireUser();
-  if (user.rol !== "ADMIN") redirect(`/contratas/${params.id}`);
+  useEffect(() => {
+    if (claims.ready && !esAdmin) router.replace(`/contratas/${params.id}`);
+  }, [claims.ready, esAdmin, router, params.id]);
 
-  try {
-    const [c, clientes, config] = await Promise.all([
-      getContrata(user.ownerId, params.id),
-      listClientes(user.ownerId),
-      getConfig(user.ownerId),
-    ]);
+  const contrata = useLiveQuery(
+    () => (ownerId ? getContrata(ownerId, params.id) : undefined),
+    [ownerId, params.id]
+  );
+  const clientes = useLiveQuery(
+    () => (ownerId ? getClientes(ownerId) : undefined),
+    [ownerId]
+  );
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
 
+  if (!claims.ready || !esAdmin || contrata === undefined || !clientes || !config) {
     return (
-      <ContrataForm
-        clientes={clientes.map((cl) => ({ id: cl.id, nombre: cl.nombre }))}
-        cuotasPorDefecto={config.cuotasPorDefecto}
-        maxCuotas={config.maxCuotas}
-        tipoInicial={c.tipo}
-        nombreApp={config.nombreApp}
-        inicial={{
-          id: c.id,
-          clienteId: c.clienteId,
-          tipo: c.tipo,
-          monto: c.monto,
-          abono: c.abono,
-          numCuotas: c.numCuotas,
-          fechaInicio: c.fechaInicio.toISOString().slice(0, 10),
-          notas: c.notas,
-        }}
-      />
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Cargando…
+      </p>
     );
-  } catch (error) {
-    if (error instanceof HttpError && error.status === 404) notFound();
-    throw error;
   }
+
+  if (contrata === null) {
+    return (
+      <p className="py-10 text-center text-sm text-muted-foreground">
+        Contrata no encontrada.
+      </p>
+    );
+  }
+
+  return (
+    <ContrataForm
+      clientes={clientes.map((cl) => ({ id: cl.id, nombre: cl.nombre }))}
+      cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
+      maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
+      tipoInicial={contrata.tipo}
+      nombreApp={config?.nombreApp ?? "Kredired"}
+      inicial={{
+        id: contrata.id,
+        clienteId: contrata.clienteId,
+        tipo: contrata.tipo,
+        monto: contrata.monto,
+        abono: contrata.abono,
+        numCuotas: contrata.numCuotas,
+        fechaInicio: contrata.fechaInicio.slice(0, 10),
+        notas: contrata.notas,
+      }}
+    />
+  );
 }
