@@ -12,7 +12,7 @@ export function TendenciaChart({ meses }: { meses: MesTendencia[] }) {
     <div className="space-y-3">
       <div className="flex items-end justify-between gap-1.5" style={{ height: 96 }}>
         {meses.map((m) => (
-          <div key={m.mes} className="flex flex-1 items-end justify-center gap-0.5">
+          <div key={m.mes} className="flex h-full flex-1 items-end justify-center gap-0.5">
             <div
               className="w-full max-w-[10px] rounded-t bg-primary/30"
               style={{ height: `${Math.max(2, (m.colocado / max) * 100)}%` }}

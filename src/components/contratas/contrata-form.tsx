@@ -108,19 +108,24 @@ export function ContrataForm({
       return;
     }
     let cancelado = false;
-    (async () => {
-      const res = await fetch("/api/contratas/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
-      });
-      if (!res.ok || cancelado) return;
-      const data = await res.json();
-      setFechas(data.fechas);
-      if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
-    })();
+    // Debounce: evita que cada tecla dispare un fetch (y el re-render que
+    // viene con él) a mitad de la escritura.
+    const timer = setTimeout(() => {
+      (async () => {
+        const res = await fetch("/api/contratas/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+        });
+        if (!res.ok || cancelado) return;
+        const data = await res.json();
+        setFechas(data.fechas);
+        if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
+      })();
+    }, 400);
     return () => {
       cancelado = true;
+      clearTimeout(timer);
     };
   }, [tipo, monto, fechaInicio, numCuotas]);
 

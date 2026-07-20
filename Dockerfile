@@ -26,6 +26,13 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Sin esto el proceso corre en UTC (default de la imagen base) — como toda
+# la lógica de fechas (vencido/próximo, corte de caja, ruta del día) usa
+# `new Date()` como "hoy", una contrata con cobro hoy podía marcarse
+# "vencida" hasta 6 horas antes de tiempo (medianoche-6am hora de México
+# ya es "mañana" en UTC). node:20-alpine trae el ICU completo, así que
+# alcanza con la variable — no hace falta instalar tzdata aparte.
+ENV TZ=America/Mexico_City
 
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs

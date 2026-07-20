@@ -17,6 +17,9 @@ module.exports = {
         NODE_ENV: "production",
         PORT: 3000,
         HOSTNAME: "0.0.0.0",
+        // Sin esto PM2 hereda el TZ del sistema del VPS (a veces UTC) — toda
+        // la lógica de vencido/próximo/corte de caja asume hora de México.
+        TZ: "America/Mexico_City",
       },
       autorestart: true,
       max_memory_restart: "400M",
