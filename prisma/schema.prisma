@@ -34,6 +34,7 @@ model User {
   deudores      Deudor[]
   configuracion Configuracion?
   suscripciones PushSubscription[]
+  cortesCaja    CorteCaja[]
   creadoEn      DateTime  @default(now())
 
   // Espacio de trabajo: null = dueño de su propio espacio (registro público);
@@ -211,6 +212,32 @@ model Configuracion {
   diaCobroSemanal     Int           @default(1)
   colorPrimario       String        @default("#0F7BFF")
   logoUrl             String?
+}
+
+// ---------------------------------------------------------------------------
+// Estado de resultados: corte de caja mensual
+// ---------------------------------------------------------------------------
+
+/// Cierre mensual congelado (contratas dadas vs cobrado ese mes). Se genera
+/// solo — vía cron del VPS el último día del mes — o manualmente desde la
+/// UI; una vez creado no se recalcula automáticamente, para que el reporte
+/// histórico no cambie por correcciones posteriores a los datos.
+model CorteCaja {
+  id                  String   @id @default(cuid())
+  owner               User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId             String
+  anio                Int
+  mes                 Int
+  contratasDadas      Float
+  numContratasDadas   Int
+  cobrado             Float
+  gananciaInteres     Float
+  saldoPendienteFin   Float
+  contratasActivasFin Int
+  generadoEn          DateTime @default(now())
+
+  @@unique([ownerId, anio, mes])
+  @@index([ownerId])
 }
 
 // ---------------------------------------------------------------------------

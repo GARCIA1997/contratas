@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { TipoContrata } from "@prisma/client";
-import { Plus } from "lucide-react";
+import { Plus, Calculator } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContratasLista } from "@/components/contratas/contratas-lista";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
@@ -44,15 +44,22 @@ export default function ContratasPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">Contratas</h1>
-        {esAdmin && (
-          <Button asChild size="sm">
-            <Link href={`/contratas/nueva?tipo=${nuevaTipo}`}>
-              <Plus className="size-4" /> Nueva
+        <div className="flex gap-1.5">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/calculadora">
+              <Calculator className="size-4" /> Calculadora
             </Link>
           </Button>
-        )}
+          {esAdmin && (
+            <Button asChild size="sm">
+              <Link href={`/contratas/nueva?tipo=${nuevaTipo}`}>
+                <Plus className="size-4" /> Nueva
+              </Link>
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1 rounded-full bg-muted p-1">

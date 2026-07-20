@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { SwRegister } from "@/components/pwa/sw-register";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -40,6 +41,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <SwRegister />
         <Providers>{children}</Providers>

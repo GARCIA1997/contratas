@@ -7,3 +7,8 @@
 # Corre a las 08:00 hora de México (America/Mexico_City, UTC-6) = 14:00 UTC,
 # igual que el schedule "0 14 * * *" que tenía vercel.json.
 0 14 * * * curl -fsS -X POST -H "Authorization: Bearer TU_CRON_SECRET" https://kredired.cloud/api/push/recordatorio >> /var/log/kredired-cron.log 2>&1
+
+# Corte de caja mensual: corre a las 23:55 (hora del servidor) los días
+# 28-31, pero solo hace algo si mañana es día 1 — así cierra el mes
+# correcto sin importar cuántos días tenga (28/29/30/31).
+55 23 28-31 * * [ "$(date -d tomorrow +\%d)" = "01" ] && curl -fsS -H "Authorization: Bearer TU_CRON_SECRET" https://kredired.cloud/api/cron/corte-caja >> /var/log/kredired-cron.log 2>&1

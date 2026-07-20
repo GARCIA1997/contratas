@@ -48,3 +48,7 @@ next-env.d.ts
 # Respaldos de base de datos (contienen datos reales/sensibles)
 *.dump
 *.pdf
+
+# Override local de compose (ej. exponer el puerto de la BD para migrar
+# desde el host) — nunca debe ir a git, ver comentario en docker-compose.yml.
+docker-compose.override.yml
