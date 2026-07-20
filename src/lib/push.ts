@@ -1,6 +1,7 @@
 import webpush from "web-push";
-import { startOfDay, endOfDay } from "date-fns";
+import { startOfDay, endOfDay, addHours, subHours } from "date-fns";
 import { prisma } from "@/lib/prisma";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 const PUBLIC = process.env.VAPID_PUBLIC_KEY ?? "";
 const PRIVATE = process.env.VAPID_PRIVATE_KEY ?? "";
@@ -61,14 +62,32 @@ export async function recordatorioCobrosHoy(
   ownerId: string,
   hoy: Date = new Date()
 ): Promise<Payload | null> {
-  const pagos = await prisma.pago.findMany({
+  // El filtro en SQL usa un margen de 12h a cada lado: `fechaProgramada`
+  // guarda una fecha calendario (sin hora), pero cuotas generadas antes de
+  // fijar la zona horaria del servidor pueden haber quedado desfasadas
+  // unas horas del "medianoche México" esperado. El filtro exacto por día
+  // calendario se hace después, en JS, con `anclarFechaCliente` (igual que
+  // el resto de la lógica de vencido/próximo).
+  const pagosCandidatos = await prisma.pago.findMany({
     where: {
       pagado: false,
-      fechaProgramada: { gte: startOfDay(hoy), lte: endOfDay(hoy) },
+      fechaProgramada: {
+        gte: subHours(startOfDay(hoy), 12),
+        lte: addHours(endOfDay(hoy), 12),
+      },
       contrata: { ownerId },
     },
     include: { contrata: { include: { cliente: true } } },
   });
+
+  // `hoy` es un instante en vivo (no una fecha calendario guardada): se
+  // ancla con `startOfDay` local, no con `anclarFechaCliente` (que lee
+  // componentes UTC y daría el día equivocado cerca de medianoche).
+  const hoyAnclado = startOfDay(hoy);
+  const pagos = pagosCandidatos.filter(
+    (p) =>
+      anclarFechaCliente(p.fechaProgramada).getTime() === hoyAnclado.getTime()
+  );
 
   if (pagos.length === 0) return null;
 

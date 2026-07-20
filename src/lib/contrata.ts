@@ -1,5 +1,6 @@
 import { differenceInCalendarDays, startOfDay } from "date-fns";
 import type { TipoContrata } from "@prisma/client";
+import { anclarFechaCliente } from "./fechas";
 
 /**
  * Calcula el abono periódico sugerido a partir de la tasa configurada.
@@ -72,13 +73,18 @@ export function estadoContrata(
   if (pendientes.length === 0) return "LIQUIDADA";
 
   const base = startOfDay(hoy);
+  // Se ancla la fecha guardada por su año/mes/día en UTC (no por
+  // `startOfDay` local): así una cuota programada un instante que quedó
+  // desfasado por una zona horaria distinta a la vigente (p. ej. datos
+  // generados cuando el servidor todavía corría en UTC) sigue leyéndose
+  // como el día calendario que se quiso guardar, no uno antes.
   const hayVencido = pendientes.some(
-    (p) => differenceInCalendarDays(startOfDay(p.fechaProgramada), base) < 0
+    (p) => differenceInCalendarDays(anclarFechaCliente(p.fechaProgramada), base) < 0
   );
   if (hayVencido) return "VENCIDO";
 
   const hayProximo = pendientes.some((p) => {
-    const dias = differenceInCalendarDays(startOfDay(p.fechaProgramada), base);
+    const dias = differenceInCalendarDays(anclarFechaCliente(p.fechaProgramada), base);
     return dias >= 0 && dias <= DIAS_PROXIMO_VENCIMIENTO;
   });
   if (hayProximo) return "PROXIMO";
@@ -114,7 +120,7 @@ export function desgloseCuotas(
 
   const atrasadas = pendientes
     .filter(
-      (p) => differenceInCalendarDays(startOfDay(p.fechaProgramada), base) < 0
+      (p) => differenceInCalendarDays(anclarFechaCliente(p.fechaProgramada), base) < 0
     )
     .map((p) => ({
       numeroCuota: p.numeroCuota,
@@ -145,7 +151,7 @@ export function haTerminadoPeriodo(
   const ultima = pagos.reduce((max, p) =>
     p.fechaProgramada > max.fechaProgramada ? p : max
   );
-  return startOfDay(ultima.fechaProgramada) <= startOfDay(hoy);
+  return anclarFechaCliente(ultima.fechaProgramada) <= startOfDay(hoy);
 }
 
 /**
@@ -171,7 +177,7 @@ export function cuotasVencidasOVigentes<T extends PagoLike>(
 ): T[] {
   const base = startOfDay(hoy);
   return pagos.filter(
-    (p) => !p.pagado && startOfDay(p.fechaProgramada) <= base
+    (p) => !p.pagado && anclarFechaCliente(p.fechaProgramada) <= base
   );
 }
 
@@ -235,7 +241,7 @@ export function calcularScorePago(pagos: PagoConFecha[]): ResultadoScorePago {
   }
 
   const diffs = pagadas.map((p) =>
-    differenceInCalendarDays(p.fechaPago as Date, p.fechaProgramada)
+    differenceInCalendarDays(p.fechaPago as Date, anclarFechaCliente(p.fechaProgramada))
   );
   const aTiempo = diffs.filter((d) => d <= 0).length;
   const promedio = diffs.reduce((s, d) => s + d, 0) / diffs.length;

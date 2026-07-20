@@ -1,6 +1,7 @@
 import { startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { saldoPendiente } from "@/lib/contrata";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -57,7 +58,7 @@ export function aggregarCorteCaja(
   let contratasActivasFin = 0;
 
   for (const c of contratas) {
-    if (isWithinInterval(c.fechaInicio, rango)) {
+    if (isWithinInterval(anclarFechaCliente(c.fechaInicio), rango)) {
       contratasDadas = round(contratasDadas + c.monto);
       numContratasDadas += 1;
     }

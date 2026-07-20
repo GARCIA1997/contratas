@@ -15,6 +15,7 @@ import { es } from "date-fns/locale";
 import type { TipoContrata } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { saldoPendiente, estadoContrata } from "@/lib/contrata";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 export type FiltroDashboard = "TODAS" | "SEMANAL" | "QUINCENAL" | "MENSUAL";
 
@@ -162,7 +163,7 @@ export function aggregateKpis(
   });
 
   for (const c of contratasTodas) {
-    if (!isWithinInterval(c.fechaInicio, mes)) continue;
+    if (!isWithinInterval(anclarFechaCliente(c.fechaInicio), mes)) continue;
     montoEntregadoMes.todas = round(montoEntregadoMes.todas + c.monto);
     if (c.tipo === "SEMANAL") {
       montoEntregadoMes.semanal = round(montoEntregadoMes.semanal + c.monto);
@@ -204,7 +205,7 @@ export function aggregateKpis(
 
       const diasAtraso = differenceInCalendarDays(
         p.fechaPago,
-        p.fechaProgramada
+        anclarFechaCliente(p.fechaProgramada)
       );
       if (diasAtraso > 0) {
         diasAtrasoSuma += diasAtraso;
@@ -216,13 +217,19 @@ export function aggregateKpis(
     // cada ventana (semana/quincena/mes en curso), pagadas o no — es lo
     // que el calendario de cuotas dice que se debería cobrar en ese lapso.
     for (const p of c.pagos) {
-      if (isWithinInterval(p.fechaProgramada, semana)) {
+      // `fechaProgramada` es una fecha calendario (sin hora) — se ancla por
+      // su año/mes/día en UTC antes de comparar, igual que en contrata.ts,
+      // para no depender de a qué hora exacta quedó guardada (datos viejos
+      // generados cuando el servidor corría en otra zona horaria quedaron
+      // desfasados unas horas del "medianoche México" esperado).
+      const fechaCuota = anclarFechaCliente(p.fechaProgramada);
+      if (isWithinInterval(fechaCuota, semana)) {
         proyectadoSemana += c.abono;
       }
-      if (isWithinInterval(p.fechaProgramada, quincena)) {
+      if (isWithinInterval(fechaCuota, quincena)) {
         proyectadoQuincena += c.abono;
       }
-      if (isWithinInterval(p.fechaProgramada, mes)) {
+      if (isWithinInterval(fechaCuota, mes)) {
         proyectadoMes += c.abono;
       }
 
@@ -232,8 +239,8 @@ export function aggregateKpis(
         const pendiente = Math.max(c.abono - p.montoAbonado, 0);
         for (const balde of baldes) {
           if (
-            p.fechaProgramada >= new Date(balde.desde) &&
-            p.fechaProgramada <= new Date(balde.hasta)
+            fechaCuota >= new Date(balde.desde) &&
+            fechaCuota <= new Date(balde.hasta)
           ) {
             balde.monto = round(balde.monto + pendiente);
             break;
@@ -362,7 +369,7 @@ export function aggregateTendencia(
   const primerMes = serie[0].mes;
 
   for (const c of contratas) {
-    const claveInicio = format(c.fechaInicio, "yyyy-MM");
+    const claveInicio = format(anclarFechaCliente(c.fechaInicio), "yyyy-MM");
     if (claveInicio >= primerMes) {
       const bucket = porClave.get(claveInicio);
       if (bucket) bucket.colocado = round(bucket.colocado + c.monto);
