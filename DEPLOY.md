@@ -79,9 +79,10 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d kredired.cloud
 ```
 
-### 5. Recordatorio diario
+### 5. Tareas programadas (recordatorio diario + corte de caja mensual)
 
-Usamos el crontab del sistema del VPS para disparar el recordatorio diario:
+Usamos el crontab del sistema del VPS para disparar el recordatorio diario
+y el cierre mensual del estado de resultados (último día del mes):
 
 ```bash
 crontab -e
@@ -105,7 +106,7 @@ npm ci && npm run build && pm2 restart kredired
 - [ ] App arriba (Docker Compose o PM2) y respondiendo en `127.0.0.1:3000`
 - [ ] Nginx como reverse proxy + SSL con certbot
 - [ ] Seed del admin ejecutado
-- [ ] Crontab del recordatorio diario instalado (`deploy/crontab.example`)
+- [ ] Crontab del recordatorio diario y del corte de caja mensual instalado (`deploy/crontab.example`)
 - [ ] `pm2 startup` / `docker compose` con `restart: unless-stopped` para sobrevivir reinicios del VPS
 
 ## Deploy automático (CI/CD)

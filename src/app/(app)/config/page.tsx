@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Users, ScrollText } from "lucide-react";
+import { Users, ScrollText, FileBarChart } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfigForm } from "@/components/config/config-form";
 import { InstallButton } from "@/components/pwa/install-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificacionesPanel } from "@/components/pwa/notificaciones-panel";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getConfiguracion } from "@/lib/offline/repo";
@@ -62,6 +63,11 @@ export default function ConfigPage() {
               <ScrollText className="size-4" /> Actividad
             </Link>
           </Button>
+          <Button variant="outline" className="col-span-2" asChild>
+            <Link href="/config/corte-caja">
+              <FileBarChart className="size-4" /> Estado de resultados
+            </Link>
+          </Button>
         </div>
       )}
 
@@ -70,6 +76,7 @@ export default function ConfigPage() {
           Aplicación
         </h2>
         <InstallButton />
+        <ThemeToggle />
       </div>
 
       <div className="space-y-2">

@@ -191,3 +191,62 @@ export function montoVencidoOVigente(
   );
   return Math.round(monto * 100) / 100;
 }
+
+// ---------------------------------------------------------------------------
+// Puntualidad
+// ---------------------------------------------------------------------------
+
+export type PagoConFecha = {
+  pagado: boolean;
+  fechaProgramada: Date;
+  fechaPago: Date | null;
+};
+
+export type ScorePago = "ADELANTADO" | "PUNTUAL" | "MOROSO" | "SIN_HISTORIAL";
+
+export type ResultadoScorePago = {
+  score: ScorePago;
+  /** Cuotas pagadas consideradas (con fechaPago). */
+  cuotasConsideradas: number;
+  /** % de esas cuotas pagadas a tiempo o antes (diff <= 0 días). */
+  porcentajeATiempo: number;
+  /** Promedio de días de atraso (fechaPago - fechaProgramada); negativo = adelantado. */
+  diasPromedioAtraso: number;
+};
+
+/**
+ * Clasifica la puntualidad de pago de un cliente a partir de su historial
+ * de cuotas ya pagadas (cruza todas sus contratas, activas o no — el
+ * comportamiento pasado es la señal, sin importar si la contrata ya
+ * terminó). Cuotas sin `fechaPago` (pendientes) no cuentan para el cálculo.
+ *
+ * Umbrales: se compara contra el promedio de días de atraso, con 1 día de
+ * tolerancia para no penalizar variaciones menores de "mismo día".
+ */
+export function calcularScorePago(pagos: PagoConFecha[]): ResultadoScorePago {
+  const pagadas = pagos.filter((p) => p.pagado && p.fechaPago);
+  if (pagadas.length === 0) {
+    return {
+      score: "SIN_HISTORIAL",
+      cuotasConsideradas: 0,
+      porcentajeATiempo: 0,
+      diasPromedioAtraso: 0,
+    };
+  }
+
+  const diffs = pagadas.map((p) =>
+    differenceInCalendarDays(p.fechaPago as Date, p.fechaProgramada)
+  );
+  const aTiempo = diffs.filter((d) => d <= 0).length;
+  const promedio = diffs.reduce((s, d) => s + d, 0) / diffs.length;
+
+  const score: ScorePago =
+    promedio <= -1 ? "ADELANTADO" : promedio <= 1 ? "PUNTUAL" : "MOROSO";
+
+  return {
+    score,
+    cuotasConsideradas: pagadas.length,
+    porcentajeATiempo: Math.round((aTiempo / pagadas.length) * 100),
+    diasPromedioAtraso: Math.round(promedio * 10) / 10,
+  };
+}

@@ -10,10 +10,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Saludo } from "@/components/saludo";
+import { TendenciaChart } from "@/components/tendencia-chart";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getKpis } from "@/lib/offline/repo";
+import { getKpis, getTendencia } from "@/lib/offline/repo";
 import type { FiltroDashboard } from "@/lib/services/dashboard";
 import { formatMoneda, cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 const FILTROS: { key: FiltroDashboard; label: string }[] = [
   { key: "TODAS", label: "Todas" },
@@ -40,6 +43,10 @@ export default function DashboardPage() {
   const kpis = useLiveQuery(
     () => (ownerId ? getKpis(ownerId, filtro) : undefined),
     [ownerId, filtro]
+  );
+  const tendencia = useLiveQuery(
+    () => (ownerId ? getTendencia(ownerId) : undefined),
+    [ownerId]
   );
 
   if (!kpis) return null;
@@ -173,6 +180,86 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader className="p-4 pb-1">
+          <CardTitle className="text-xs font-medium text-muted-foreground">
+            Salud de la cartera
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-3 gap-3 p-4 pt-2">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Morosidad</p>
+            <p
+              className={cn(
+                "truncate text-base font-semibold sm:text-lg",
+                kpis.tasaMorosidad === 0
+                  ? "text-pagado"
+                  : kpis.tasaMorosidad > 20
+                    ? "text-vencido"
+                    : "text-pendiente"
+              )}
+            >
+              {kpis.tasaMorosidad}%
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Ganancia este mes</p>
+            <p className="truncate text-base font-semibold text-primary sm:text-lg">
+              {formatMoneda(kpis.ganancia.mes)}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Atraso promedio</p>
+            <p className="truncate text-base font-semibold sm:text-lg">
+              {kpis.diasPromedioAtraso === null
+                ? "—"
+                : `${kpis.diasPromedioAtraso} d`}
+            </p>
+          </div>
+        </CardContent>
+        <CardContent className="flex items-center justify-between border-t p-4 pt-3 text-xs text-muted-foreground">
+          <span>Ganancia histórica (interés cobrado)</span>
+          <span className="font-semibold text-foreground">
+            {formatMoneda(kpis.ganancia.total)}
+          </span>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="p-4 pb-1">
+          <CardTitle className="text-xs font-medium text-muted-foreground">
+            Flujo de caja proyectado
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-4 gap-2 p-4 pt-2">
+          {kpis.flujoProyectado.map((b, i) => (
+            <div key={b.desde} className="min-w-0 text-center">
+              <p className="text-[10px] text-muted-foreground">
+                {i === 0
+                  ? "Esta semana"
+                  : format(new Date(b.desde), "d MMM", { locale: es })}
+              </p>
+              <p className="truncate text-sm font-semibold sm:text-base">
+                {formatMoneda(b.monto)}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {tendencia && tendencia.length > 0 && (
+        <Card>
+          <CardHeader className="p-4 pb-1">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Tendencia · últimos 6 meses
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-3">
+            <TendenciaChart meses={tendencia} />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="p-4 pb-1">

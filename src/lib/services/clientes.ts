@@ -2,7 +2,13 @@ import type { Prisma, TipoContrata } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import type { ClienteInput } from "@/lib/validaciones";
-import { estadoContrata, saldoPendiente, type EstadoContrata } from "@/lib/contrata";
+import {
+  estadoContrata,
+  saldoPendiente,
+  calcularScorePago,
+  type EstadoContrata,
+  type ResultadoScorePago,
+} from "@/lib/contrata";
 
 export type ClienteConConteo = Prisma.ClienteGetPayload<{
   include: { _count: { select: { contratas: true } } };
@@ -45,6 +51,8 @@ export type ClientePerfil = {
     contratasLiquidadas: number;
     saldoPendiente: number;
   };
+  /** Puntualidad histórica, cruzando todas sus contratas (activas o no). */
+  scorePago: ResultadoScorePago;
 };
 
 /** Perfil consolidado del cliente: historial de contratas + totales. */
@@ -90,6 +98,12 @@ export async function getClientePerfil(
     ),
   };
 
+  // El score cruza los pagos de TODAS sus contratas (el comportamiento
+  // pasado es la señal, sin importar si esa contrata en particular ya
+  // terminó o se convirtió a deuda).
+  const todosLosPagos = cliente.contratas.flatMap((c) => c.pagos);
+  const scorePago = calcularScorePago(todosLosPagos);
+
   return {
     id: cliente.id,
     nombre: cliente.nombre,
@@ -99,6 +113,7 @@ export async function getClientePerfil(
     notas: cliente.notas,
     contratas,
     totales,
+    scorePago,
   };
 }
 
@@ -179,6 +194,88 @@ export async function getEstadoCuentaCliente(
       totalAbonado: round(contratas.reduce((s, c) => s + c.totalAbonado, 0)),
       saldoPendiente: round(contratas.reduce((s, c) => s + c.saldo, 0)),
     },
+  };
+}
+
+export type EventoHistorial =
+  | {
+      tipo: "CONTRATA_CREADA";
+      fecha: Date;
+      contrataId: string;
+      contrataTipo: TipoContrata;
+      monto: number;
+    }
+  | {
+      tipo: "PAGO";
+      fecha: Date;
+      contrataId: string;
+      contrataTipo: TipoContrata;
+      numeroCuota: number;
+      monto: number;
+    };
+
+/**
+ * Aplana todas las contratas de un cliente en una sola línea de tiempo
+ * (creación de contrata + cada pago recibido), más reciente primero — la
+ * vista de conjunto que no da el perfil normal (que solo resume por
+ * contrata, no cruza fechas entre ellas).
+ */
+export function construirHistorial(
+  contratas: {
+    id: string;
+    tipo: TipoContrata;
+    monto: number;
+    fechaInicio: Date;
+    pagos: { numeroCuota: number; fechaPago: Date | null; pagado: boolean; montoAbonado: number }[];
+  }[]
+): EventoHistorial[] {
+  const eventos: EventoHistorial[] = [];
+
+  for (const c of contratas) {
+    eventos.push({
+      tipo: "CONTRATA_CREADA",
+      fecha: c.fechaInicio,
+      contrataId: c.id,
+      contrataTipo: c.tipo,
+      monto: c.monto,
+    });
+    for (const p of c.pagos) {
+      if (!p.pagado || !p.fechaPago) continue;
+      eventos.push({
+        tipo: "PAGO",
+        fecha: p.fechaPago,
+        contrataId: c.id,
+        contrataTipo: c.tipo,
+        numeroCuota: p.numeroCuota,
+        monto: p.montoAbonado,
+      });
+    }
+  }
+
+  eventos.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+  return eventos;
+}
+
+export type HistorialCliente = {
+  id: string;
+  nombre: string;
+  eventos: EventoHistorial[];
+};
+
+export async function getHistorialCliente(
+  ownerId: string,
+  id: string
+): Promise<HistorialCliente> {
+  const cliente = await prisma.cliente.findFirst({
+    where: { id, ownerId },
+    include: { contratas: { include: { pagos: true } } },
+  });
+  if (!cliente) throw new HttpError(404, "Cliente no encontrado");
+
+  return {
+    id: cliente.id,
+    nombre: cliente.nombre,
+    eventos: construirHistorial(cliente.contratas),
   };
 }
 

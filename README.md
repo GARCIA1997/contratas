@@ -98,6 +98,18 @@ src/
 > `notificationclick`). La entrega real requiere HTTPS (o localhost) y un
 > navegador compatible.
 
+## Estado de resultados: corte de caja mensual
+
+- Cierre congelado por mes (contratas dadas vs. cobrado, ganancia real,
+  cartera pendiente al cierre) — Configuración → Estado de resultados.
+- Se genera solo el último día de cada mes vía `GET /api/cron/corte-caja`
+  (cabecera `x-cron-secret: <CRON_SECRET>`, ver `deploy/crontab.example`),
+  o manualmente desde la UI (botón "Generar/actualizar").
+- Regenerar un mes ya cerrado sobrescribe el corte anterior — pensado para
+  corregir un cierre tras ajustar datos, no para llevar versiones.
+- Cada corte se puede descargar en PDF (`@react-pdf/renderer`, sin
+  dependencia de Chromium — importante en el VPS de 1 vCPU).
+
 ## Aislamiento por usuario
 
 Cada usuario solo ve/gestiona **sus** contratas, clientes, deudores y su propia

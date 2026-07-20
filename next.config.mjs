@@ -17,7 +17,7 @@ const withPWA = withPWAInit({
     // cacheada. La fuente de verdad real del offline es IndexedDB (ver
     // src/lib/offline/*), esto es solo un respaldo, no el mecanismo principal.
     {
-      urlPattern: /^\/api\/(contratas|clientes|deudores|configuracion|dashboard\/kpis)(\?.*)?$/,
+      urlPattern: /^\/api\/(contratas|clientes|deudores|configuracion|ruta|dashboard\/(kpis|tendencia))(\?.*)?$/,
       method: "GET",
       handler: "NetworkFirst",
       options: {

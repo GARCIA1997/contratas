@@ -3,15 +3,7 @@ import { requireUser } from "@/lib/session";
 import { handleApiError } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { enviarAOwner, recordatorioCobrosHoy, pushEnabled } from "@/lib/push";
-
-function esCronAutorizado(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  // Acepta `Authorization: Bearer <secret>` o `x-cron-secret: <secret>`.
-  const auth = req.headers.get("authorization");
-  const header = req.headers.get("x-cron-secret");
-  return auth === `Bearer ${secret}` || header === secret;
-}
+import { esCronAutorizado } from "@/lib/cron";
 
 /** Envía el recordatorio de cobros de hoy a TODOS los usuarios suscritos. */
 async function enviarATodos() {

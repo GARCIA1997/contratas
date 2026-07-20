@@ -1,8 +1,20 @@
 import type { TipoContrata } from "@prisma/client";
 import { db, type ContrataLocal, type PagoLocal } from "@/lib/offline/db";
-import { estadoContrata, saldoPendiente } from "@/lib/contrata";
-import { aggregateKpis, type FiltroDashboard, type Kpis } from "@/lib/services/dashboard";
+import {
+  estadoContrata,
+  saldoPendiente,
+  calcularScorePago,
+  type ResultadoScorePago,
+} from "@/lib/contrata";
+import {
+  aggregateKpis,
+  aggregateTendencia,
+  type FiltroDashboard,
+  type Kpis,
+  type MesTendencia,
+} from "@/lib/services/dashboard";
 import type { ContrataResumen } from "@/components/contratas/tipos";
+import { aggregarRutaDelDia, type ParadaRuta } from "@/lib/services/ruta";
 
 /**
  * Capa de lectura offline: espejo de src/lib/services/*.ts pero leyendo
@@ -124,6 +136,7 @@ export async function getKpis(
       tipo: c.tipo,
       monto: c.monto,
       abono: c.abono,
+      numCuotas: c.numCuotas,
       fechaInicio: new Date(c.fechaInicio),
       pagos: (await pagosDeContrata(c.id)).map((p) => ({
         pagado: p.pagado,
@@ -141,6 +154,32 @@ export async function getKpis(
   }));
 
   return aggregateKpis(conPagos, todasParaMonto, hoy);
+}
+
+/** Espejo offline de `computeTendencia`: mismos datos, leídos de IndexedDB. */
+export async function getTendencia(
+  ownerId: string,
+  meses: number = 6,
+  hoy: Date = new Date()
+): Promise<MesTendencia[]> {
+  if (!db) return aggregateTendencia([], meses, hoy);
+  const todas = (
+    await db.contratas.where("ownerId").equals(ownerId).toArray()
+  ).filter((c) => !c._deletedAt);
+
+  const conPagos = await Promise.all(
+    todas.map(async (c) => ({
+      monto: c.monto,
+      fechaInicio: new Date(c.fechaInicio),
+      pagos: (await pagosDeContrata(c.id)).map((p) => ({
+        montoAbonado: p.montoAbonado,
+        pagado: p.pagado,
+        fechaPago: p.fechaPago ? new Date(p.fechaPago) : null,
+      })),
+    }))
+  );
+
+  return aggregateTendencia(conPagos, meses, hoy);
 }
 
 export function contrataLocalFromRow(c: ContrataLocal) {
@@ -195,6 +234,7 @@ export type ClientePerfilLocal = {
     contratasLiquidadas: number;
     saldoPendiente: number;
   };
+  scorePago: ResultadoScorePago;
 };
 
 function round2(n: number) {
@@ -214,13 +254,21 @@ export async function getClientePerfil(
     await db.contratas.where("clienteId").equals(clienteId).toArray()
   ).filter((c) => !c._deletedAt);
 
+  const todosLosPagos: {
+    pagado: boolean;
+    fechaProgramada: Date;
+    fechaPago: Date | null;
+  }[] = [];
+
   const contratas = await Promise.all(
     contratasRaw.map(async (c) => {
       const pagos = await pagosDeContrata(c.id);
       const pagosParaCalculo = pagos.map((p) => ({
         ...p,
         fechaProgramada: new Date(p.fechaProgramada),
+        fechaPago: p.fechaPago ? new Date(p.fechaPago) : null,
       }));
+      todosLosPagos.push(...pagosParaCalculo);
       return {
         id: c.id,
         tipo: c.tipo,
@@ -236,6 +284,8 @@ export async function getClientePerfil(
     })
   );
   contratas.sort((a, b) => b.id.localeCompare(a.id));
+
+  const scorePago = calcularScorePago(todosLosPagos);
 
   const paraTotales = contratas.filter((c) => c.estado !== "EN_DEUDA");
   const totales = {
@@ -255,6 +305,7 @@ export async function getClientePerfil(
     notas: cliente.notas,
     contratas,
     totales,
+    scorePago,
   };
 }
 
@@ -353,4 +404,45 @@ export async function getConfiguracion(
     ...cfg,
     modoFechasQuincenal: cfg.modoFechasQuincenal as import("@prisma/client").ModoQuincenal,
   };
+}
+
+/** Espejo offline de `computeRutaDelDia`: mismos datos, leídos de IndexedDB. */
+export async function getRutaDelDia(
+  ownerId: string,
+  hoy: Date = new Date()
+): Promise<ParadaRuta[]> {
+  if (!db) return aggregarRutaDelDia([], hoy);
+  const clientes = (
+    await db.clientes.where("ownerId").equals(ownerId).toArray()
+  ).filter((c) => !c._deletedAt);
+
+  const conContratas = await Promise.all(
+    clientes.map(async (cliente) => {
+      const contratasRaw = (
+        await db!.contratas.where("clienteId").equals(cliente.id).toArray()
+      ).filter((c) => !c._deletedAt);
+      const contratas = await Promise.all(
+        contratasRaw.map(async (c) => ({
+          id: c.id,
+          abono: c.abono,
+          convertidaADeuda: c.convertidaADeuda,
+          pagos: (await pagosDeContrata(c.id)).map((p) => ({
+            numeroCuota: p.numeroCuota,
+            fechaProgramada: new Date(p.fechaProgramada),
+            pagado: p.pagado,
+            montoAbonado: p.montoAbonado,
+          })),
+        }))
+      );
+      return {
+        id: cliente.id,
+        nombre: cliente.nombre,
+        telefono: cliente.telefono,
+        direccion: cliente.direccion,
+        contratas,
+      };
+    })
+  );
+
+  return aggregarRutaDelDia(conContratas, hoy);
 }

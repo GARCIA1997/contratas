@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Combine, FileText, Pencil, Plus, ArrowLeft } from "lucide-react";
+import { Combine, FileText, History, Pencil, Plus, ArrowLeft } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EliminarCliente } from "@/components/clientes/eliminar-cliente";
 import { HistorialContratas } from "@/components/clientes/historial-contratas";
 import { CobroVencido } from "@/components/clientes/cobro-vencido";
+import { ScorePagoBadge } from "@/components/score-pago-badge";
 import { formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getClientePerfil, getCobroVencidoPreview } from "@/lib/offline/repo";
@@ -122,7 +123,10 @@ export default function ClientePerfilPage() {
       </div>
 
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">{perfil.nombre}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">{perfil.nombre}</h1>
+          <ScorePagoBadge score={perfil.scorePago} />
+        </div>
         {perfil.telefono && (
           <p className="text-sm text-muted-foreground">{perfil.telefono}</p>
         )}
@@ -190,11 +194,18 @@ export default function ClientePerfilPage() {
         />
       )}
 
-      <Button className="w-full" variant="outline" asChild>
-        <Link href={`/clientes/${perfil.id}/estado-cuenta`}>
-          <FileText className="size-4" /> Estado de cuenta
-        </Link>
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" asChild>
+          <Link href={`/clientes/${perfil.id}/estado-cuenta`}>
+            <FileText className="size-4" /> Estado de cuenta
+          </Link>
+        </Button>
+        <Button variant="outline" asChild>
+          <Link href={`/clientes/${perfil.id}/historial`}>
+            <History className="size-4" /> Historial
+          </Link>
+        </Button>
+      </div>
 
       {esAdmin && (
         <Button className="w-full" variant="outline" asChild>
