@@ -15,6 +15,10 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import {
+  ContrataCreadaPanel,
+  type ContrataCreada,
+} from "@/components/contratas/contrata-creada";
 
 export type ClienteOpcion = { id: string; nombre: string };
 
@@ -34,6 +38,7 @@ export function ContrataForm({
   cuotasPorDefecto,
   maxCuotas,
   tipoInicial,
+  nombreApp,
   inicial,
   clientePreseleccionado,
   volverHref: volverHrefProp,
@@ -42,6 +47,8 @@ export function ContrataForm({
   cuotasPorDefecto: number;
   maxCuotas: number;
   tipoInicial: TipoContrata;
+  /** Para el mensaje de WhatsApp que se ofrece al terminar de registrarla. */
+  nombreApp: string;
   inicial?: ContrataInicial;
   /** Si se crea desde el perfil de un cliente: se omite el selector. */
   clientePreseleccionado?: ClienteOpcion;
@@ -81,6 +88,8 @@ export function ContrataForm({
   const [fechas, setFechas] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  /** Contrata recién creada: cambia el formulario por el panel de entrega. */
+  const [creada, setCreada] = useState<ContrataCreada | null>(null);
 
   const sugerencias = useMemo(() => {
     const q = clienteQuery.trim().toLowerCase();
@@ -164,11 +173,23 @@ export function ContrataForm({
     // La UI lee de IndexedDB (offline-first): sin este sync la contrata
     // nueva no aparece en listas/dashboard hasta la próxima recarga completa.
     if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
+
+    // Al crear no se navega de inmediato: se muestra la confirmación con la
+    // opción de mandarle los detalles al cliente por WhatsApp, que es justo
+    // el momento de la entrega. Al editar sí se vuelve a la contrata.
+    if (!editando) {
+      setCreada(guardada as ContrataCreada);
+      return;
+    }
     router.push(`/contratas/${guardada.id}`);
     router.refresh();
   }
 
   const volverHref = volverHrefProp ?? "/contratas";
+
+  if (creada) {
+    return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} />;
+  }
 
   return (
     <div className="space-y-4">

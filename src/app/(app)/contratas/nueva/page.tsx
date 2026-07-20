@@ -38,6 +38,7 @@ export default async function NuevaContrataPage({
       cuotasPorDefecto={config.cuotasPorDefecto}
       maxCuotas={config.maxCuotas}
       tipoInicial={tipoInicial}
+      nombreApp={config.nombreApp}
       clientePreseleccionado={clientePreseleccionado}
       volverHref={
         clientePreseleccionado

@@ -4,19 +4,24 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { EstadoBadge } from "@/components/estado-badge";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { formatMoneda } from "@/lib/utils";
 import type { ContrataResumen } from "@/components/contratas/tipos";
 
-type Orden = "reciente" | "saldo" | "cliente";
-type EstadoFiltro = "ACTIVAS" | "PAGADAS" | "TODAS";
+/**
+ * El filtro principal es por estado de cobranza: lo primero que necesitas
+ * ver al abrir la app es a quién hay que cobrarle, por eso «Vencidas» es
+ * el valor por defecto. «Todas» incluye también las pagadas y las que se
+ * pasaron a deuda.
+ */
+type EstadoFiltro = "VENCIDO" | "PROXIMO" | "AL_CORRIENTE" | "TODAS";
 
 const ESTADO_OPCIONES: { value: EstadoFiltro; label: string }[] = [
-  { value: "ACTIVAS", label: "Activas" },
-  { value: "PAGADAS", label: "Pagadas" },
+  { value: "VENCIDO", label: "Vencidas" },
+  { value: "PROXIMO", label: "Próximas" },
+  { value: "AL_CORRIENTE", label: "Al día" },
   { value: "TODAS", label: "Todas" },
 ];
 
@@ -26,26 +31,20 @@ export function ContratasLista({
   contratas: ContrataResumen[];
 }) {
   const [q, setQ] = useState("");
-  const [orden, setOrden] = useState<Orden>("reciente");
-  const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("ACTIVAS");
+  const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("VENCIDO");
 
   const visibles = useMemo(() => {
     const filtro = q.trim().toLowerCase();
     const arr = contratas.filter((c) => {
       if (!c.clienteNombre.toLowerCase().includes(filtro)) return false;
-      if (estadoFiltro === "ACTIVAS")
-        return c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA";
-      if (estadoFiltro === "PAGADAS") return c.estado === "LIQUIDADA";
-      return true;
+      if (estadoFiltro === "TODAS") return true;
+      return c.estado === estadoFiltro;
     });
-    arr.sort((a, b) => {
-      if (orden === "saldo") return b.saldo - a.saldo;
-      if (orden === "cliente")
-        return a.clienteNombre.localeCompare(b.clienteNombre);
-      return b.creadoEn.localeCompare(a.creadoEn);
-    });
+    // Dentro de un mismo estado, primero el saldo más grande: es lo que
+    // más urge cobrar.
+    arr.sort((a, b) => b.saldo - a.saldo || b.creadoEn.localeCompare(a.creadoEn));
     return arr;
-  }, [contratas, q, orden, estadoFiltro]);
+  }, [contratas, q, estadoFiltro]);
 
   if (contratas.length === 0) {
     return (
@@ -63,26 +62,14 @@ export function ContratasLista({
         options={ESTADO_OPCIONES}
       />
 
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar cliente…"
-            className="pl-8"
-          />
-        </div>
-        <Select
-          value={orden}
-          onChange={(e) => setOrden(e.target.value as Orden)}
-          className="w-auto pr-8 text-sm"
-          aria-label="Ordenar"
-        >
-          <option value="reciente">Recientes</option>
-          <option value="saldo">Mayor saldo</option>
-          <option value="cliente">Cliente A-Z</option>
-        </Select>
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar cliente…"
+          className="pl-8"
+        />
       </div>
 
       <ul className="space-y-2">

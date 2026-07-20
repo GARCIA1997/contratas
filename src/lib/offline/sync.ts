@@ -50,7 +50,18 @@ export async function syncContratas(ownerId: string): Promise<void> {
     "rw",
     [database.contratas, database.pagos, database.clientes],
     async () => {
+    // Igual que en clientes: lo que queda en este set tras recorrer la
+    // respuesta fue eliminado en el servidor y hay que sacarlo de la caché.
+    // Los `_dirty` se excluyen (incluye las borradas offline, que siguen
+    // existiendo en el servidor hasta que la cola se vacíe).
+    const eliminadasEnServidor = new Set(
+      (await database.contratas.where("ownerId").equals(ownerId).toArray())
+        .filter((c) => !c._dirty)
+        .map((c) => c.id)
+    );
+
     for (const c of contratas) {
+      eliminadasEnServidor.delete(c.id);
       const local = await database.contratas.get(c.id);
       if (local?._dirty) continue; // hay una escritura local sin confirmar, no pisar
 
@@ -106,6 +117,18 @@ export async function syncContratas(ownerId: string): Promise<void> {
         await database.pagos.bulkDelete(Array.from(existentesIds));
       }
     }
+
+    // Contratas eliminadas en el servidor: se quitan junto con sus pagos
+    // para no dejar huérfanos en la caché.
+    if (eliminadasEnServidor.size > 0) {
+      const ids = Array.from(eliminadasEnServidor);
+      const pagosHuerfanos = await database.pagos
+        .where("contrataId")
+        .anyOf(ids)
+        .primaryKeys();
+      await database.pagos.bulkDelete(pagosHuerfanos);
+      await database.contratas.bulkDelete(ids);
+    }
   });
 }
 
@@ -129,7 +152,18 @@ export async function syncClientes(ownerId: string): Promise<void> {
   const clientes: ClienteApi[] = await res.json();
 
   await database.transaction("rw", [database.clientes], async () => {
+    // Se parte del set local y se va descartando lo que sí vino del
+    // servidor; lo que sobra fue eliminado allá. Los `_dirty` se excluyen
+    // del barrido: tienen una escritura local sin confirmar y el servidor
+    // todavía no los refleja.
+    const eliminadosEnServidor = new Set(
+      (await database.clientes.where("ownerId").equals(ownerId).toArray())
+        .filter((c) => !c._dirty)
+        .map((c) => c.id)
+    );
+
     for (const c of clientes) {
+      eliminadosEnServidor.delete(c.id);
       const local = await database.clientes.get(c.id);
       if (local?._dirty) continue;
       await database.clientes.put({
@@ -142,6 +176,10 @@ export async function syncClientes(ownerId: string): Promise<void> {
         notas: c.notas,
         creadoEn: c.creadoEn,
       });
+    }
+
+    if (eliminadosEnServidor.size > 0) {
+      await database.clientes.bulkDelete(Array.from(eliminadosEnServidor));
     }
   });
 }
@@ -279,12 +317,7 @@ export async function syncConfiguracion(ownerId: string): Promise<void> {
   await database.configuracion.put({ ownerId, ...cfg });
 }
 
-let syncing = false;
-
-/** Sincroniza todas las entidades cubiertas por la capa offline. Evita solapes. */
-export async function syncAll(ownerId: string): Promise<void> {
-  if (syncing || typeof navigator === "undefined" || !navigator.onLine) return;
-  syncing = true;
+async function ejecutarSync(ownerId: string): Promise<void> {
   try {
     await Promise.all([
       syncContratas(ownerId),
@@ -294,7 +327,26 @@ export async function syncAll(ownerId: string): Promise<void> {
     ]);
   } catch {
     // Sin red o error del servidor: la app sigue funcionando desde caché local.
-  } finally {
-    syncing = false;
   }
+}
+
+/** Cola de sincronizaciones: nunca corren dos a la vez, pero tampoco se pierde ninguna. */
+let cadena: Promise<void> = Promise.resolve();
+
+/**
+ * Sincroniza todas las entidades cubiertas por la capa offline.
+ *
+ * Si ya hay una corriendo, esta se encola detrás en vez de descartarse.
+ * Descartarla (como se hacía antes con un flag booleano) rompía a quien
+ * pide un sync explícito y espera ver el resultado: el botón «Recargar
+ * datos» o el sync que corre justo después de eliminar algo se volvían
+ * silenciosamente un no-op si coincidían con el sync del montaje, dejando
+ * en pantalla datos que el servidor ya no tiene.
+ */
+export function syncAll(ownerId: string): Promise<void> {
+  if (typeof navigator === "undefined" || !navigator.onLine) {
+    return Promise.resolve();
+  }
+  cadena = cadena.catch(() => {}).then(() => ejecutarSync(ownerId));
+  return cadena;
 }

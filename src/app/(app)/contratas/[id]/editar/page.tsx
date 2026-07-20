@@ -28,6 +28,7 @@ export default async function EditarContrataPage({
         cuotasPorDefecto={config.cuotasPorDefecto}
         maxCuotas={config.maxCuotas}
         tipoInicial={c.tipo}
+        nombreApp={config.nombreApp}
         inicial={{
           id: c.id,
           clienteId: c.clienteId,
