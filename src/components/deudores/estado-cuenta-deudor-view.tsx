@@ -68,7 +68,7 @@ export function EstadoCuentaDeudorView({
   const abonado = deudor.deudaInicial - deudor.saldoActual;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
         <Link href={`/deudores/${deudor.id}`}>
           <ArrowLeft className="size-4" /> Volver

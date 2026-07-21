@@ -151,7 +151,7 @@ export function RenovarForm({
 
   if (pendienteSync) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 md:max-w-xl">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
             Renovación pendiente
@@ -175,7 +175,7 @@ export function RenovarForm({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
         <Link href={`/contratas/${contrataId}`}>
           <ArrowLeft className="size-4" /> Volver

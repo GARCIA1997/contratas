@@ -168,7 +168,7 @@ export function UnificarForm({
 
   if (pendienteSync) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 md:max-w-xl">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
             Unificación pendiente
@@ -192,7 +192,7 @@ export function UnificarForm({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
         <Link href={`/clientes/${clienteId}`}>
           <ArrowLeft className="size-4" /> Volver

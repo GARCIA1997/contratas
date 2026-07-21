@@ -147,7 +147,7 @@ export default function RutaDelDiaPage() {
         </Card>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
         {paradas?.map((p) => (
           <Parada key={p.clienteId} parada={p} ownerId={ownerId as string} />
         ))}

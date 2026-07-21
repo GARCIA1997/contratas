@@ -65,7 +65,7 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
         <Link href={editando ? `/clientes/${inicial!.id}` : "/clientes"}>
           <ArrowLeft className="size-4" /> Volver

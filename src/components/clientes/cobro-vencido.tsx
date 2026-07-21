@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
 import { enqueue } from "@/lib/offline/queue";
+import { syncContratas } from "@/lib/offline/sync";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -92,6 +93,11 @@ export function CobroVencido({
       setResultado(data);
       setTotal(0);
       setCuotas(0);
+      // El POST ya cobró en el servidor, pero la caché local (Dexie) no se
+      // entera sola — sin esto, /ruta y el perfil del cliente (que leen de
+      // Dexie via useLiveQuery) seguían mostrando las cuotas como vencidas
+      // hasta un refresh manual.
+      if (ownerId) await syncContratas(ownerId);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo registrar el cobro");

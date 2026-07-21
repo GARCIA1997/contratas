@@ -9,7 +9,7 @@ export default async function CalculadoraPage() {
   const config = await getConfig(user.ownerId);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">
           Calculadora de préstamo
