@@ -1,4 +1,5 @@
 import withSerwistInit from "@serwist/next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const withSerwist = withSerwistInit({
   swSrc: "src/sw.ts",
@@ -43,4 +44,20 @@ const nextConfig = {
   },
 };
 
-export default withSerwist(nextConfig);
+export default withSentryConfig(withSerwist(nextConfig), {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Sin SENTRY_AUTH_TOKEN (dev local, o VPS sin cuenta de Sentry configurada
+  // aún) el plugin simplemente no sube sourcemaps — el build sigue
+  // funcionando normal, solo los stack traces en Sentry no estarán
+  // "des-minificados" hasta que se configure.
+  silent: true,
+  widenClientFileUpload: true,
+  // El túnel evita que ad-blockers bloqueen las peticiones a Sentry desde el
+  // cliente (petición pasa por nuestro propio dominio en vez de ingest.sentry.io).
+  tunnelRoute: "/monitoring",
+  webpack: {
+    treeshake: { removeDebugLogging: true },
+  },
+});
