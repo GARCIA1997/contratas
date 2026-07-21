@@ -10,7 +10,7 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-40 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)]">
-      <div className="glass glass-nav mx-auto flex h-14 max-w-lg items-center justify-between gap-2 rounded-[1.5rem] px-3 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.15)] sm:px-4">
+      <div className="glass glass-nav mx-auto flex h-14 max-w-lg items-center justify-between gap-2 rounded-[1.5rem] px-3 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.15)] sm:px-4 md:max-w-3xl lg:max-w-5xl">
         <div className="flex min-w-0 items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

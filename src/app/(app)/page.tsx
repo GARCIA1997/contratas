@@ -90,7 +90,7 @@ export default function DashboardPage() {
         <p className="text-sm text-muted-foreground">Resumen de tu cartera</p>
       </div>
 
-      <div className="flex gap-1 rounded-lg bg-muted p-1">
+      <div className="flex gap-1 rounded-lg bg-muted p-1 md:max-w-sm">
         {FILTROS.map((f) => (
           <Link
             key={f.key}
@@ -107,6 +107,14 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/*
+        En móvil (sin prefijo) esto sigue siendo un simple stack vertical
+        (space-y-4 heredado del contenedor de arriba, grid desactivado). A
+        partir de md: se activa un grid de 2/3 columnas — las tarjetas de
+        resumen ocupan una celda, las que tienen datos más anchos (flujo de
+        caja, tendencia, dinero entregado) ocupan la fila completa.
+      */}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       <Card>
         <CardHeader className="p-4 pb-1">
           <CardTitle className="text-xs font-medium text-muted-foreground">
@@ -117,13 +125,13 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3">
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Proyectado</p>
-              <p className="truncate text-sm font-semibold sm:text-base">
+              <p className="truncate text-sm font-semibold sm:text-base md:text-sm lg:text-base">
                 {formatMoneda(periodo.proyectado)}
               </p>
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Cobrado</p>
-              <p className="truncate text-sm font-semibold text-primary sm:text-base">
+              <p className="truncate text-sm font-semibold text-primary sm:text-base md:text-sm lg:text-base">
                 {formatMoneda(periodo.cobrado)}
               </p>
             </div>
@@ -146,13 +154,13 @@ export default function DashboardPage() {
               <p className="text-xs text-muted-foreground">
                 Cobrado histórico
               </p>
-              <p className="truncate text-sm font-semibold sm:text-base">
+              <p className="truncate text-sm font-semibold sm:text-base md:text-sm lg:text-base">
                 {formatMoneda(kpis.cobrado.total)}
               </p>
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Saldo por cobrar</p>
-              <p className="truncate text-sm font-semibold text-primary sm:text-base">
+              <p className="truncate text-sm font-semibold text-primary sm:text-base md:text-sm lg:text-base">
                 {formatMoneda(kpis.saldoPendiente)}
               </p>
             </div>
@@ -169,13 +177,13 @@ export default function DashboardPage() {
         <CardContent className="grid grid-cols-2 gap-3 p-4 pt-2">
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Capital activo</p>
-            <p className="truncate text-base font-semibold sm:text-lg">
+            <p className="truncate text-base font-semibold sm:text-lg md:text-base lg:text-lg">
               {formatMoneda(kpis.capitalActivo)}
             </p>
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Contratas activas</p>
-            <p className="truncate text-base font-semibold sm:text-lg">
+            <p className="truncate text-base font-semibold sm:text-lg md:text-base lg:text-lg">
               {kpis.contratasActivas}
             </p>
           </div>
@@ -188,12 +196,12 @@ export default function DashboardPage() {
             Salud de la cartera
           </CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-3 gap-3 p-4 pt-2">
+        <CardContent className="grid grid-cols-3 gap-3 p-4 pt-2 md:grid-cols-2 lg:grid-cols-3">
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Morosidad</p>
             <p
               className={cn(
-                "truncate text-base font-semibold sm:text-lg",
+                "truncate text-base font-semibold sm:text-lg md:text-base lg:text-lg",
                 kpis.tasaMorosidad === 0
                   ? "text-pagado"
                   : kpis.tasaMorosidad > 20
@@ -206,13 +214,13 @@ export default function DashboardPage() {
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Ganancia este mes</p>
-            <p className="truncate text-base font-semibold text-primary sm:text-lg">
+            <p className="truncate text-base font-semibold text-primary sm:text-lg md:text-base lg:text-lg">
               {formatMoneda(kpis.ganancia.mes)}
             </p>
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Atraso promedio</p>
-            <p className="truncate text-base font-semibold sm:text-lg">
+            <p className="truncate text-base font-semibold sm:text-lg md:text-base lg:text-lg">
               {kpis.diasPromedioAtraso === null
                 ? "—"
                 : `${kpis.diasPromedioAtraso} d`}
@@ -227,7 +235,7 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="md:col-span-2 lg:col-span-3">
         <CardHeader className="p-4 pb-1">
           <CardTitle className="text-xs font-medium text-muted-foreground">
             Flujo de caja proyectado
@@ -244,7 +252,7 @@ export default function DashboardPage() {
                 {" – "}
                 {format(anclarFechaCliente(b.hasta), "d MMM", { locale: es })}
               </p>
-              <p className="truncate text-sm font-semibold sm:text-base">
+              <p className="truncate text-sm font-semibold sm:text-base md:text-sm lg:text-base">
                 {formatMoneda(b.monto)}
               </p>
             </div>
@@ -253,7 +261,7 @@ export default function DashboardPage() {
       </Card>
 
       {tendencia && tendencia.length > 0 && (
-        <Card>
+        <Card className="md:col-span-2 lg:col-span-3">
           <CardHeader className="p-4 pb-1">
             <CardTitle className="text-xs font-medium text-muted-foreground">
               Tendencia · últimos 6 meses
@@ -265,7 +273,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <Card>
+      <Card className="md:col-span-2 lg:col-span-3">
         <CardHeader className="p-4 pb-1">
           <CardTitle className="text-xs font-medium text-muted-foreground">
             Dinero entregado este mes
@@ -274,30 +282,31 @@ export default function DashboardPage() {
         <CardContent className="grid grid-cols-2 gap-3 p-4 pt-2 sm:grid-cols-4">
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Semanal</p>
-            <p className="truncate text-sm font-semibold sm:text-base">
+            <p className="truncate text-sm font-semibold sm:text-base md:text-sm lg:text-base">
               {formatMoneda(entregado.semanal)}
             </p>
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Quincenal</p>
-            <p className="truncate text-sm font-semibold sm:text-base">
+            <p className="truncate text-sm font-semibold sm:text-base md:text-sm lg:text-base">
               {formatMoneda(entregado.quincenal)}
             </p>
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Mensual</p>
-            <p className="truncate text-sm font-semibold sm:text-base">
+            <p className="truncate text-sm font-semibold sm:text-base md:text-sm lg:text-base">
               {formatMoneda(entregado.mensual)}
             </p>
           </div>
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">Todas</p>
-            <p className="truncate text-sm font-semibold text-primary sm:text-base">
+            <p className="truncate text-sm font-semibold text-primary sm:text-base md:text-sm lg:text-base">
               {formatMoneda(entregado.todas)}
             </p>
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {kpis.contratasActivas === 0 && (
         <p className="text-center text-xs text-muted-foreground">
