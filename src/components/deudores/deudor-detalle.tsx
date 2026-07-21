@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatMoneda } from "@/lib/utils";
 import { enqueue } from "@/lib/offline/queue";
+import { syncDeudores } from "@/lib/offline/sync";
 
 type AbonoUI = {
   id: string;
@@ -101,6 +102,10 @@ export function DeudorDetalle({
     if (!confirm("¿Eliminar este deudor y su historial?")) return;
     const res = await fetch(`/api/deudores/${deudor.id}`, { method: "DELETE" });
     if (res.ok) {
+      // Igual que en cobro-vencido: el DELETE ya pasó en el servidor, pero
+      // Dexie sigue teniendo el registro hasta el próximo sync — sin esto
+      // la lista de deudores lo seguía mostrando hasta un refresh manual.
+      if (ownerId) await syncDeudores(ownerId);
       router.push("/deudores");
       router.refresh();
     } else {
@@ -109,7 +114,7 @@ export function DeudorDetalle({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/deudores">
