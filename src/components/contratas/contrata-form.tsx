@@ -213,7 +213,7 @@ export function ContrataForm({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
         <Link href={editando ? `/contratas/${inicial!.id}` : volverHref}>
           <ArrowLeft className="size-4" /> Volver

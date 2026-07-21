@@ -62,7 +62,7 @@ export function ContratasLista({
         options={ESTADO_OPCIONES}
       />
 
-      <div className="relative">
+      <div className="relative md:max-w-sm">
         <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
         <Input
           value={q}
@@ -72,7 +72,7 @@ export function ContratasLista({
         />
       </div>
 
-      <ul className="space-y-2">
+      <ul className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
         {visibles.map((c) => (
           <li key={c.id}>
             <Link href={`/contratas/${c.id}`}>

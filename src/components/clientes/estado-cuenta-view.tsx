@@ -128,7 +128,7 @@ export function EstadoCuentaView({
   const link = linkWhatsApp(telefono, mensaje);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
         <Link href={`/clientes/${cliente.id}`}>
           <ArrowLeft className="size-4" /> Volver

@@ -24,7 +24,7 @@ export default function ConfigPage() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 md:max-w-xl">
       <h1 className="text-2xl font-bold tracking-tight">Configuración</h1>
 
       {!esAdmin && (
