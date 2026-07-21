@@ -6,6 +6,13 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 # postinstall corre `prisma generate`, que necesita el schema presente.
 COPY prisma ./prisma
+# @sentry/cli (dependencia transitiva de @sentry/nextjs) descarga un binario
+# nativo en su postinstall; en node:20-alpine (musl) esa descarga puede
+# colgarse varios minutos y hacer fallar el deploy por timeout. No lo
+# necesitamos: no subimos sourcemaps a Sentry desde este build (sin
+# SENTRY_AUTH_TOKEN el plugin ya se salta esa parte), así que se salta la
+# descarga por completo.
+ENV SENTRYCLI_SKIP_DOWNLOAD=1
 RUN npm ci
 
 # ---- builder: genera Prisma Client, aplica migraciones y compila Next.js ----
