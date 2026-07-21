@@ -1,0 +1,49 @@
+name: CI
+
+# Corre en cada PR y en pushes a cualquier rama que no sea main (main ya
+# dispara el deploy en deploy.yml) — así el resultado se ve como check en
+# GitHub antes de mergear, sin depender de un despliegue real.
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholders: nada en este pipeline hace una conexión real a la BD
+      # (prisma generate solo lee el schema; next build no ejecuta
+      # queries top-level). Si algún día algo sí la necesita, fallará aquí
+      # de forma clara en vez de silenciosamente en producción.
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+      NEXTAUTH_SECRET: "ci-secret-no-usar-en-produccion"
+      NEXTAUTH_URL: "http://localhost:3000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Generar cliente de Prisma
+        run: npx prisma generate
+
+      - name: Tipos (tsconfig.json)
+        run: npx tsc --noEmit
+
+      - name: Tipos (service worker)
+        run: npx tsc --noEmit -p tsconfig.sw.json
+
+      - name: Lint
+        run: npx next lint
+
+      - name: Tests (vitest)
+        run: npm test
+
+      - name: Build
+        run: npx next build
