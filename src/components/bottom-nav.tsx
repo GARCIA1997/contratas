@@ -3,31 +3,8 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  LayoutDashboard,
-  FileStack,
-  Users,
-  UserRound,
-  Settings,
-  Route,
-  type LucideIcon,
-} from "lucide-react";
 import { cn } from "@/lib/utils";
-
-type NavItem = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-};
-
-const items: NavItem[] = [
-  { href: "/", label: "Inicio", icon: LayoutDashboard },
-  { href: "/ruta", label: "Ruta", icon: Route },
-  { href: "/contratas", label: "Contratas", icon: FileStack },
-  { href: "/clientes", label: "Clientes", icon: UserRound },
-  { href: "/deudores", label: "Deudores", icon: Users },
-  { href: "/config", label: "Config", icon: Settings },
-];
+import { NAV_ITEMS as items } from "@/components/nav-items";
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -44,7 +21,9 @@ export function BottomNav() {
   }, [router, pathname]);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+    // md:hidden: a partir de tablet la navegación vive en SidebarNav — el
+    // celular (sin prefijo) no cambia en absoluto.
+    <nav className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden">
       <ul className="glass glass-nav mx-auto flex max-w-lg items-stretch justify-around rounded-[1.75rem] px-1 py-1.5 shadow-[0_8px_32px_-8px_rgba(0,0,0,0.25)]">
         {items.map(({ href, label, icon: Icon }) => {
           const active =

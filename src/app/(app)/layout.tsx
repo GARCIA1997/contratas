@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { BottomNav } from "@/components/bottom-nav";
+import { SidebarNav } from "@/components/sidebar-nav";
 import { OfflineBootstrap } from "@/components/offline/offline-bootstrap";
 import { SyncStatusBadge } from "@/components/offline/sync-status-badge";
 import { RefreshButton } from "@/components/offline/refresh-button";
@@ -35,15 +36,24 @@ export default function AppLayout({
   }
 
   return (
-    <div className="min-h-dvh">
+    // md:flex + SidebarNav: a partir de tablet la navegación pasa a un
+    // sidebar fijo a la izquierda (BottomNav se oculta) y el contenido usa
+    // el ancho disponible en vez de quedar centrado a 512px. Sin prefijo
+    // `md:`/`lg:` nada cambia — el celular queda pixel-igual.
+    <div className="min-h-dvh md:flex">
       <OfflineToast />
       <OfflineBootstrap ownerId={ownerId} />
-      <AppHeader />
-      <div className="mx-auto flex max-w-lg items-center justify-end gap-2 px-4 pt-2">
-        <SyncStatusBadge ownerId={ownerId} />
-        <RefreshButton ownerId={ownerId} />
+      <SidebarNav />
+      <div className="min-w-0 flex-1">
+        <AppHeader />
+        <div className="mx-auto flex max-w-lg items-center justify-end gap-2 px-4 pt-2 md:max-w-3xl lg:max-w-5xl">
+          <SyncStatusBadge ownerId={ownerId} />
+          <RefreshButton ownerId={ownerId} />
+        </div>
+        <main className="mx-auto max-w-lg px-4 pb-32 pt-2 md:max-w-3xl md:pb-8 lg:max-w-5xl">
+          {children}
+        </main>
       </div>
-      <main className="mx-auto max-w-lg px-4 pb-32 pt-2">{children}</main>
       <BottomNav />
     </div>
   );
