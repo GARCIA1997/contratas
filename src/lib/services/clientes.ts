@@ -166,7 +166,15 @@ export async function getEstadoCuentaCliente(
   });
   if (!cliente) throw new HttpError(404, "Cliente no encontrado");
 
-  const contratas: ContrataDeEstadoCuenta[] = cliente.contratas.map((c) => ({
+  // Solo contratas activas: el estado de cuenta es "cómo va" el cliente
+  // ahora mismo — las liquidadas o pasadas a deuda ya no aportan nada a esa
+  // foto (la deuda vive aparte, en Deudores; lo liquidado ya está en el
+  // historial completo, ver getHistorialCliente).
+  const contratasActivas = cliente.contratas.filter(
+    (c) => !c.convertidaADeuda && estadoContrata(c.pagos) !== "LIQUIDADA"
+  );
+
+  const contratas: ContrataDeEstadoCuenta[] = contratasActivas.map((c) => ({
     id: c.id,
     tipo: c.tipo,
     monto: c.monto,

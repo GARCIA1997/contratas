@@ -427,7 +427,7 @@ export async function getEstadoCuentaCliente(
     await db.contratas.where("clienteId").equals(clienteId).toArray()
   ).filter((c) => !c._deletedAt);
 
-  const contratas = await Promise.all(
+  const contratasConEstado = await Promise.all(
     contratasRaw.map(async (c) => {
       const pagos = await pagosDeContrata(c.id);
       const pagosParaCalculo = pagos.map((p) => ({
@@ -451,6 +451,11 @@ export async function getEstadoCuentaCliente(
         pagos,
       };
     })
+  );
+  // Solo activas: mismo criterio que services/clientes.ts::getEstadoCuentaCliente
+  // (el estado de cuenta es la foto de "cómo va" ahora mismo, no el histórico).
+  const contratas = contratasConEstado.filter(
+    (c) => c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA"
   );
   contratas.sort((a, b) => b.id.localeCompare(a.id));
 
