@@ -202,17 +202,21 @@ export async function getKpis(
   const todas = (await db.contratas.where("ownerId").equals(ownerId).toArray()).filter(
     (c) => !c._deletedAt
   );
-  const activasFiltradas = todas.filter(
-    (c) => !c.convertidaADeuda && (filtro === "TODAS" || c.tipo === filtro)
+  // Ya no se excluye convertidaADeuda aquí: aggregateKpis necesita verlas
+  // para contar su cobrado/ganancia histórico, y decide internamente qué
+  // KPIs "hacia adelante" se saltan para ellas.
+  const filtradas = todas.filter(
+    (c) => filtro === "TODAS" || c.tipo === filtro
   );
 
   const conPagos = await Promise.all(
-    activasFiltradas.map(async (c) => ({
+    filtradas.map(async (c) => ({
       tipo: c.tipo,
       monto: c.monto,
       abono: c.abono,
       numCuotas: c.numCuotas,
       fechaInicio: new Date(c.fechaInicio),
+      convertidaADeuda: c.convertidaADeuda,
       pagos: (await pagosDeContrata(c.id)).map((p) => ({
         pagado: p.pagado,
         montoAbonado: p.montoAbonado,
@@ -427,7 +431,7 @@ export async function getEstadoCuentaCliente(
     await db.contratas.where("clienteId").equals(clienteId).toArray()
   ).filter((c) => !c._deletedAt);
 
-  const contratas = await Promise.all(
+  const contratasConEstado = await Promise.all(
     contratasRaw.map(async (c) => {
       const pagos = await pagosDeContrata(c.id);
       const pagosParaCalculo = pagos.map((p) => ({
@@ -451,6 +455,11 @@ export async function getEstadoCuentaCliente(
         pagos,
       };
     })
+  );
+  // Solo activas: mismo criterio que services/clientes.ts::getEstadoCuentaCliente
+  // (el estado de cuenta es la foto de "cómo va" ahora mismo, no el histórico).
+  const contratas = contratasConEstado.filter(
+    (c) => c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA"
   );
   contratas.sort((a, b) => b.id.localeCompare(a.id));
 
@@ -638,4 +647,33 @@ export async function getRutaDelDia(
   );
 
   return aggregarRutaDelDia(conContratas, hoy);
+}
+
+export type IdsParaPrecarga = {
+  contratas: string[];
+  clientes: string[];
+  deudores: string[];
+};
+
+/**
+ * Solo los ids (sin enriquecer con pagos/saldos) de todo lo que existe en
+ * este espacio de trabajo — usado por el dashboard para precargar en bloque
+ * las rutas de cada contrata/cliente/deudor apenas hay señal, y así una
+ * pantalla nunca antes visitada no se quede pegada si la señal se pierde
+ * después (ver router.prefetch en la página del dashboard).
+ */
+export async function getIdsParaPrecarga(
+  ownerId: string
+): Promise<IdsParaPrecarga> {
+  if (!db) return { contratas: [], clientes: [], deudores: [] };
+  const [contratas, clientes, deudores] = await Promise.all([
+    db.contratas.where("ownerId").equals(ownerId).toArray(),
+    db.clientes.where("ownerId").equals(ownerId).toArray(),
+    db.deudores.where("ownerId").equals(ownerId).toArray(),
+  ]);
+  return {
+    contratas: contratas.filter((c) => !c._deletedAt).map((c) => c.id),
+    clientes: clientes.filter((c) => !c._deletedAt).map((c) => c.id),
+    deudores: deudores.filter((d) => !d._deletedAt).map((d) => d.id),
+  };
 }

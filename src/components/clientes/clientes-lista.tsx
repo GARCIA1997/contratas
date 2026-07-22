@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronRight, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -14,7 +15,16 @@ export type ClienteItem = {
 };
 
 export function ClientesLista({ clientes }: { clientes: ClienteItem[] }) {
+  const router = useRouter();
   const [q, setQ] = useState("");
+
+  // Precarga cada cliente visible: si el dispositivo pierde señal después,
+  // tocar cualquiera sigue funcionando en vez de quedar pegado en negro.
+  useEffect(() => {
+    for (const c of clientes) {
+      router.prefetch(`/clientes/${c.id}`);
+    }
+  }, [clientes, router]);
 
   const visibles = useMemo(() => {
     const filtro = q.trim().toLowerCase();

@@ -4,7 +4,6 @@ import {
   startOfMonth,
   endOfMonth,
   endOfDay,
-  startOfDay,
   addDays,
   addMonths,
   differenceInCalendarDays,
@@ -101,6 +100,14 @@ export type ContrataParaKpis = {
   /** Plazo pactado: junto con `abono` da el total pactado (abono*numCuotas), para separar interés de capital. */
   numCuotas: number;
   fechaInicio: Date;
+  /**
+   * Si ya se pasó a Deudores, sigue contando para el dinero histórico ya
+   * cobrado (cobrado/ganancia) — ese dinero de verdad se cobró — pero se
+   * excluye de todo lo "operativo hacia adelante" (capital activo, saldo
+   * pendiente, morosidad, proyectado, flujo de caja): esa contrata ya no
+   * tiene un calendario de cuotas vigente, su saldo ahora vive en Deudores.
+   */
+  convertidaADeuda: boolean;
   pagos: {
     pagado: boolean;
     montoAbonado: number;
@@ -113,12 +120,14 @@ export type ContrataParaKpis = {
  * Agregación pura de KPIs a partir de las contratas ya cargadas — sin
  * Prisma. Se usa tanto en el servidor (tras el `findMany`) como en el
  * cliente offline (sobre datos de IndexedDB), para no duplicar la lógica.
- * `contratasActivasFiltradas` ya debe venir filtrada por tipo/convertidaADeuda;
- * `contratasTodas` es el universo completo (todas las convertidas o no,
- * todos los tipos) usado solo para el desglose "dinero entregado este mes".
+ * `contratasFiltradas` ya debe venir filtrada por tipo (incluye tanto
+ * activas como convertidas a deuda — ver comentario de `convertidaADeuda`
+ * arriba); `contratasTodas` es el universo completo (todas las convertidas
+ * o no, todos los tipos) usado solo para el desglose "dinero entregado
+ * este mes".
  */
 export function aggregateKpis(
-  contratasActivasFiltradas: ContrataParaKpis[],
+  contratasFiltradas: ContrataParaKpis[],
   contratasTodas: Pick<ContrataParaKpis, "tipo" | "monto" | "fechaInicio">[],
   hoy: Date = new Date()
 ): Kpis {
@@ -153,12 +162,21 @@ export function aggregateKpis(
     todas: 0,
   };
 
-  // Flujo de caja proyectado: 4 baldes semanales empezando hoy, con lo que
-  // falta cobrar de cuotas ya pendientes (no lo ya pagado).
-  const inicioFlujo = startOfDay(hoy);
+  // Flujo de caja proyectado: 4 baldes de semana calendario (lunes-domingo,
+  // igual que `semana` arriba, empezando por la semana en curso) con lo que
+  // falta cobrar de cuotas ya pendientes (no lo ya pagado). Antes usaba una
+  // ventana móvil de 7 días desde hoy — dos definiciones distintas de
+  // "esta semana" en el mismo dashboard hacían que las tarjetas no
+  // cuadraran entre sí a mitad de semana.
   const baldes: BucketFlujo[] = Array.from({ length: 4 }, (_, i) => {
-    const desde = addDays(inicioFlujo, i * 7);
-    const hasta = addDays(inicioFlujo, i * 7 + 6);
+    const desde = addDays(semana.start, i * 7);
+    // addDays (no endOfWeek) a propósito: mantiene `hasta` anclado a
+    // medianoche local, igual que `desde` — el resto del código (y el
+    // cliente, al formatear con anclarFechaCliente) asume fechas
+    // "solo-calendario" ancladas a medianoche. Un endOfWeek (23:59:59.999
+    // local) se corre al día siguiente en UTC y el cliente lo mostraba mal
+    // (probado: "20 jul – 27 jul" en vez de "20 jul – 26 jul").
+    const hasta = addDays(desde, 6);
     return { desde: desde.toISOString(), hasta: hasta.toISOString(), monto: 0 };
   });
 
@@ -176,7 +194,7 @@ export function aggregateKpis(
     }
   }
 
-  for (const c of contratasActivasFiltradas) {
+  for (const c of contratasFiltradas) {
     // Cuánto de esta contrata es capital vs interés, para separar la
     // ganancia real del dinero que solo "regresa": el total pactado
     // (abono * numCuotas) menos el capital prestado es el interés total
@@ -212,6 +230,13 @@ export function aggregateKpis(
         diasAtrasoCasos += 1;
       }
     }
+
+    // Lo que sigue (proyectado, flujo de caja, capital activo, morosidad)
+    // es "hacia adelante" — una contrata ya convertida a deuda no tiene
+    // calendario vigente, su saldo restante ahora vive en Deudores, así que
+    // no debe proyectarse aquí (pero su cobrado histórico de arriba sí
+    // cuenta, ese dinero de verdad se cobró).
+    if (c.convertidaADeuda) continue;
 
     // Proyectado: todas las cuotas con vencimiento programado dentro de
     // cada ventana (semana/quincena/mes en curso), pagadas o no — es lo
@@ -295,10 +320,13 @@ export function aggregateKpis(
 }
 
 /**
- * Calcula los KPIs del dashboard para un usuario. Los TOTALES de capital,
- * contratas activas y saldo pendiente consideran ÚNICAMENTE contratas
- * activas (con al menos una cuota no marcada como pagada), y el saldo
- * pendiente solo suma el remanente de cuotas no pagadas.
+ * Calcula los KPIs del dashboard para un usuario. Los TOTALES "hacia
+ * adelante" (capital activo, contratas activas, saldo pendiente,
+ * proyectado, flujo de caja) consideran ÚNICAMENTE contratas activas (con
+ * al menos una cuota no marcada como pagada, y no convertidas a deuda). Lo
+ * ya cobrado/ganado (cobrado, ganancia) sí incluye contratas convertidas a
+ * deuda — ese dinero se cobró de verdad antes de la conversión y no debe
+ * desaparecer del histórico (ver `aggregateKpis`).
  */
 export async function computeKpis(
   ownerId: string,
@@ -309,7 +337,7 @@ export async function computeKpis(
     filtro === "TODAS" ? undefined : filtro;
 
   const contratas = await prisma.contrata.findMany({
-    where: { ownerId, convertidaADeuda: false, ...(tipo ? { tipo } : {}) },
+    where: { ownerId, ...(tipo ? { tipo } : {}) },
     include: { pagos: true },
   });
 

@@ -175,14 +175,32 @@ async function reconciliarTrasExito(
     await Promise.all([syncContratas(ownerId), syncDeudores(ownerId)]);
     return;
   }
-  if (
-    type === "contrata.editar" ||
-    type === "contrata.renovar" ||
-    type === "cliente.unificar"
-  ) {
+  if (type === "contrata.editar") {
     // El efecto optimista es deliberadamente incompleto (no recalcula el
-    // calendario de cuotas ni conoce el id de la contrata nueva) — el
-    // pull-sync trae el resultado real ya confirmado por el servidor.
+    // calendario de cuotas) — el pull-sync trae el resultado real ya
+    // confirmado por el servidor. limpiarDirtySiSinPendientes ya limpia el
+    // _dirty de payload.contrataId, así que aquí no hace falta más.
+    await syncContratas(ownerId);
+    return;
+  }
+  if (type === "contrata.renovar" || type === "cliente.unificar") {
+    // Igual que arriba, pero estas dos además tocan un ARRAY de contratas
+    // (otrasIds / contrataIds) que limpiarDirtySiSinPendientes no conoce
+    // (solo limpia _dirty de payload.contrataId, el campo singular). Sin
+    // esto, esas contratas quedaban con _dirty:true para siempre y
+    // syncContratas se rehusaba a pisarlas — la cuota que el servidor sí
+    // liquidó (p. ej. al marcar "incluir otras" al renovar) nunca se veía
+    // reflejada en la app.
+    const database = db;
+    if (database) {
+      const ids =
+        type === "contrata.renovar"
+          ? [payload.contrataId as string, ...((payload.otrasIds as string[]) ?? [])]
+          : (payload.contrataIds as string[]);
+      await Promise.all(
+        ids.map((id) => database.contratas.update(id, { _dirty: false }))
+      );
+    }
     await syncContratas(ownerId);
     return;
   }

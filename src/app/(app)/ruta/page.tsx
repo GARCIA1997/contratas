@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Phone, MessageCircle, MapPin, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -116,6 +117,7 @@ function Parada({
 
 export default function RutaDelDiaPage() {
   const claims = useAuthClaims();
+  const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const nombre = claims.ready ? claims.nombre : null;
 
@@ -123,6 +125,18 @@ export default function RutaDelDiaPage() {
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
     [ownerId]
   );
+
+  // Esta es literalmente la pantalla de "voy a salir a cobrar y puedo
+  // perder la señal" — a diferencia de los prefetch puntuales de otras
+  // pantallas (que solo cubren lo que ya visitaste), aquí se precarga de
+  // una vez TODA la ruta del día, incluyendo clientes que nunca abriste,
+  // para no quedar pegado en pantalla negra al tocarlos sin conexión.
+  useEffect(() => {
+    if (!paradas) return;
+    for (const p of paradas) {
+      router.prefetch(`/clientes/${p.clienteId}`);
+    }
+  }, [paradas, router]);
 
   const totalDia = paradas?.reduce((s, p) => s + p.total, 0) ?? 0;
 
