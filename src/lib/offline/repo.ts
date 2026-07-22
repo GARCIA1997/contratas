@@ -202,17 +202,21 @@ export async function getKpis(
   const todas = (await db.contratas.where("ownerId").equals(ownerId).toArray()).filter(
     (c) => !c._deletedAt
   );
-  const activasFiltradas = todas.filter(
-    (c) => !c.convertidaADeuda && (filtro === "TODAS" || c.tipo === filtro)
+  // Ya no se excluye convertidaADeuda aquí: aggregateKpis necesita verlas
+  // para contar su cobrado/ganancia histórico, y decide internamente qué
+  // KPIs "hacia adelante" se saltan para ellas.
+  const filtradas = todas.filter(
+    (c) => filtro === "TODAS" || c.tipo === filtro
   );
 
   const conPagos = await Promise.all(
-    activasFiltradas.map(async (c) => ({
+    filtradas.map(async (c) => ({
       tipo: c.tipo,
       monto: c.monto,
       abono: c.abono,
       numCuotas: c.numCuotas,
       fechaInicio: new Date(c.fechaInicio),
+      convertidaADeuda: c.convertidaADeuda,
       pagos: (await pagosDeContrata(c.id)).map((p) => ({
         pagado: p.pagado,
         montoAbonado: p.montoAbonado,
