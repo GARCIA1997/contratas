@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -30,8 +31,18 @@ export function ContratasLista({
 }: {
   contratas: ContrataResumen[];
 }) {
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("VENCIDO");
+
+  // Precarga cada contrata visible en el listado: si el dispositivo pierde
+  // señal después, tocar cualquiera (no solo las ya abiertas antes) sigue
+  // funcionando en vez de quedar pegado en pantalla negra.
+  useEffect(() => {
+    for (const c of contratas) {
+      router.prefetch(`/contratas/${c.id}`);
+    }
+  }, [contratas, router]);
 
   const visibles = useMemo(() => {
     const filtro = q.trim().toLowerCase();
