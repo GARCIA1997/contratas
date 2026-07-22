@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Card,
@@ -12,7 +13,8 @@ import {
 import { Saludo } from "@/components/saludo";
 import { TendenciaChart } from "@/components/tendencia-chart";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getKpis, getTendencia } from "@/lib/offline/repo";
+import { getKpis, getTendencia, getIdsParaPrecarga } from "@/lib/offline/repo";
+import { precargarTodaLaApp } from "@/lib/offline/prefetch-all";
 import type { FiltroDashboard } from "@/lib/services/dashboard";
 import { formatMoneda, cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -28,6 +30,7 @@ const FILTROS: { key: FiltroDashboard; label: string }[] = [
 
 export default function DashboardPage() {
   const claims = useAuthClaims();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const filtroParam = searchParams.get("filtro");
   const filtro: FiltroDashboard =
@@ -49,6 +52,19 @@ export default function DashboardPage() {
     () => (ownerId ? getTendencia(ownerId) : undefined),
     [ownerId]
   );
+
+  // El dashboard es la primera pantalla que se abre con señal — desde acá
+  // se precarga TODA la app (cada contrata/cliente/deudor y sus
+  // subpantallas) escalonado en el tiempo, para que perder la conexión
+  // después ya no deje ninguna pantalla nunca visitada pegada en negro.
+  useEffect(() => {
+    if (!ownerId || typeof navigator === "undefined" || !navigator.onLine) return;
+    let cancelar: (() => void) | undefined;
+    getIdsParaPrecarga(ownerId).then((ids) => {
+      cancelar = precargarTodaLaApp(router, ids);
+    });
+    return () => cancelar?.();
+  }, [ownerId, router]);
 
   if (!kpis) return null;
 
