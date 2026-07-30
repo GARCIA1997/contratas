@@ -120,8 +120,11 @@ export function RenovarForm({
 
     // Renovar crea una contrata nueva — sin conexión no se conoce su id
     // todavía, así que se encola y se avisa "pendiente" en vez de navegar a
-    // una pantalla que no existe hasta que el servidor confirme.
-    if (ownerId) {
+    // una pantalla que no existe hasta que el servidor confirme. Si hay
+    // señal real se guarda directo (antes se encolaba siempre, con o sin
+    // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
+    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
+    if (ownerId && sinConexion) {
       await enqueue(ownerId, "contrata.renovar", {
         contrataId,
         otrasIds: incluirOtras ? otras.map((o) => o.id) : [],
