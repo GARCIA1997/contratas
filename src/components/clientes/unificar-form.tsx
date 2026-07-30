@@ -141,8 +141,11 @@ export function UnificarForm({
     setGuardando(true);
 
     // Unificar crea una contrata nueva — igual que renovar, sin conexión no
-    // se conoce su id todavía, así que se encola y se avisa "pendiente".
-    if (ownerId) {
+    // se conoce su id todavía, así que se encola y se avisa "pendiente". Si
+    // hay señal real se guarda directo (antes se encolaba siempre, con o sin
+    // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
+    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
+    if (ownerId && sinConexion) {
       await enqueue(ownerId, "cliente.unificar", { clienteId, contrataIds, input });
       setGuardando(false);
       setPendienteSync(true);

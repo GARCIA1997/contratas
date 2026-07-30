@@ -165,9 +165,13 @@ export function ContrataForm({
     setGuardando(true);
 
     // Tanto editar como crear se hacen en campo, con el cliente presente —
-    // se encolan y se aplican optimista (editar) o se esperan sincronizar
-    // (crear, ver comentario abajo) en vez de depender de la red al momento.
-    if (editando && claims.ready && claims.ownerId) {
+    // pero SOLO se encolan cuando de verdad no hay conexión: si hay señal
+    // real, se guardan directo (igual que siempre) para no mostrarle al
+    // usuario un mensaje de "pendiente de conexión" cuando sí tiene internet
+    // (bug reportado: se marcaba offline al entregar una contrata con señal).
+    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
+
+    if (editando && sinConexion && claims.ready && claims.ownerId) {
       await enqueue(claims.ownerId, "contrata.editar", {
         contrataId: inicial!.id,
         input: payload,
@@ -177,7 +181,7 @@ export function ContrataForm({
       return;
     }
 
-    if (!editando && claims.ready && claims.ownerId) {
+    if (!editando && sinConexion && claims.ready && claims.ownerId) {
       // A diferencia de editar, no hay id todavía (ni de la contrata ni,
       // si aplica, de un cliente nuevo) — los asigna el servidor. No se
       // puede mostrar el panel de entrega/WhatsApp de inmediato; en cuanto
