@@ -27,6 +27,24 @@ function rutasDeDeudor(id: string): string[] {
 }
 
 /**
+ * Pantallas de "dar de alta algo nuevo" — no son por id (solo hay una), pero
+ * se nos había pasado incluirlas: sin esto, "Nueva contrata" quedaba fuera
+ * de la precarga a pesar de que crear una contrata ya funciona offline (ver
+ * QueueOpType "contrata.crear"). `/contratas/nueva?tipo=SEMANAL` es la
+ * variante real que arma el botón "+ Nueva" de la lista de contratas
+ * (siempre manda un `tipo`, nunca la ruta pelona) — se precarga esa además
+ * de la ruta sin query por si acaso.
+ */
+const RUTAS_CREACION = [
+  "/contratas/nueva",
+  "/contratas/nueva?tipo=SEMANAL",
+  "/contratas/nueva?tipo=QUINCENAL",
+  "/contratas/nueva?tipo=MENSUAL",
+  "/clientes/nuevo",
+  "/deudores/nuevo",
+];
+
+/**
  * Precarga TODA la app (cada contrata/cliente/deudor y sus subpantallas)
  * escalonado en el tiempo, no de golpe — con cientos de registros, disparar
  * todos los `router.prefetch()` en el mismo tick satura de golpe un VPS
@@ -46,6 +64,9 @@ export function precargarTodaLaApp(
   const pausaMs = opciones.pausaMs ?? 400;
 
   const rutas: string[] = [
+    // Primero: son pocas, estáticas y de las más probables de necesitar
+    // (dar de alta algo nuevo), así que quedan listas desde la primera tanda.
+    ...RUTAS_CREACION,
     ...ids.contratas.flatMap(rutasDeContrata),
     ...ids.clientes.flatMap(rutasDeCliente),
     ...ids.deudores.flatMap(rutasDeDeudor),
