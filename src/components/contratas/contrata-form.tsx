@@ -91,6 +91,8 @@ export function ContrataForm({
   const [guardando, setGuardando] = useState(false);
   /** Contrata recién creada: cambia el formulario por el panel de entrega. */
   const [creada, setCreada] = useState<ContrataCreada | null>(null);
+  /** Se creó offline: sin id todavía, se sincroniza sola después. */
+  const [pendienteSync, setPendienteSync] = useState(false);
 
   const sugerencias = useMemo(() => {
     const q = clienteQuery.trim().toLowerCase();
@@ -162,10 +164,9 @@ export function ContrataForm({
 
     setGuardando(true);
 
-    // Editar sí puede hacerse sin conexión (se hace en campo, con el
-    // cliente presente) — se encola y se aplica optimista en Dexie. Crear
-    // sigue requiriendo red (fuera de este alcance): necesita el id real
-    // que asigna el servidor para la confirmación/WhatsApp de entrega.
+    // Tanto editar como crear se hacen en campo, con el cliente presente —
+    // se encolan y se aplican optimista (editar) o se esperan sincronizar
+    // (crear, ver comentario abajo) en vez de depender de la red al momento.
     if (editando && claims.ready && claims.ownerId) {
       await enqueue(claims.ownerId, "contrata.editar", {
         contrataId: inicial!.id,
@@ -173,6 +174,18 @@ export function ContrataForm({
       });
       setGuardando(false);
       router.push(`/contratas/${inicial!.id}`);
+      return;
+    }
+
+    if (!editando && claims.ready && claims.ownerId) {
+      // A diferencia de editar, no hay id todavía (ni de la contrata ni,
+      // si aplica, de un cliente nuevo) — los asigna el servidor. No se
+      // puede mostrar el panel de entrega/WhatsApp de inmediato; en cuanto
+      // sincronice aparece sola en la lista, y desde ahí se puede compartir
+      // el recibo por WhatsApp manualmente (ver recibo-view.tsx).
+      await enqueue(claims.ownerId, "contrata.crear", payload);
+      setGuardando(false);
+      setPendienteSync(true);
       return;
     }
 
@@ -210,6 +223,31 @@ export function ContrataForm({
 
   if (creada) {
     return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} />;
+  }
+
+  if (pendienteSync) {
+    return (
+      <div className="space-y-4 md:max-w-xl">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Contrata pendiente
+          </h1>
+        </div>
+        <Card className="border-pendiente/30">
+          <CardContent className="space-y-2 p-4 text-sm">
+            <p>
+              Se creará sola en cuanto el dispositivo tenga conexión — no
+              hace falta hacer nada más. Para enviarle los detalles al
+              cliente por WhatsApp, hazlo manualmente después, desde el
+              recibo de la contrata, en cuanto aparezca en la lista.
+            </p>
+          </CardContent>
+        </Card>
+        <Button className="w-full" asChild>
+          <Link href={volverHref}>Volver</Link>
+        </Button>
+      </div>
+    );
   }
 
   return (

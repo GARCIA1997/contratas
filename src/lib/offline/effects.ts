@@ -90,6 +90,15 @@ export async function applyLocalEffect(
     return;
   }
 
+  if (type === "contrata.crear") {
+    // No hay nada que aplicar localmente: no existe todavía ni el id de la
+    // contrata ni el de un cliente nuevo (si se creó con clienteNombre en
+    // vez de clienteId) — ambos los asigna el servidor. Igual que
+    // "contrata.renovar", se espera al pull-sync tras confirmarse (ver
+    // reconciliarTrasExito en queue.ts) para que aparezca en las listas.
+    return;
+  }
+
   if (type === "contrata.editar") {
     const { contrataId, input } = payload as {
       contrataId: string;
