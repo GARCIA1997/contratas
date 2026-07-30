@@ -3,6 +3,7 @@ import { db as maybeDb } from "@/lib/offline/db";
 
 const syncMocks = vi.hoisted(() => ({
   syncContratas: vi.fn().mockResolvedValue(undefined),
+  syncClientes: vi.fn().mockResolvedValue(undefined),
   syncDeudores: vi.fn().mockResolvedValue(undefined),
   syncDeudorDetalle: vi.fn().mockResolvedValue(undefined),
 }));
@@ -176,6 +177,29 @@ describe("flushQueue", () => {
     await flushQueue(OWNER);
 
     expect(syncMocks.syncContratas).toHaveBeenCalledWith(OWNER);
+  });
+
+  it("reconciliarTrasExito: contrata.crear dispara syncContratas y syncClientes (sin tocar Dexie antes)", async () => {
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.crear", {
+      clienteId: "cli-1",
+      tipo: "SEMANAL",
+      monto: 5000,
+      abono: 600,
+      fechaInicio: "2026-07-01",
+      numCuotas: 10,
+      notas: null,
+    });
+    // Efecto local: ninguno — no hay id de contrata todavía.
+    expect(await db.contratas.count()).toBe(0);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+
+    expect(syncMocks.syncContratas).toHaveBeenCalledWith(OWNER);
+    expect(syncMocks.syncClientes).toHaveBeenCalledWith(OWNER);
+    expect(await pendingCount(OWNER)).toBe(0);
   });
 
   it("reconciliarTrasExito: contrata.marcarDeuda dispara syncContratas y syncDeudores", async () => {

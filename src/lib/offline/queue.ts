@@ -1,6 +1,11 @@
 import { db, type QueueOpType } from "@/lib/offline/db";
 import { applyLocalEffect } from "@/lib/offline/effects";
-import { syncContratas, syncDeudores, syncDeudorDetalle } from "@/lib/offline/sync";
+import {
+  syncContratas,
+  syncClientes,
+  syncDeudores,
+  syncDeudorDetalle,
+} from "@/lib/offline/sync";
 
 const ENDPOINTS: Record<
   QueueOpType,
@@ -29,6 +34,14 @@ const ENDPOINTS: Record<
   "contrata.eliminar": (p) => ({
     url: `/api/contratas/${p.contrataId}`,
     init: { method: "DELETE" },
+  }),
+  "contrata.crear": (p) => ({
+    url: `/api/contratas`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    },
   }),
   "contrata.editar": (p) => ({
     url: `/api/contratas/${p.contrataId}`,
@@ -173,6 +186,15 @@ async function reconciliarTrasExito(
 ) {
   if (type === "contrata.marcarDeuda") {
     await Promise.all([syncContratas(ownerId), syncDeudores(ownerId)]);
+    return;
+  }
+  if (type === "contrata.crear") {
+    // No hay ninguna fila local que limpiar (la contrata y, si aplica, el
+    // cliente son enteramente nuevos) — solo traer ambos del servidor.
+    // syncClientes cubre el caso de "clienteNombre" (cliente nuevo creado
+    // junto con la contrata); si se usó un clienteId existente, no hace
+    // nada de más.
+    await Promise.all([syncContratas(ownerId), syncClientes(ownerId)]);
     return;
   }
   if (type === "contrata.editar") {
