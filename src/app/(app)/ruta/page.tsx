@@ -4,16 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Phone, MessageCircle, MapPin, Check } from "lucide-react";
+import { Phone, MessageCircle, MapPin, Check, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Saludo } from "@/components/saludo";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getRutaDelDia } from "@/lib/offline/repo";
+import { getRutaDelDia, getConfiguracion } from "@/lib/offline/repo";
 import { enqueue } from "@/lib/offline/queue";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { formatMoneda } from "@/lib/utils";
+import { CONFIG_DEFAULTS } from "@/lib/config";
 import type { ParadaRuta } from "@/lib/services/ruta";
 
 function mensajeRecordatorio(nombre: string, total: number, diasAtrasoMax: number) {
@@ -28,12 +29,81 @@ function mensajeRecordatorio(nombre: string, total: number, diasAtrasoMax: numbe
   return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${monto}. ¡Gracias!`;
 }
 
+type ReciboPendiente = {
+  clienteId: string;
+  nombre: string;
+  telefono: string | null;
+  total: number;
+  numCuotas: number;
+};
+
+function mensajeRecibo(nombreApp: string, r: ReciboPendiente) {
+  return [
+    `🧾 *${nombreApp}*`,
+    `*Recibo de pago*`,
+    ``,
+    `👤 Cliente: ${r.nombre}`,
+    `✅ ${r.numCuotas} cuota${r.numCuotas === 1 ? "" : "s"} pagada${r.numCuotas === 1 ? "" : "s"}`,
+    `💰 Total: ${formatMoneda(r.total)}`,
+    ``,
+    `¡Gracias por tu pago!`,
+  ].join("\n");
+}
+
+/** Tarjeta de recibo tras marcar "Cobrado" — sobrevive aunque la parada ya
+ * haya desaparecido de la ruta en vivo (ver comentario en RutaDelDiaPage). */
+function ReciboCard({
+  recibo,
+  nombreApp,
+  onDescartar,
+}: {
+  recibo: ReciboPendiente;
+  nombreApp: string;
+  onDescartar: () => void;
+}) {
+  return (
+    <Card className="border-pagado/30">
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">{recibo.nombre}</p>
+            <p className="text-xs text-muted-foreground">Cobro registrado</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6 shrink-0"
+            onClick={onDescartar}
+            aria-label="Quitar de la lista"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+        <p className="text-lg font-bold text-pagado">
+          {formatMoneda(recibo.total)}
+        </p>
+        <Button className="w-full" size="sm" asChild>
+          <a
+            href={linkWhatsApp(recibo.telefono, mensajeRecibo(nombreApp, recibo))}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
+          </a>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function Parada({
   parada,
   ownerId,
+  onCobrado,
 }: {
   parada: ParadaRuta;
   ownerId: string;
+  onCobrado: (parada: ParadaRuta) => void;
 }) {
   const [cobrando, setCobrando] = useState(false);
   const [cobrado, setCobrado] = useState(false);
@@ -49,6 +119,7 @@ function Parada({
         });
       }
       setCobrado(true);
+      onCobrado(parada);
     } finally {
       setCobrando(false);
     }
@@ -133,6 +204,36 @@ export default function RutaDelDiaPage() {
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
     [ownerId]
   );
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
+  const nombreApp = config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp;
+
+  // Recibos de paradas ya cobradas en esta sesión — se guardan aparte (no
+  // derivados de `paradas`) porque en cuanto se marca "Cobrado" el pago
+  // optimista hace que esa parada YA NO aparezca en la ruta en vivo (deja de
+  // tener saldo pendiente): sin este estado separado, la tarjeta de recibo
+  // desaparecería junto con la parada antes de que se alcance a enviar por
+  // WhatsApp.
+  const [recibos, setRecibos] = useState<ReciboPendiente[]>([]);
+
+  function onCobrado(parada: ParadaRuta) {
+    setRecibos((r) => [
+      {
+        clienteId: parada.clienteId,
+        nombre: parada.nombre,
+        telefono: parada.telefono,
+        total: parada.total,
+        numCuotas: parada.cuotas.length,
+      },
+      ...r,
+    ]);
+  }
+
+  function descartarRecibo(clienteId: string) {
+    setRecibos((r) => r.filter((x) => x.clienteId !== clienteId));
+  }
 
   // Esta es literalmente la pantalla de "voy a salir a cobrar y puedo
   // perder la señal" — a diferencia de los prefetch puntuales de otras
@@ -169,13 +270,31 @@ export default function RutaDelDiaPage() {
         </Card>
       )}
 
+      {recibos.length > 0 && (
+        <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
+          {recibos.map((r) => (
+            <ReciboCard
+              key={r.clienteId}
+              recibo={r}
+              nombreApp={nombreApp}
+              onDescartar={() => descartarRecibo(r.clienteId)}
+            />
+          ))}
+        </div>
+      )}
+
       <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
         {paradas?.map((p) => (
-          <Parada key={p.clienteId} parada={p} ownerId={ownerId as string} />
+          <Parada
+            key={p.clienteId}
+            parada={p}
+            ownerId={ownerId as string}
+            onCobrado={onCobrado}
+          />
         ))}
       </div>
 
-      {paradas && paradas.length === 0 && (
+      {paradas && paradas.length === 0 && recibos.length === 0 && (
         <p className="py-10 text-center text-xs text-muted-foreground">
           No hay cobros pendientes para hoy.
         </p>
