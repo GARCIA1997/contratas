@@ -9,6 +9,7 @@ const syncMocks = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/offline/sync", () => syncMocks);
 vi.mock("@sentry/nextjs", () => ({ captureMessage: vi.fn() }));
+vi.mock("@/lib/report-error", () => ({ reportarError: vi.fn() }));
 
 import {
   conflictCount,

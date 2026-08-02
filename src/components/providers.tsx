@@ -1,6 +1,7 @@
 "use client";
 
 import { SessionProvider } from "next-auth/react";
+import { ErrorLogListener } from "@/components/error-log-listener";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // refetchOnWindowFocus (default: true) revalida la sesión cada vez que la
@@ -13,6 +14,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // señal). use-auth-claims.ts ya cubre el offline real con los claims
   // cacheados en IndexedDB; no hace falta esta revalidación en segundo plano.
   return (
-    <SessionProvider refetchOnWindowFocus={false}>{children}</SessionProvider>
+    <SessionProvider refetchOnWindowFocus={false}>
+      <ErrorLogListener />
+      {children}
+    </SessionProvider>
   );
 }

@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { reportarError } from "@/lib/report-error";
 import { db, type QueueOpType } from "@/lib/offline/db";
 import { applyLocalEffect } from "@/lib/offline/effects";
 import {
@@ -171,6 +172,11 @@ export async function flushQueue(ownerId: string): Promise<void> {
                 detalle,
                 payload: op.payload,
               },
+            });
+            reportarError({
+              origen: "queue",
+              mensaje: `Operación "${op.type}" en conflicto (HTTP ${status})`,
+              contexto: { opId: op.id, type: op.type, status, detalle, payload: op.payload },
             });
           }
           // Un conflicto o fallo detiene el drenado de este owner para no
