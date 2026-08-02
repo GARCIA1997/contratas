@@ -16,10 +16,16 @@ import { linkWhatsApp } from "@/lib/whatsapp";
 import { formatMoneda } from "@/lib/utils";
 import type { ParadaRuta } from "@/lib/services/ruta";
 
-function mensajeRecordatorio(nombre: string, total: number) {
-  return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${formatMoneda(
-    total
-  )}. ¡Gracias!`;
+function mensajeRecordatorio(nombre: string, total: number, diasAtrasoMax: number) {
+  const monto = formatMoneda(total);
+  if (diasAtrasoMax > 0) {
+    return `Hola ${nombre}, te recuerdo que tienes un pago pendiente de ${monto} desde hace ${diasAtrasoMax} día${diasAtrasoMax === 1 ? "" : "s"}. ¡Gracias!`;
+  }
+  if (diasAtrasoMax < 0) {
+    const dias = -diasAtrasoMax;
+    return `Hola ${nombre}, te recuerdo que tienes un pago de ${monto} próximo a vencer en ${dias} día${dias === 1 ? "" : "s"}. ¡Gracias!`;
+  }
+  return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${monto}. ¡Gracias!`;
 }
 
 function Parada({
@@ -74,7 +80,9 @@ function Parada({
           >
             {parada.diasAtrasoMax > 0
               ? `${parada.diasAtrasoMax}d atraso`
-              : "Hoy"}
+              : parada.diasAtrasoMax < 0
+                ? `En ${-parada.diasAtrasoMax}d`
+                : "Hoy"}
           </Badge>
         </div>
 
@@ -98,7 +106,7 @@ function Parada({
             <a
               href={linkWhatsApp(
                 parada.telefono,
-                mensajeRecordatorio(parada.nombre, parada.total)
+                mensajeRecordatorio(parada.nombre, parada.total, parada.diasAtrasoMax)
               )}
               target="_blank"
               rel="noopener noreferrer"

@@ -349,3 +349,42 @@ export async function reintentarConflictos(ownerId: string): Promise<void> {
   );
   await flushQueue(ownerId);
 }
+
+export type DiagnosticoCola = {
+  total: number;
+  porEstado: Record<string, number>;
+  items: Array<{
+    id: string;
+    type: QueueOpType;
+    status: string;
+    attempts: number;
+    lastError?: string | null;
+    createdAt: string;
+  }>;
+};
+
+/**
+ * Snapshot de la cola local para el botón de "Revisar y reparar
+ * sincronización" en Config — pensado para diagnosticar en campo el caso de
+ * "sigue apareciendo 1 sin sincronizar" sin necesidad de inspeccionar
+ * IndexedDB a mano desde devtools.
+ */
+export async function diagnosticarCola(ownerId: string): Promise<DiagnosticoCola> {
+  const database = db;
+  if (!database) return { total: 0, porEstado: {}, items: [] };
+  const items = await database.writeQueue.where("ownerId").equals(ownerId).toArray();
+  const porEstado: Record<string, number> = {};
+  for (const it of items) porEstado[it.status] = (porEstado[it.status] ?? 0) + 1;
+  return {
+    total: items.length,
+    porEstado,
+    items: items.map((it) => ({
+      id: it.id,
+      type: it.type,
+      status: it.status,
+      attempts: it.attempts,
+      lastError: it.lastError,
+      createdAt: it.createdAt,
+    })),
+  };
+}

@@ -10,16 +10,13 @@ import { formatMoneda } from "@/lib/utils";
 import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
 import { enqueue } from "@/lib/offline/queue";
 import { syncContratas } from "@/lib/offline/sync";
+import { linkWhatsApp } from "@/lib/whatsapp";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
   QUINCENAL: "Quincenal",
   MENSUAL: "Mensual",
 };
-
-function soloDigitos(telefono: string) {
-  return telefono.replace(/[^\d]/g, "");
-}
 
 function construirMensaje(nombreApp: string, r: ResultadoCobroVencidas) {
   const lineas = [
@@ -123,12 +120,7 @@ export function CobroVencido({
 
   if (resultado) {
     const mensaje = construirMensaje(nombreApp, resultado);
-    const telefono = resultado.clienteTelefono
-      ? soloDigitos(resultado.clienteTelefono)
-      : null;
-    const linkWhatsApp = telefono
-      ? `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`
-      : `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
+    const link = linkWhatsApp(resultado.clienteTelefono, mensaje);
 
     return (
       <Card className="border-pagado/30">
@@ -158,7 +150,7 @@ export function CobroVencido({
             ))}
           </ul>
           <Button className="w-full" asChild>
-            <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer">
+            <a href={link} target="_blank" rel="noopener noreferrer">
               <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
             </a>
           </Button>

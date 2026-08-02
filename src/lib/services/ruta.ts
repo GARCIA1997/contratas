@@ -1,4 +1,4 @@
-import { startOfDay, differenceInCalendarDays } from "date-fns";
+import { startOfDay, addDays, differenceInCalendarDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { anclarFechaCliente } from "@/lib/fechas";
 
@@ -46,15 +46,23 @@ export type ParadaRuta = {
   diasAtrasoMax: number;
 };
 
+// Un cobrador sale con 2-3 días de anticipación a visitar zonas alejadas, así
+// que un pago programado para el domingo debe aparecer en la ruta desde el
+// viernes (pedido explícito en campo) — no hasta el mismo día.
+const DIAS_ANTICIPACION_RUTA = 2;
+
 /**
- * Clientes con cuotas vencidas o que vencen hoy, pendientes de cobro —
- * la lista de a quién visitar hoy, ordenada por más atrasado primero.
+ * Clientes con cuotas vencidas, que vencen hoy, o que vencen dentro de
+ * `DIAS_ANTICIPACION_RUTA` días, pendientes de cobro — la lista de a quién
+ * visitar hoy, ordenada por más atrasado primero (y las próximas a vencer al
+ * final).
  */
 export function aggregarRutaDelDia(
   clientes: ClienteParaRuta[],
   hoy: Date = new Date()
 ): ParadaRuta[] {
   const base = startOfDay(hoy);
+  const limite = addDays(base, DIAS_ANTICIPACION_RUTA);
   const paradas: ParadaRuta[] = [];
 
   for (const cliente of clientes) {
@@ -64,7 +72,7 @@ export function aggregarRutaDelDia(
       for (const p of c.pagos) {
         if (p.pagado) continue;
         const fechaCuota = anclarFechaCliente(p.fechaProgramada);
-        if (fechaCuota > base) continue;
+        if (fechaCuota > limite) continue;
         const pendiente = round(c.abono - p.montoAbonado);
         if (pendiente <= 0) continue;
         cuotas.push({
@@ -72,7 +80,10 @@ export function aggregarRutaDelDia(
           numeroCuota: p.numeroCuota,
           pendiente,
           fechaProgramada: p.fechaProgramada.toISOString(),
-          diasAtraso: Math.max(0, differenceInCalendarDays(base, fechaCuota)),
+          // Positivo = vencida hace N días, 0 = hoy, negativo = vence en N
+          // días (ya no se recorta a 0 — antes una cuota "próxima" se veía
+          // idéntica a una de hoy en la UI).
+          diasAtraso: differenceInCalendarDays(base, fechaCuota),
         });
       }
     }
