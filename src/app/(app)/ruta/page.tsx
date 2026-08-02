@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Phone, MessageCircle, MapPin, Check, X } from "lucide-react";
+import { Phone, MessageCircle, MapPin, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popup } from "@/components/ui/popup";
 import { Saludo } from "@/components/saludo";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getRutaDelDia, getConfiguracion } from "@/lib/offline/repo";
@@ -50,49 +51,40 @@ function mensajeRecibo(nombreApp: string, r: ReciboPendiente) {
   ].join("\n");
 }
 
-/** Tarjeta de recibo tras marcar "Cobrado" — sobrevive aunque la parada ya
- * haya desaparecido de la ruta en vivo (ver comentario en RutaDelDiaPage). */
-function ReciboCard({
+/** Popup tras marcar "Cobrado" — sobrevive aunque la parada ya haya
+ * desaparecido de la ruta en vivo (ver comentario en RutaDelDiaPage). Se
+ * muestra un recibo a la vez, en cola: al cerrar uno aparece el siguiente. */
+function ReciboPopup({
   recibo,
   nombreApp,
-  onDescartar,
+  onCerrar,
 }: {
   recibo: ReciboPendiente;
   nombreApp: string;
-  onDescartar: () => void;
+  onCerrar: () => void;
 }) {
   return (
-    <Card className="border-pagado/30">
-      <CardContent className="space-y-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{recibo.nombre}</p>
-            <p className="text-xs text-muted-foreground">Cobro registrado</p>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-6 shrink-0"
-            onClick={onDescartar}
-            aria-label="Quitar de la lista"
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-        <p className="text-lg font-bold text-pagado">
-          {formatMoneda(recibo.total)}
-        </p>
-        <Button className="w-full" size="sm" asChild>
+    <Popup open onClose={onCerrar}>
+      <p className="text-sm font-semibold">{recibo.nombre}</p>
+      <p className="text-xs text-muted-foreground">Cobro registrado</p>
+      <p className="py-2 text-3xl font-bold text-pagado">
+        {formatMoneda(recibo.total)}
+      </p>
+      <div className="flex flex-col gap-2 pt-2">
+        <Button asChild onClick={onCerrar}>
           <a
             href={linkWhatsApp(recibo.telefono, mensajeRecibo(nombreApp, recibo))}
             target="_blank"
             rel="noopener noreferrer"
           >
-            <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
+            <MessageCircle className="size-4" /> Enviar recibo
           </a>
         </Button>
-      </CardContent>
-    </Card>
+        <Button variant="outline" onClick={onCerrar}>
+          Cerrar
+        </Button>
+      </div>
+    </Popup>
   );
 }
 
@@ -270,17 +262,13 @@ export default function RutaDelDiaPage() {
         </Card>
       )}
 
-      {recibos.length > 0 && (
-        <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
-          {recibos.map((r) => (
-            <ReciboCard
-              key={r.clienteId}
-              recibo={r}
-              nombreApp={nombreApp}
-              onDescartar={() => descartarRecibo(r.clienteId)}
-            />
-          ))}
-        </div>
+      {recibos[0] && (
+        <ReciboPopup
+          key={recibos[0].clienteId}
+          recibo={recibos[0]}
+          nombreApp={nombreApp}
+          onCerrar={() => descartarRecibo(recibos[0].clienteId)}
+        />
       )}
 
       <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
