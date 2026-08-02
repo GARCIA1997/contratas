@@ -136,7 +136,22 @@ export async function flushQueue(ownerId: string): Promise<void> {
     const pendientes = (
       await database.writeQueue.where("ownerId").equals(ownerId).toArray()
     )
-      .filter((op) => op.status === "pending" || op.status === "failed")
+      // "syncing" incluido a propósito: si el fetch de un intento anterior
+      // nunca llegó a resolver (la app se cerró/perdió señal a media
+      // petición en iOS, por ejemplo — reportado en campo: un elemento se
+      // quedó en "syncing" con attempts:0 por más de una semana), el item
+      // quedaba EXCLUIDO PARA SIEMPRE de este filtro, igual que pasaba antes
+      // con "conflict". Es seguro reintentarlo: `flushing` ya impide que dos
+      // flushQueue corran a la vez en esta misma sesión (así que un "syncing"
+      // de una petición genuinamente en curso ahora mismo nunca llega aquí),
+      // y el header Idempotency-Key protege contra aplicar la mutación dos
+      // veces si la petición original sí había llegado al servidor.
+      .filter(
+        (op) =>
+          op.status === "pending" ||
+          op.status === "failed" ||
+          op.status === "syncing"
+      )
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
     for (const op of pendientes) {
@@ -329,23 +344,25 @@ export async function conflictCount(ownerId: string): Promise<number> {
 }
 
 /**
- * Reintenta a mano las operaciones en conflicto: las regresa a "pending" y
- * dispara un flush. Solo tiene sentido si la causa del 4xx ya se resolvió
- * (p. ej. la contrata referenciada terminó de sincronizarse mientras tanto);
- * si el conflicto persiste, vuelve a quedar en "conflict" tras el intento.
+ * Reintenta a mano lo que quedó atorado: operaciones en "conflict" (un 4xx
+ * que se excluye para siempre de flushQueue) y en "syncing" (una petición
+ * anterior que nunca llegó a resolver — mismo problema, sin este reset
+ * manual seguían atoradas aunque flushQueue ya las reintenta solo en la
+ * siguiente vez que corre). Regresa ambas a "pending" y dispara un flush.
+ * Solo tiene sentido si la causa ya se resolvió (p. ej. la contrata
+ * referenciada terminó de sincronizarse mientras tanto); si el problema
+ * persiste, vuelve a quedar atorada tras el intento.
  */
 export async function reintentarConflictos(ownerId: string): Promise<void> {
   const database = db;
   if (!database) return;
-  const conflictivas = await database.writeQueue
+  const atoradas = await database.writeQueue
     .where("ownerId")
     .equals(ownerId)
-    .filter((op) => op.status === "conflict")
+    .filter((op) => op.status === "conflict" || op.status === "syncing")
     .toArray();
   await Promise.all(
-    conflictivas.map((op) =>
-      database.writeQueue.update(op.id, { status: "pending" })
-    )
+    atoradas.map((op) => database.writeQueue.update(op.id, { status: "pending" }))
   );
   await flushQueue(ownerId);
 }

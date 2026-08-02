@@ -31,6 +31,8 @@ export type ClienteParaRuta = {
 export type CuotaRuta = {
   contrataId: string;
   numeroCuota: number;
+  /** Total de cuotas de esa contrata — para mostrar "Cuota 3/10" en el recibo. */
+  numCuotas: number;
   pendiente: number;
   fechaProgramada: string;
   diasAtraso: number;
@@ -78,6 +80,7 @@ export function aggregarRutaDelDia(
         cuotas.push({
           contrataId: c.id,
           numeroCuota: p.numeroCuota,
+          numCuotas: c.pagos.length,
           pendiente,
           fechaProgramada: p.fechaProgramada.toISOString(),
           // Positivo = vencida hace N días, 0 = hoy, negativo = vence en N

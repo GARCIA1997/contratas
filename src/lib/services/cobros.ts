@@ -14,6 +14,8 @@ export type CuotaVencidaItem = {
   pagoId: string;
   tipo: TipoContrata;
   numeroCuota: number;
+  /** Total de cuotas de esa contrata — para mostrar "Cuota N/total" en el recibo. */
+  numCuotas: number;
   fechaProgramada: string;
   pendiente: number;
 };
@@ -57,6 +59,7 @@ export async function previewCobroVencidas(
         pagoId: p.id,
         tipo: c.tipo,
         numeroCuota: p.numeroCuota,
+        numCuotas: c.pagos.length,
         fechaProgramada: p.fechaProgramada.toISOString(),
         pendiente,
       });
@@ -70,6 +73,7 @@ export async function previewCobroVencidas(
 export type ContrataResumenCobro = {
   contrataId: string;
   tipo: TipoContrata;
+  numCuotas: number;
   cuotas: { numeroCuota: number; monto: number }[];
   subtotal: number;
 };
@@ -125,6 +129,7 @@ export async function ejecutarCobroVencidas(
       porContrata.set(i.contrataId, {
         contrataId: i.contrataId,
         tipo: i.tipo,
+        numCuotas: i.numCuotas,
         cuotas: [{ numeroCuota: i.numeroCuota, monto: i.pendiente }],
         subtotal: i.pendiente,
       });

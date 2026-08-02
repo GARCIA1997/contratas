@@ -16,7 +16,7 @@ import { enqueue } from "@/lib/offline/queue";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { formatMoneda } from "@/lib/utils";
 import { CONFIG_DEFAULTS } from "@/lib/config";
-import type { ParadaRuta } from "@/lib/services/ruta";
+import type { CuotaRuta, ParadaRuta } from "@/lib/services/ruta";
 
 function mensajeRecordatorio(nombre: string, total: number, diasAtrasoMax: number) {
   const monto = formatMoneda(total);
@@ -35,7 +35,7 @@ type ReciboPendiente = {
   nombre: string;
   telefono: string | null;
   total: number;
-  numCuotas: number;
+  cuotas: CuotaRuta[];
 };
 
 function mensajeRecibo(nombreApp: string, r: ReciboPendiente) {
@@ -44,7 +44,12 @@ function mensajeRecibo(nombreApp: string, r: ReciboPendiente) {
     `*Recibo de pago*`,
     ``,
     `👤 Cliente: ${r.nombre}`,
-    `✅ ${r.numCuotas} cuota${r.numCuotas === 1 ? "" : "s"} pagada${r.numCuotas === 1 ? "" : "s"}`,
+    // Mismo formato "N/total" que el estado de cuenta — para saber de un
+    // vistazo en qué número de pago va cada cuota, no solo cuántas se
+    // cobraron.
+    ...r.cuotas.map(
+      (c) => `✅ Cuota ${c.numeroCuota}/${c.numCuotas}: ${formatMoneda(c.pendiente)}`
+    ),
     `💰 Total: ${formatMoneda(r.total)}`,
     ``,
     `¡Gracias por tu pago!`,
@@ -217,7 +222,7 @@ export default function RutaDelDiaPage() {
         nombre: parada.nombre,
         telefono: parada.telefono,
         total: parada.total,
-        numCuotas: parada.cuotas.length,
+        cuotas: parada.cuotas,
       },
       ...r,
     ]);

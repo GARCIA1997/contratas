@@ -11,8 +11,10 @@ import { reportarError } from "@/lib/report-error";
  * Botón de "Revisar y reparar sincronización" para el caso reportado en
  * campo de un elemento que se queda "sin sincronizar" indefinidamente:
  * guarda un snapshot de la cola local en ErrorLog (para diagnosticar la
- * causa real después) e intenta reenviar lo que esté en "conflict" (ver
- * queue.ts — ese estado nunca se reintenta solo).
+ * causa real después) e intenta reenviar cualquier operación atorada —
+ * "conflict" (un 4xx) o "syncing" (una petición anterior que nunca llegó a
+ * resolver, p. ej. la app se cerró a media petición) — ver queue.ts,
+ * ninguno de esos dos estados se reintenta solo en un flush normal.
  */
 export function DiagnosticoSync({ ownerId }: { ownerId: string }) {
   const [corriendo, setCorriendo] = useState(false);
@@ -38,7 +40,8 @@ export function DiagnosticoSync({ ownerId }: { ownerId: string }) {
         return;
       }
 
-      if ((antes.porEstado.conflict ?? 0) > 0) {
+      const atoradas = (antes.porEstado.conflict ?? 0) + (antes.porEstado.syncing ?? 0);
+      if (atoradas > 0) {
         await reintentarConflictos(ownerId);
       }
 
