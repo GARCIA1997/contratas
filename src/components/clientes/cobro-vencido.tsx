@@ -63,7 +63,7 @@ export function CobroVencido({
 
   async function cobrar() {
     const ok = confirm(
-      `Vas a registrar el pago completo de ${cuotas} cuota(s) vencida(s) por un total de ${formatMoneda(total)}. ¿Confirmar?`
+      `Vas a registrar el pago completo de ${cuotas} cuota(s) por un total de ${formatMoneda(total)} (incluye vencidas y próximas a vencer). ¿Confirmar?`
     );
     if (!ok) return;
     setCargando(true);
@@ -177,7 +177,7 @@ export function CobroVencido({
         <CircleDollarSign className="size-4" />
         {cargando
           ? "Registrando…"
-          : `Cobrar vencido · ${formatMoneda(total)} (${cuotas} cuota${cuotas === 1 ? "" : "s"})`}
+          : `Cobrar pendiente · ${formatMoneda(total)} (${cuotas} cuota${cuotas === 1 ? "" : "s"})`}
       </Button>
       {error && <p className="text-center text-xs text-destructive">{error}</p>}
     </div>

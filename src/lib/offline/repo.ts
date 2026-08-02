@@ -1,3 +1,4 @@
+import { addDays, startOfDay } from "date-fns";
 import type { TipoContrata } from "@prisma/client";
 import { db, type ContrataLocal, type PagoLocal } from "@/lib/offline/db";
 import {
@@ -6,9 +7,11 @@ import {
   montoVencidoOVigente,
   calcularScorePago,
   construirHistorial,
+  DIAS_PROXIMO_VENCIMIENTO,
   type ResultadoScorePago,
   type EventoHistorial,
 } from "@/lib/contrata";
+import { anclarFechaCliente } from "@/lib/fechas";
 import {
   aggregateKpis,
   aggregateTendencia,
@@ -573,20 +576,29 @@ export async function getDeudor(
 
 /** Espejo local (sin desglose por cuota) de previewCobroVencidas — usado
  * como respaldo cuando no hay red para pedir el preview real al servidor. */
+/**
+ * Espejo offline de `previewCobroVencidas`: mismo umbral (vencidas +
+ * próximas dentro de `DIAS_PROXIMO_VENCIMIENTO`), mismo anclaje de fecha
+ * por día calendario (antes comparaba `Date` completos contra "ahora", lo
+ * que con una ventana de varios días es más frágil ante desfases de hora).
+ */
 export async function getCobroVencidoPreview(
   ownerId: string,
-  clienteId: string
+  clienteId: string,
+  hoy: Date = new Date()
 ): Promise<{ total: number; items: number }> {
   if (!db) return { total: 0, items: 0 };
   const contratas = (
     await db.contratas.where("clienteId").equals(clienteId).toArray()
   ).filter((c) => !c._deletedAt && !c.convertidaADeuda && c.ownerId === ownerId);
+  const base = startOfDay(hoy);
+  const limite = addDays(base, DIAS_PROXIMO_VENCIMIENTO);
   let total = 0;
   let items = 0;
   for (const c of contratas) {
     const pagos = (await pagosDeContrata(c.id)).filter((p) => !p.pagado);
     for (const p of pagos) {
-      if (new Date(p.fechaProgramada) > new Date()) continue;
+      if (anclarFechaCliente(new Date(p.fechaProgramada)) > limite) continue;
       const pendiente = Math.round((c.abono - p.montoAbonado) * 100) / 100;
       if (pendiente <= 0) continue;
       total = Math.round((total + pendiente) * 100) / 100;

@@ -62,7 +62,7 @@ export type PagoLike = {
   montoAbonado?: number;
 };
 
-const DIAS_PROXIMO_VENCIMIENTO = 3;
+export const DIAS_PROXIMO_VENCIMIENTO = 3;
 
 /** Determina el estado de una contrata según sus pagos. */
 export function estadoContrata(
