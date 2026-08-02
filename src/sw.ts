@@ -37,6 +37,11 @@ const serwist = new Serwist({
     },
     ...defaultCache,
   ],
+  // `fallbacks.entries` -> `matchPrecache("/offline")` NUNCA funciona en la
+  // práctica: el manifiesto de precache que genera @serwist/next para el App
+  // Router solo incluye assets (JS/CSS), no el documento HTML de una ruta —
+  // así que esta entrada queda muerta desde el día uno. El respaldo real
+  // está en `setCatchHandler` de abajo, que cachea "/offline" a mano.
   fallbacks: {
     entries: [
       {
@@ -45,6 +50,54 @@ const serwist = new Serwist({
       },
     ],
   },
+});
+
+const OFFLINE_SHELL_CACHE = "offline-shell";
+
+// Cachea el documento real de "/offline" a mano apenas se instala el SW —
+// no depende del precache (ver comentario arriba). Con conexión al momento
+// del deploy esto casi siempre tiene éxito; si por lo que sea falla (deploy
+// mismo offline), el catchHandler de abajo tiene un último respaldo inline
+// que no depende de ningún cache.
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    fetch("/offline")
+      .then((res) => caches.open(OFFLINE_SHELL_CACHE).then((c) => c.put("/offline", res)))
+      .catch(() => undefined)
+  );
+});
+
+// HTML mínimo sin ninguna dependencia externa (sin CSS/JS/fuentes) — última
+// red de seguridad si ni el cache de instalación ni el precache lograron
+// servir algo. Nunca puede fallar, así que aquí SÍ se corta la cadena de
+// errores en vez de reintentar y volver a producir "no-response".
+const OFFLINE_FALLBACK_HTML = `<!doctype html><html lang="es"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sin conexión — Kredired</title>
+<body style="display:flex;min-height:100vh;align-items:center;justify-content:center;
+margin:0;padding:24px;text-align:center;font-family:system-ui,sans-serif;
+background:#0a1230;color:#e8ecff">
+<div><h1 style="font-size:20px">Sin conexión</h1>
+<p style="color:#9aa4c7;max-width:280px">No hay conexión a internet. Las páginas
+que ya visitaste siguen disponibles; el resto se cargará al recuperar la señal.</p>
+</div></body></html>`;
+
+// Red de seguridad final: si alguna estrategia falla de un modo que ni
+// siquiera el fallback por-ruta de arriba logra resolver (reportado en
+// campo: Safari mostraba su propio error nativo — "FetchEvent.respondWith
+// received an error: no-response" — en vez de la app, navegando sin señal),
+// esto evita el crash sirviendo el shell offline para cualquier navegación
+// de documento. Deliberadamente nunca deja que una promesa rechazada llegue
+// hasta el navegador desde aquí.
+serwist.setCatchHandler(async ({ request }) => {
+  if (request.destination !== "document") return Response.error();
+  const cacheado = await caches.match("/offline", { cacheName: OFFLINE_SHELL_CACHE });
+  if (cacheado) return cacheado;
+  const precacheado = await serwist.matchPrecache("/offline").catch(() => undefined);
+  if (precacheado) return precacheado;
+  return new Response(OFFLINE_FALLBACK_HTML, {
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
 });
 
 serwist.addEventListeners();

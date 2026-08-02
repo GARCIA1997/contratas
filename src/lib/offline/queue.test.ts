@@ -8,8 +8,16 @@ const syncMocks = vi.hoisted(() => ({
   syncDeudorDetalle: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/offline/sync", () => syncMocks);
+vi.mock("@sentry/nextjs", () => ({ captureMessage: vi.fn() }));
+vi.mock("@/lib/report-error", () => ({ reportarError: vi.fn() }));
 
-import { enqueue, flushQueue, pendingCount } from "@/lib/offline/queue";
+import {
+  conflictCount,
+  enqueue,
+  flushQueue,
+  pendingCount,
+  reintentarConflictos,
+} from "@/lib/offline/queue";
 
 if (!maybeDb) throw new Error("db no inicializada — ¿falta jsdom/fake-indexeddb?");
 const db = maybeDb;
@@ -213,5 +221,42 @@ describe("flushQueue", () => {
 
     expect(syncMocks.syncContratas).toHaveBeenCalledWith(OWNER);
     expect(syncMocks.syncDeudores).toHaveBeenCalledWith(OWNER);
+  });
+
+  it("en 4xx: la operación queda en 'conflict' y no se reintenta sola en un flush posterior", async () => {
+    await seedContrata("c1");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 400 })));
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+
+    expect(await conflictCount(OWNER)).toBe(1);
+    expect(await pendingCount(OWNER)).toBe(1); // sigue en la cola, solo que atorada
+
+    // Un flush normal posterior (p. ej. otra operación disparándolo) NO la toca.
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await flushQueue(OWNER);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await conflictCount(OWNER)).toBe(1);
+  });
+
+  it("reintentarConflictos: regresa las operaciones en conflicto a 'pending' y las reintenta", async () => {
+    await seedContrata("c1");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 400 })));
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+    expect(await conflictCount(OWNER)).toBe(1);
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+    await reintentarConflictos(OWNER);
+
+    expect(await conflictCount(OWNER)).toBe(0);
+    expect(await pendingCount(OWNER)).toBe(0);
   });
 });

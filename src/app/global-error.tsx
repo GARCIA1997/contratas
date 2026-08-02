@@ -2,6 +2,7 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
+import { reportarError } from "@/lib/report-error";
 
 export default function GlobalError({
   error,
@@ -10,6 +11,12 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     Sentry.captureException(error);
+    reportarError({
+      origen: "client",
+      mensaje: error.message,
+      stack: error.stack ?? null,
+      contexto: error.digest ? { digest: error.digest } : null,
+    });
   }, [error]);
 
   return (

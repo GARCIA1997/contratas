@@ -292,3 +292,25 @@ model AuditLog {
 
   @@index([ownerId, creadoEn])
 }
+
+/// Errores/crashes reportados desde el cliente (JS no capturado, cola
+/// offline atorada) o desde rutas /api/* del servidor. Complementa a Sentry
+/// con una copia propia consultable directo en la BD (p. ej. por psql o
+/// Prisma Studio) sin depender de una cuenta/dashboard externo. ownerId y
+/// actorId son opcionales: un crash puede ocurrir antes de autenticarse
+/// (p. ej. en /login).
+model ErrorLog {
+  id        String   @id @default(cuid())
+  origen    String
+  ownerId   String?
+  actorId   String?
+  mensaje   String
+  stack     String?
+  url       String?
+  userAgent String?
+  contexto  Json?
+  creadoEn  DateTime @default(now())
+
+  @@index([ownerId, creadoEn])
+  @@index([creadoEn])
+}

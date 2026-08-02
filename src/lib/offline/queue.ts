@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+import { reportarError } from "@/lib/report-error";
 import { db, type QueueOpType } from "@/lib/offline/db";
 import { applyLocalEffect } from "@/lib/offline/effects";
 import {
@@ -147,11 +149,36 @@ export async function flushQueue(ownerId: string): Promise<void> {
         });
         if (!res.ok) {
           const status = res.status;
+          const esConflicto = status >= 400 && status < 500;
           await database.writeQueue.update(op.id, {
-            status: status >= 400 && status < 500 ? "conflict" : "failed",
+            status: esConflicto ? "conflict" : "failed",
             attempts: op.attempts + 1,
             lastError: `HTTP ${status}`,
           });
+          // Un "conflict" (4xx) queda excluido para siempre de los
+          // reintentos automáticos (ver filtro de `pendientes` arriba) — sin
+          // este reporte, quedaba atorado en silencio ("N por sincronizar"
+          // permanente) sin ninguna pista de por qué (bug reportado en
+          // campo). Se necesita el detalle real para diagnosticar la causa;
+          // reintentarLoQueFalló() es la única vía para recuperarlo.
+          if (esConflicto) {
+            const detalle = await res.json().catch(() => null);
+            Sentry.captureMessage("Operación offline en conflicto (4xx)", {
+              level: "warning",
+              extra: {
+                opId: op.id,
+                type: op.type,
+                status,
+                detalle,
+                payload: op.payload,
+              },
+            });
+            reportarError({
+              origen: "queue",
+              mensaje: `Operación "${op.type}" en conflicto (HTTP ${status})`,
+              contexto: { opId: op.id, type: op.type, status, detalle, payload: op.payload },
+            });
+          }
           // Un conflicto o fallo detiene el drenado de este owner para no
           // aplicar operaciones posteriores fuera de orden.
           break;
@@ -283,4 +310,42 @@ export async function pendingCount(ownerId: string): Promise<number> {
   const database = db;
   if (!database) return 0;
   return database.writeQueue.where("ownerId").equals(ownerId).count();
+}
+
+/**
+ * Operaciones "en conflicto" (4xx): flushQueue las excluye para siempre de
+ * los reintentos automáticos, así que sin este contador quedan atoradas en
+ * silencio, contando como "N por sincronizar" indefinidamente sin que nada
+ * distinga que necesitan atención manual (bug reportado en campo).
+ */
+export async function conflictCount(ownerId: string): Promise<number> {
+  const database = db;
+  if (!database) return 0;
+  return database.writeQueue
+    .where("ownerId")
+    .equals(ownerId)
+    .filter((op) => op.status === "conflict")
+    .count();
+}
+
+/**
+ * Reintenta a mano las operaciones en conflicto: las regresa a "pending" y
+ * dispara un flush. Solo tiene sentido si la causa del 4xx ya se resolvió
+ * (p. ej. la contrata referenciada terminó de sincronizarse mientras tanto);
+ * si el conflicto persiste, vuelve a quedar en "conflict" tras el intento.
+ */
+export async function reintentarConflictos(ownerId: string): Promise<void> {
+  const database = db;
+  if (!database) return;
+  const conflictivas = await database.writeQueue
+    .where("ownerId")
+    .equals(ownerId)
+    .filter((op) => op.status === "conflict")
+    .toArray();
+  await Promise.all(
+    conflictivas.map((op) =>
+      database.writeQueue.update(op.id, { status: "pending" })
+    )
+  );
+  await flushQueue(ownerId);
 }
