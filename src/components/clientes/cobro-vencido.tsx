@@ -10,16 +10,13 @@ import { formatMoneda } from "@/lib/utils";
 import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
 import { enqueue } from "@/lib/offline/queue";
 import { syncContratas } from "@/lib/offline/sync";
+import { linkWhatsApp } from "@/lib/whatsapp";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
   QUINCENAL: "Quincenal",
   MENSUAL: "Mensual",
 };
-
-function soloDigitos(telefono: string) {
-  return telefono.replace(/[^\d]/g, "");
-}
 
 function construirMensaje(nombreApp: string, r: ResultadoCobroVencidas) {
   const lineas = [
@@ -66,7 +63,7 @@ export function CobroVencido({
 
   async function cobrar() {
     const ok = confirm(
-      `Vas a registrar el pago completo de ${cuotas} cuota(s) vencida(s) por un total de ${formatMoneda(total)}. ¿Confirmar?`
+      `Vas a registrar el pago completo de ${cuotas} cuota(s) por un total de ${formatMoneda(total)} (incluye vencidas y próximas a vencer). ¿Confirmar?`
     );
     if (!ok) return;
     setCargando(true);
@@ -123,12 +120,7 @@ export function CobroVencido({
 
   if (resultado) {
     const mensaje = construirMensaje(nombreApp, resultado);
-    const telefono = resultado.clienteTelefono
-      ? soloDigitos(resultado.clienteTelefono)
-      : null;
-    const linkWhatsApp = telefono
-      ? `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`
-      : `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
+    const link = linkWhatsApp(resultado.clienteTelefono, mensaje);
 
     return (
       <Card className="border-pagado/30">
@@ -158,7 +150,7 @@ export function CobroVencido({
             ))}
           </ul>
           <Button className="w-full" asChild>
-            <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer">
+            <a href={link} target="_blank" rel="noopener noreferrer">
               <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
             </a>
           </Button>
@@ -185,7 +177,7 @@ export function CobroVencido({
         <CircleDollarSign className="size-4" />
         {cargando
           ? "Registrando…"
-          : `Cobrar vencido · ${formatMoneda(total)} (${cuotas} cuota${cuotas === 1 ? "" : "s"})`}
+          : `Cobrar pendiente · ${formatMoneda(total)} (${cuotas} cuota${cuotas === 1 ? "" : "s"})`}
       </Button>
       {error && <p className="text-center text-xs text-destructive">{error}</p>}
     </div>

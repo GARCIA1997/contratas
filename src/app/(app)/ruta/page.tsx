@@ -8,26 +8,94 @@ import { Phone, MessageCircle, MapPin, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Popup } from "@/components/ui/popup";
 import { Saludo } from "@/components/saludo";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getRutaDelDia } from "@/lib/offline/repo";
+import { getRutaDelDia, getConfiguracion } from "@/lib/offline/repo";
 import { enqueue } from "@/lib/offline/queue";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { formatMoneda } from "@/lib/utils";
+import { CONFIG_DEFAULTS } from "@/lib/config";
 import type { ParadaRuta } from "@/lib/services/ruta";
 
-function mensajeRecordatorio(nombre: string, total: number) {
-  return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${formatMoneda(
-    total
-  )}. ¡Gracias!`;
+function mensajeRecordatorio(nombre: string, total: number, diasAtrasoMax: number) {
+  const monto = formatMoneda(total);
+  if (diasAtrasoMax > 0) {
+    return `Hola ${nombre}, te recuerdo que tienes un pago pendiente de ${monto} desde hace ${diasAtrasoMax} día${diasAtrasoMax === 1 ? "" : "s"}. ¡Gracias!`;
+  }
+  if (diasAtrasoMax < 0) {
+    const dias = -diasAtrasoMax;
+    return `Hola ${nombre}, te recuerdo que tienes un pago de ${monto} próximo a vencer en ${dias} día${dias === 1 ? "" : "s"}. ¡Gracias!`;
+  }
+  return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${monto}. ¡Gracias!`;
+}
+
+type ReciboPendiente = {
+  clienteId: string;
+  nombre: string;
+  telefono: string | null;
+  total: number;
+  numCuotas: number;
+};
+
+function mensajeRecibo(nombreApp: string, r: ReciboPendiente) {
+  return [
+    `🧾 *${nombreApp}*`,
+    `*Recibo de pago*`,
+    ``,
+    `👤 Cliente: ${r.nombre}`,
+    `✅ ${r.numCuotas} cuota${r.numCuotas === 1 ? "" : "s"} pagada${r.numCuotas === 1 ? "" : "s"}`,
+    `💰 Total: ${formatMoneda(r.total)}`,
+    ``,
+    `¡Gracias por tu pago!`,
+  ].join("\n");
+}
+
+/** Popup tras marcar "Cobrado" — sobrevive aunque la parada ya haya
+ * desaparecido de la ruta en vivo (ver comentario en RutaDelDiaPage). Se
+ * muestra un recibo a la vez, en cola: al cerrar uno aparece el siguiente. */
+function ReciboPopup({
+  recibo,
+  nombreApp,
+  onCerrar,
+}: {
+  recibo: ReciboPendiente;
+  nombreApp: string;
+  onCerrar: () => void;
+}) {
+  return (
+    <Popup open onClose={onCerrar}>
+      <p className="text-sm font-semibold">{recibo.nombre}</p>
+      <p className="text-xs text-muted-foreground">Cobro registrado</p>
+      <p className="py-2 text-3xl font-bold text-pagado">
+        {formatMoneda(recibo.total)}
+      </p>
+      <div className="flex flex-col gap-2 pt-2">
+        <Button asChild onClick={onCerrar}>
+          <a
+            href={linkWhatsApp(recibo.telefono, mensajeRecibo(nombreApp, recibo))}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <MessageCircle className="size-4" /> Enviar recibo
+          </a>
+        </Button>
+        <Button variant="outline" onClick={onCerrar}>
+          Cerrar
+        </Button>
+      </div>
+    </Popup>
+  );
 }
 
 function Parada({
   parada,
   ownerId,
+  onCobrado,
 }: {
   parada: ParadaRuta;
   ownerId: string;
+  onCobrado: (parada: ParadaRuta) => void;
 }) {
   const [cobrando, setCobrando] = useState(false);
   const [cobrado, setCobrado] = useState(false);
@@ -43,6 +111,7 @@ function Parada({
         });
       }
       setCobrado(true);
+      onCobrado(parada);
     } finally {
       setCobrando(false);
     }
@@ -74,7 +143,9 @@ function Parada({
           >
             {parada.diasAtrasoMax > 0
               ? `${parada.diasAtrasoMax}d atraso`
-              : "Hoy"}
+              : parada.diasAtrasoMax < 0
+                ? `En ${-parada.diasAtrasoMax}d`
+                : "Hoy"}
           </Badge>
         </div>
 
@@ -98,7 +169,7 @@ function Parada({
             <a
               href={linkWhatsApp(
                 parada.telefono,
-                mensajeRecordatorio(parada.nombre, parada.total)
+                mensajeRecordatorio(parada.nombre, parada.total, parada.diasAtrasoMax)
               )}
               target="_blank"
               rel="noopener noreferrer"
@@ -125,6 +196,36 @@ export default function RutaDelDiaPage() {
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
     [ownerId]
   );
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
+  const nombreApp = config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp;
+
+  // Recibos de paradas ya cobradas en esta sesión — se guardan aparte (no
+  // derivados de `paradas`) porque en cuanto se marca "Cobrado" el pago
+  // optimista hace que esa parada YA NO aparezca en la ruta en vivo (deja de
+  // tener saldo pendiente): sin este estado separado, la tarjeta de recibo
+  // desaparecería junto con la parada antes de que se alcance a enviar por
+  // WhatsApp.
+  const [recibos, setRecibos] = useState<ReciboPendiente[]>([]);
+
+  function onCobrado(parada: ParadaRuta) {
+    setRecibos((r) => [
+      {
+        clienteId: parada.clienteId,
+        nombre: parada.nombre,
+        telefono: parada.telefono,
+        total: parada.total,
+        numCuotas: parada.cuotas.length,
+      },
+      ...r,
+    ]);
+  }
+
+  function descartarRecibo(clienteId: string) {
+    setRecibos((r) => r.filter((x) => x.clienteId !== clienteId));
+  }
 
   // Esta es literalmente la pantalla de "voy a salir a cobrar y puedo
   // perder la señal" — a diferencia de los prefetch puntuales de otras
@@ -161,13 +262,27 @@ export default function RutaDelDiaPage() {
         </Card>
       )}
 
+      {recibos[0] && (
+        <ReciboPopup
+          key={recibos[0].clienteId}
+          recibo={recibos[0]}
+          nombreApp={nombreApp}
+          onCerrar={() => descartarRecibo(recibos[0].clienteId)}
+        />
+      )}
+
       <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
         {paradas?.map((p) => (
-          <Parada key={p.clienteId} parada={p} ownerId={ownerId as string} />
+          <Parada
+            key={p.clienteId}
+            parada={p}
+            ownerId={ownerId as string}
+            onCobrado={onCobrado}
+          />
         ))}
       </div>
 
-      {paradas && paradas.length === 0 && (
+      {paradas && paradas.length === 0 && recibos.length === 0 && (
         <p className="py-10 text-center text-xs text-muted-foreground">
           No hay cobros pendientes para hoy.
         </p>

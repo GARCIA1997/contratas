@@ -1,8 +1,9 @@
-import { startOfDay } from "date-fns";
+import { startOfDay, addDays } from "date-fns";
 import type { TipoContrata } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import { anclarFechaCliente } from "@/lib/fechas";
+import { DIAS_PROXIMO_VENCIMIENTO } from "@/lib/contrata";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -23,9 +24,13 @@ export type PreviewCobroVencidas = {
 };
 
 /**
- * Todas las cuotas de las contratas activas de un cliente cuya fecha
- * programada ya llegó (hoy o antes) y que no están del todo pagadas.
- * Incluye el saldo restante de cuotas con abono parcial.
+ * Todas las cuotas de las contratas activas de un cliente que ya vencieron
+ * O que están "próximas" (mismo umbral que `estadoContrata` — hoy o hasta
+ * `DIAS_PROXIMO_VENCIMIENTO` días adelante), y que no están del todo
+ * pagadas. Incluye el saldo restante de cuotas con abono parcial. Se
+ * incluyen las próximas a propósito: en campo, el cobrador suele cobrar por
+ * adelantado cuando ya visitó al cliente por otra cuota vencida — separar
+ * el pago en dos viajes no tiene sentido.
  */
 export async function previewCobroVencidas(
   ownerId: string,
@@ -38,12 +43,13 @@ export async function previewCobroVencidas(
   });
 
   const base = startOfDay(hoy);
+  const limite = addDays(base, DIAS_PROXIMO_VENCIMIENTO);
   const items: CuotaVencidaItem[] = [];
 
   for (const c of contratas) {
     for (const p of c.pagos) {
       if (p.pagado) continue;
-      if (anclarFechaCliente(p.fechaProgramada) > base) continue;
+      if (anclarFechaCliente(p.fechaProgramada) > limite) continue;
       const pendiente = round(c.abono - p.montoAbonado);
       if (pendiente <= 0) continue;
       items.push({
@@ -92,7 +98,7 @@ export async function ejecutarCobroVencidas(
 
   const { items } = await previewCobroVencidas(ownerId, clienteId, hoy);
   if (items.length === 0) {
-    throw new HttpError(400, "No hay cuotas vencidas para cobrar");
+    throw new HttpError(400, "No hay cuotas pendientes para cobrar");
   }
 
   const ahora = new Date();

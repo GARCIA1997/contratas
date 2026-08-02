@@ -1,6 +1,8 @@
+import { startOfDay, addDays } from "date-fns";
 import { db } from "@/lib/offline/db";
 import type { QueueOpType } from "@/lib/offline/db";
-import { cuotasVencidasOVigentes } from "@/lib/contrata";
+import { DIAS_PROXIMO_VENCIMIENTO } from "@/lib/contrata";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 /**
  * Aplica el efecto local (optimista) de una operación encolada directamente
@@ -197,15 +199,19 @@ export async function applyLocalEffect(
       await db.contratas.where("clienteId").equals(clienteId).toArray()
     ).filter((c) => !c._deletedAt && !c.convertidaADeuda);
     const ahora = new Date().toISOString();
+    // Mismo umbral que previewCobroVencidas/getCobroVencidoPreview: vencidas
+    // Y próximas (no solo cuotasVencidasOVigentes, que se corta en "hoy") —
+    // si no, el efecto optimista offline dejaría sin marcar las cuotas
+    // "próximas" que sí incluyó el total mostrado, hasta que sincronizara.
+    const base = startOfDay(new Date());
+    const limite = addDays(base, DIAS_PROXIMO_VENCIMIENTO);
     for (const c of contratas) {
       const pagos = await db.pagos.where("contrataId").equals(c.id).toArray();
-      const pagosConFecha = pagos.map((p) => ({
-        ...p,
-        fechaProgramada: new Date(p.fechaProgramada),
-      }));
-      const vencidas = cuotasVencidasOVigentes(pagosConFecha);
-      if (vencidas.length === 0) continue;
-      for (const p of vencidas) {
+      const pendientes = pagos.filter(
+        (p) => !p.pagado && anclarFechaCliente(new Date(p.fechaProgramada)) <= limite
+      );
+      if (pendientes.length === 0) continue;
+      for (const p of pendientes) {
         await db.pagos.update(p.id, {
           pagado: true,
           montoAbonado: c.abono,

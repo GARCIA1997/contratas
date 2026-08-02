@@ -180,4 +180,17 @@ describe("applyLocalEffect", () => {
     expect((await db.pagos.get("p2"))?.pagado).toBe(false); // futura, no se toca
     expect((await db.contratas.get("c1"))?._dirty).toBe(true);
   });
+
+  it("cliente.cobrarVencidas también paga cuotas 'próximas' (dentro de DIAS_PROXIMO_VENCIMIENTO) — el efecto optimista debe cubrir lo mismo que el total mostrado en el preview", async () => {
+    const enDosDias = new Date();
+    enDosDias.setDate(enDosDias.getDate() + 2);
+    const enDiez = new Date();
+    enDiez.setDate(enDiez.getDate() + 10);
+    await seedContrata({ id: "c1", clienteId: "cli-1", abono: 600 });
+    await seedPago({ id: "p1", contrataId: "c1", numeroCuota: 1, fechaProgramada: enDosDias.toISOString() });
+    await seedPago({ id: "p2", contrataId: "c1", numeroCuota: 2, fechaProgramada: enDiez.toISOString() });
+    await applyLocalEffect("cliente.cobrarVencidas", { clienteId: "cli-1" });
+    expect((await db.pagos.get("p1"))?.pagado).toBe(true); // próxima, dentro de la ventana
+    expect((await db.pagos.get("p2"))?.pagado).toBe(false); // demasiado lejos todavía
+  });
 });
