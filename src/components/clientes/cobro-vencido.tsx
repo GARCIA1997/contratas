@@ -28,7 +28,7 @@ function construirMensaje(nombreApp: string, r: ResultadoCobroVencidas) {
     ...r.contratas.flatMap((c) => [
       `${TIPO_LABEL[c.tipo]} · ${formatMoneda(c.subtotal)}`,
       ...c.cuotas.map(
-        (q) => `  · Cuota ${q.numeroCuota}: ${formatMoneda(q.monto)}`
+        (q) => `  · Cuota ${q.numeroCuota}/${c.numCuotas}: ${formatMoneda(q.monto)}`
       ),
     ]),
   ];
@@ -144,7 +144,9 @@ export function CobroVencido({
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {c.cuotas.map((q) => `Cuota ${q.numeroCuota}`).join(", ")}
+                  {c.cuotas
+                    .map((q) => `Cuota ${q.numeroCuota}/${c.numCuotas}`)
+                    .join(", ")}
                 </p>
               </li>
             ))}

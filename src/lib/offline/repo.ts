@@ -1,6 +1,7 @@
 import { addDays, startOfDay } from "date-fns";
 import type { TipoContrata } from "@prisma/client";
 import { db, type ContrataLocal, type PagoLocal } from "@/lib/offline/db";
+import { reintentarSiCursorInvalido } from "@/lib/offline/dexie-retry";
 import {
   estadoContrata,
   saldoPendiente,
@@ -31,7 +32,13 @@ import { aggregarRutaDelDia, type ParadaRuta } from "@/lib/services/ruta";
 
 async function pagosDeContrata(contrataId: string): Promise<PagoLocal[]> {
   if (!db) return [];
-  const pagos = await db.pagos.where("contrataId").equals(contrataId).toArray();
+  // Se llama una vez POR CONTRATA en cada pantalla (listas, detalle, estado
+  // de cuenta) — el punto de mayor volumen de queries de toda la capa
+  // offline, y por lo mismo el que más veces topa con el bug de cursor de
+  // WebKit reportado en producción (ver dexie-retry.ts).
+  const pagos = await reintentarSiCursorInvalido(() =>
+    db!.pagos.where("contrataId").equals(contrataId).toArray()
+  );
   return pagos.sort((a, b) => a.numeroCuota - b.numeroCuota);
 }
 
