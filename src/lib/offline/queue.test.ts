@@ -259,4 +259,37 @@ describe("flushQueue", () => {
     expect(await conflictCount(OWNER)).toBe(0);
     expect(await pendingCount(OWNER)).toBe(0);
   });
+
+  it("recoge un item atorado en 'syncing' (petición anterior que nunca resolvió, p. ej. la app se cerró a media petición) en el siguiente flush", async () => {
+    await seedContrata("c1");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
+    const [op] = await db.writeQueue.where("ownerId").equals(OWNER).toArray();
+    // Simula una sesión anterior que quedó a medias (nunca llegó a "conflict",
+    // "failed" ni se borró) — sin el fix, este item quedaba excluido para
+    // siempre del filtro de `pendientes` en flushQueue.
+    await db.writeQueue.update(op.id, { status: "syncing" });
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await pendingCount(OWNER)).toBe(0);
+  });
+
+  it("reintentarConflictos también regresa a 'pending' los items atorados en 'syncing'", async () => {
+    await seedContrata("c1");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
+    const [op] = await db.writeQueue.where("ownerId").equals(OWNER).toArray();
+    await db.writeQueue.update(op.id, { status: "syncing" });
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await reintentarConflictos(OWNER);
+
+    expect(await pendingCount(OWNER)).toBe(0);
+  });
 });
