@@ -18,16 +18,24 @@ import { formatMoneda } from "@/lib/utils";
 import { CONFIG_DEFAULTS } from "@/lib/config";
 import type { CuotaRuta, ParadaRuta } from "@/lib/services/ruta";
 
-function mensajeRecordatorio(nombre: string, total: number, diasAtrasoMax: number) {
+function mensajeRecordatorio(
+  nombreApp: string,
+  nombre: string,
+  total: number,
+  diasAtrasoMax: number
+) {
   const monto = formatMoneda(total);
+  // Firmado con el nombre de la app en todos los mensajes salientes — para
+  // que el cliente reconozca de quién viene incluso en este recordatorio
+  // corto (los demás mensajes ya lo llevan en el encabezado 🧾).
   if (diasAtrasoMax > 0) {
-    return `Hola ${nombre}, te recuerdo que tienes un pago pendiente de ${monto} desde hace ${diasAtrasoMax} día${diasAtrasoMax === 1 ? "" : "s"}. ¡Gracias!`;
+    return `Hola ${nombre}, te recuerdo que tienes un pago pendiente de ${monto} desde hace ${diasAtrasoMax} día${diasAtrasoMax === 1 ? "" : "s"}. ¡Gracias! — ${nombreApp}`;
   }
   if (diasAtrasoMax < 0) {
     const dias = -diasAtrasoMax;
-    return `Hola ${nombre}, te recuerdo que tienes un pago de ${monto} próximo a vencer en ${dias} día${dias === 1 ? "" : "s"}. ¡Gracias!`;
+    return `Hola ${nombre}, te recuerdo que tienes un pago de ${monto} próximo a vencer en ${dias} día${dias === 1 ? "" : "s"}. ¡Gracias! — ${nombreApp}`;
   }
-  return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${monto}. ¡Gracias!`;
+  return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${monto}. ¡Gracias! — ${nombreApp}`;
 }
 
 type ReciboPendiente = {
@@ -96,10 +104,12 @@ function ReciboPopup({
 function Parada({
   parada,
   ownerId,
+  nombreApp,
   onCobrado,
 }: {
   parada: ParadaRuta;
   ownerId: string;
+  nombreApp: string;
   onCobrado: (parada: ParadaRuta) => void;
 }) {
   const [cobrando, setCobrando] = useState(false);
@@ -174,7 +184,12 @@ function Parada({
             <a
               href={linkWhatsApp(
                 parada.telefono,
-                mensajeRecordatorio(parada.nombre, parada.total, parada.diasAtrasoMax)
+                mensajeRecordatorio(
+                  nombreApp,
+                  parada.nombre,
+                  parada.total,
+                  parada.diasAtrasoMax
+                )
               )}
               target="_blank"
               rel="noopener noreferrer"
@@ -282,6 +297,7 @@ export default function RutaDelDiaPage() {
             key={p.clienteId}
             parada={p}
             ownerId={ownerId as string}
+            nombreApp={nombreApp}
             onCobrado={onCobrado}
           />
         ))}
