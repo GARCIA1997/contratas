@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { RenovarForm } from "@/components/contratas/renovar-form";
@@ -19,6 +19,11 @@ export default function RenovarContrataPage() {
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready && claims.esAdmin;
+  // Una vez renovada, la contrata original queda liquidada (saldo 0) — sin
+  // este flag, el efecto de abajo la detecta como "ya no elegible" y
+  // redirige de vuelta ANTES de que el usuario alcance a ver el panel de
+  // confirmación / enviar el recibo por WhatsApp.
+  const [completado, setCompletado] = useState(false);
 
   useEffect(() => {
     if (claims.ready && !esAdmin) router.replace(`/contratas/${params.id}`);
@@ -41,6 +46,7 @@ export default function RenovarContrataPage() {
   );
 
   useEffect(() => {
+    if (completado) return;
     if (contrata === null) {
       router.replace("/contratas");
       return;
@@ -61,7 +67,7 @@ export default function RenovarContrataPage() {
     ) {
       router.replace(`/contratas/${params.id}`);
     }
-  }, [contrata, params.id, router]);
+  }, [contrata, params.id, router, completado]);
 
   if (
     !claims.ready ||
@@ -97,6 +103,8 @@ export default function RenovarContrataPage() {
       otras={otras.map((c) => ({ id: c.id, tipo: c.tipo, saldo: c.saldo }))}
       cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
       maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
+      nombreApp={config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp}
+      onRenovada={() => setCompletado(true)}
     />
   );
 }

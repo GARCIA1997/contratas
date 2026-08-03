@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -16,6 +15,10 @@ import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { enqueue } from "@/lib/offline/queue";
+import {
+  ReciboEntregaPanel,
+  type ContrataEntregada,
+} from "@/components/contratas/recibo-entrega";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -34,6 +37,8 @@ export function RenovarForm({
   otras,
   cuotasPorDefecto,
   maxCuotas,
+  nombreApp,
+  onRenovada,
 }: {
   contrataId: string;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
@@ -44,11 +49,17 @@ export function RenovarForm({
   otras: OtraContrata[];
   cuotasPorDefecto: number;
   maxCuotas: number;
+  nombreApp: string;
+  /** La página la usa para no redirigir de vuelta apenas la original quede
+   * liquidada — ver comentario en el page.tsx. */
+  onRenovada?: () => void;
 }) {
-  const router = useRouter();
   const claims = useAuthClaims();
   const [incluirOtras, setIncluirOtras] = useState(false);
   const [pendienteSync, setPendienteSync] = useState(false);
+  const [renovada, setRenovada] = useState<ContrataEntregada & { id: string } | null>(
+    null
+  );
   const [tipo, setTipo] = useState<TipoContrata>(tipoOriginal);
   const [monto, setMonto] = useState("");
   const [numCuotas, setNumCuotas] = useState(cuotasPorDefecto);
@@ -147,9 +158,38 @@ export function RenovarForm({
       return;
     }
     const data = await res.json();
+    // onRenovada() (marca "completado" en la página) va ANTES de syncAll:
+    // syncAll escribe en Dexie, y el useLiveQuery de la página reacciona a
+    // ese cambio con su propio re-render — si ese re-render llega a correr
+    // antes de que React procese el setState de "completado", el efecto de
+    // redirect de la página alcanza a dispararse con el flag todavía en
+    // false y saca al usuario del panel de confirmación antes de que se
+    // alcance a mostrar.
+    onRenovada?.();
     if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
-    router.push(`/contratas/${data.nuevaContrata.id}`);
-    router.refresh();
+    // Igual que "nueva contrata": se muestra la confirmación con la opción
+    // de mandarle los detalles al cliente por WhatsApp (mismo detalle
+    // completo, calendario incluido) en vez de navegar de inmediato.
+    setRenovada(data.nuevaContrata);
+  }
+
+  if (renovada) {
+    return (
+      <div className="space-y-4 md:max-w-xl">
+        <ReciboEntregaPanel
+          nombreApp={nombreApp}
+          contrata={renovada}
+          tituloPanel="Contrata renovada"
+          tituloMensaje="Detalles de tu renovación"
+        />
+        <Button variant="outline" className="w-full" asChild>
+          <Link href={`/contratas/${renovada.id}`}>Ver la contrata nueva</Link>
+        </Button>
+        <Button variant="ghost" className="w-full" asChild>
+          <Link href={`/contratas/${contrataId}`}>Volver a la contrata original</Link>
+        </Button>
+      </div>
+    );
   }
 
   if (pendienteSync) {
