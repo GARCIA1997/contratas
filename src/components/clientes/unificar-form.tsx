@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -15,6 +14,10 @@ import { formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { enqueue } from "@/lib/offline/queue";
+import {
+  ReciboEntregaPanel,
+  type ContrataEntregada,
+} from "@/components/contratas/recibo-entrega";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -35,6 +38,8 @@ export function UnificarForm({
   contratas,
   cuotasPorDefecto,
   maxCuotas,
+  nombreApp,
+  onUnificada,
 }: {
   clienteId: string;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
@@ -43,11 +48,17 @@ export function UnificarForm({
   contratas: ContrataElegible[];
   cuotasPorDefecto: number;
   maxCuotas: number;
+  nombreApp: string;
+  /** La página la usa para no redirigir de vuelta apenas las contratas
+   * seleccionadas dejen de ser "elegibles" — ver comentario en el page.tsx. */
+  onUnificada?: () => void;
 }) {
-  const router = useRouter();
   const claims = useAuthClaims();
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
   const [pendienteSync, setPendienteSync] = useState(false);
+  const [unificada, setUnificada] = useState<ContrataEntregada & { id: string } | null>(
+    null
+  );
   const [tipo, setTipo] = useState<TipoContrata>(contratas[0]?.tipo ?? "SEMANAL");
   const [monto, setMonto] = useState("");
   const [montoTocado, setMontoTocado] = useState(false);
@@ -164,9 +175,35 @@ export function UnificarForm({
       return;
     }
     const data = await res.json();
+    // onUnificada() (marca "completado" en la página) va ANTES de syncAll —
+    // ver comentario largo en renovar-form.tsx: sin este orden, el
+    // useLiveQuery de la página puede reaccionar al cambio en Dexie y
+    // redirigir antes de que React procese el setState de "completado".
+    onUnificada?.();
     if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
-    router.push(`/contratas/${data.nuevaContrata.id}`);
-    router.refresh();
+    // Igual que "nueva contrata"/renovar: se muestra la confirmación con la
+    // opción de mandarle los detalles al cliente por WhatsApp en vez de
+    // navegar de inmediato.
+    setUnificada(data.nuevaContrata);
+  }
+
+  if (unificada) {
+    return (
+      <div className="space-y-4 md:max-w-xl">
+        <ReciboEntregaPanel
+          nombreApp={nombreApp}
+          contrata={unificada}
+          tituloPanel="Contratas unificadas"
+          tituloMensaje="Detalles de tu reestructuración"
+        />
+        <Button variant="outline" className="w-full" asChild>
+          <Link href={`/contratas/${unificada.id}`}>Ver la contrata nueva</Link>
+        </Button>
+        <Button variant="ghost" className="w-full" asChild>
+          <Link href={`/clientes/${clienteId}`}>Volver al cliente</Link>
+        </Button>
+      </div>
+    );
   }
 
   if (pendienteSync) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { UnificarForm } from "@/components/clientes/unificar-form";
@@ -18,6 +18,11 @@ export default function UnificarContratasPage() {
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready && claims.esAdmin;
+  // Igual que en renovar: una vez unificadas, las contratas seleccionadas
+  // quedan liquidadas y `elegibles` cae debajo de 2 — sin este flag, el
+  // efecto de abajo redirige de vuelta antes de que el usuario alcance a
+  // ver el panel de confirmación / enviar el recibo por WhatsApp.
+  const [completado, setCompletado] = useState(false);
 
   useEffect(() => {
     if (claims.ready && !esAdmin) router.replace(`/clientes/${params.id}`);
@@ -37,10 +42,11 @@ export default function UnificarContratasPage() {
   );
 
   useEffect(() => {
+    if (completado) return;
     if (elegibles && elegibles.length < 2) {
       router.replace(`/clientes/${params.id}`);
     }
-  }, [elegibles, params.id, router]);
+  }, [elegibles, params.id, router, completado]);
 
   if (
     !claims.ready ||
@@ -48,7 +54,7 @@ export default function UnificarContratasPage() {
     perfil === undefined ||
     perfil === null ||
     !elegibles ||
-    elegibles.length < 2 ||
+    (!completado && elegibles.length < 2) ||
     !config
   ) {
     return (
@@ -66,6 +72,8 @@ export default function UnificarContratasPage() {
       contratas={elegibles.map((c) => ({ id: c.id, tipo: c.tipo, saldo: c.saldo }))}
       cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
       maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
+      nombreApp={config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp}
+      onUnificada={() => setCompletado(true)}
     />
   );
 }
