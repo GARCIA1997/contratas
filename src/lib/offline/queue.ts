@@ -119,16 +119,27 @@ export async function enqueue(
 }
 
 let flushing = false;
+// Si un flushQueue llega mientras otro ya está corriendo, antes se perdía en
+// silencio (con solo `if (flushing) return`) — bug reportado en campo: al
+// marcar "Cobrado" en Ruta con un cliente de 2 contratas, marcarCobrado hace
+// dos `await enqueue(...)` seguidos (uno por cuota); el primero dispara un
+// flush que sigue en vuelo (esperando el fetch) cuando el segundo `enqueue`
+// intenta el suyo, así que ese segundo flush no hacía nada — la cuota de la
+// otra contrata se quedaba "pending" sin que nada la volviera a intentar
+// hasta que algo más disparara un flush por casualidad (el recibo, armado
+// del lado del cliente con las dos cuotas, mostraba éxito para ambas de
+// todos modos). Ahora, en vez de perderlo, se anota qué owner lo pidió y se
+// vuelve a correr apenas termine el flush que está en curso.
+let reflushPendiente: string | null = null;
 
 /** Vacía la cola en orden de creación contra las rutas API reales. */
 export async function flushQueue(ownerId: string): Promise<void> {
   const database = db;
-  if (
-    !database ||
-    flushing ||
-    typeof navigator === "undefined" ||
-    !navigator.onLine
-  ) {
+  if (!database || typeof navigator === "undefined" || !navigator.onLine) {
+    return;
+  }
+  if (flushing) {
+    reflushPendiente = ownerId;
     return;
   }
   flushing = true;
@@ -212,6 +223,11 @@ export async function flushQueue(ownerId: string): Promise<void> {
     }
   } finally {
     flushing = false;
+    if (reflushPendiente) {
+      const siguienteOwner = reflushPendiente;
+      reflushPendiente = null;
+      void flushQueue(siguienteOwner);
+    }
   }
 }
 

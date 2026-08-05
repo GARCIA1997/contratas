@@ -292,4 +292,36 @@ describe("flushQueue", () => {
 
     expect(await pendingCount(OWNER)).toBe(0);
   });
+
+  it("dos enqueue seguidos sin esperar el flush del primero (igual que 'Cobrado' en Ruta con 2 contratas) sincronizan ambas operaciones, no solo la primera", async () => {
+    // Bug reportado en campo: un cliente con 2 contratas, al marcar
+    // "Cobrado" en Ruta (que hace un `enqueue` por cuota, uno por cada
+    // contrata, sin esperar a que el primero termine de enviarse), solo una
+    // de las dos se aplicaba en el servidor — la otra se quedaba "pending"
+    // sin que nada la reintentara, aunque el recibo (armado del lado del
+    // cliente) mostrara ambas como cobradas. Causa: el segundo `enqueue`
+    // dispara su propio `flushQueue`, pero como el primero todavía sigue en
+    // vuelo (esperando el fetch), el guard `flushing` hacía que ese segundo
+    // intento no hiciera nada — y nada más lo volvía a intentar.
+    await seedContrata("c1");
+    await seedContrata("c2");
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+
+    const fetchMock = vi.fn().mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      return new Response(null, { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    // Igual que el for-loop de marcarCobrado en ruta/page.tsx.
+    await enqueue(OWNER, "contrata.pago.abonar", { contrataId: "c1", numeroCuota: 1, monto: 600 });
+    await enqueue(OWNER, "contrata.pago.abonar", { contrataId: "c2", numeroCuota: 1, monto: 600 });
+
+    // Deja que el flush disparado por el segundo enqueue (que antes se
+    // perdía en silencio) alcance a correr en segundo plano.
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await pendingCount(OWNER)).toBe(0);
+  });
 });
