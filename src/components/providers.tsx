@@ -2,6 +2,7 @@
 
 import { SessionProvider } from "next-auth/react";
 import { ErrorLogListener } from "@/components/error-log-listener";
+import { BootWatchdogMarker } from "@/components/boot-watchdog-marker";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   // refetchOnWindowFocus (default: true) revalida la sesión cada vez que la
@@ -15,6 +16,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   // cacheados en IndexedDB; no hace falta esta revalidación en segundo plano.
   return (
     <SessionProvider refetchOnWindowFocus={false}>
+      <BootWatchdogMarker />
       <ErrorLogListener />
       {children}
     </SessionProvider>

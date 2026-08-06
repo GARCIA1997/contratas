@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 import { SwRegister } from "@/components/pwa/sw-register";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
+import { BOOT_WATCHDOG_SCRIPT } from "@/lib/boot-watchdog";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -43,6 +44,7 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: BOOT_WATCHDOG_SCRIPT }} />
       </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <SwRegister />
