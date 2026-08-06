@@ -240,25 +240,24 @@ export default function ClientePerfilPage() {
       </div>
 
       {esAdmin && (
-        <Button className="w-full" variant="outline" asChild>
-          <Link href={`/contratas/nueva?clienteId=${perfil.id}`}>
-            <Plus className="size-4" /> Nueva contrata
-          </Link>
-        </Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" asChild>
+            <Link href={`/contratas/nueva?clienteId=${perfil.id}`}>
+              <Plus className="size-4" /> Nueva contrata
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/citas/nueva?clienteId=${perfil.id}`}>
+              <CalendarPlus className="size-4" /> Agendar
+            </Link>
+          </Button>
+        </div>
       )}
 
       {esAdmin && elegiblesUnificar >= 2 && (
         <Button className="w-full" variant="outline" asChild>
           <Link href={`/clientes/${perfil.id}/unificar`}>
             <Combine className="size-4" /> Unificar contratas
-          </Link>
-        </Button>
-      )}
-
-      {esAdmin && (
-        <Button className="w-full" variant="outline" asChild>
-          <Link href={`/citas/nueva?clienteId=${perfil.id}`}>
-            <CalendarPlus className="size-4" /> Agendar próxima contrata
           </Link>
         </Button>
       )}
