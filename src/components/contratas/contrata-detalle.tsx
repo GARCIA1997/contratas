@@ -280,10 +280,21 @@ export function ContrataDetalle({
   return (
     <div className="space-y-4 md:max-w-xl">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/contratas">
-            <ArrowLeft className="size-4" /> Volver
-          </Link>
+        <Button
+          variant="ghost"
+          size="sm"
+          // Una contrata se puede abrir desde /contratas O desde el
+          // historial en el perfil del cliente — un href fijo a /contratas
+          // (como antes) sacaba al usuario a la lista aunque hubiera
+          // entrado desde el cliente. router.back() respeta de dónde vino
+          // de verdad; /contratas solo como respaldo si no hay historial
+          // (p. ej. se abrió el link directo).
+          onClick={() => {
+            if (window.history.length > 1) router.back();
+            else router.push("/contratas");
+          }}
+        >
+          <ArrowLeft className="size-4" /> Volver
         </Button>
         <div className="flex gap-1">
           <Button variant="outline" size="sm" asChild>

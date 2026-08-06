@@ -316,6 +316,8 @@ export type ClientePerfilLocal = {
     total: number;
     saldo: number;
     estado: ReturnType<typeof estadoContrata> | "EN_DEUDA";
+    creadoEn: string;
+    ultimaFechaPago: string | null;
   }[];
   totales: {
     capitalPrestado: number;
@@ -325,6 +327,17 @@ export type ClientePerfilLocal = {
   };
   scorePago: ResultadoScorePago;
 };
+
+/** Espejo de `ultimaFechaPago` en services/clientes.ts. */
+function ultimaFechaPagoLocal(
+  pagos: { pagado: boolean; fechaPago: Date | null }[]
+): string | null {
+  const fechas = pagos
+    .filter((p) => p.pagado && p.fechaPago)
+    .map((p) => (p.fechaPago as Date).getTime());
+  if (fechas.length === 0) return null;
+  return new Date(Math.max(...fechas)).toISOString();
+}
 
 function round2(n: number) {
   return Math.round(n * 100) / 100;
@@ -369,10 +382,15 @@ export async function getClientePerfil(
         estado: c.convertidaADeuda
           ? ("EN_DEUDA" as const)
           : estadoContrata(pagosParaCalculo),
+        creadoEn: c.creadoEn,
+        ultimaFechaPago: ultimaFechaPagoLocal(pagosParaCalculo),
       };
     })
   );
-  contratas.sort((a, b) => b.id.localeCompare(a.id));
+  // El orden real (por pestaña) lo decide HistorialContratas — este sort
+  // solo da un orden estable de entrada; antes usaba localeCompare(id), que
+  // no refleja fecha de creación de forma confiable.
+  contratas.sort((a, b) => b.creadoEn.localeCompare(a.creadoEn));
 
   const scorePago = calcularScorePago(todosLosPagos);
 
