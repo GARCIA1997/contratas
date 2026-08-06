@@ -43,6 +43,9 @@ export function ContrataForm({
   inicial,
   clientePreseleccionado,
   volverHref: volverHrefProp,
+  montoInicial,
+  fechaInicioInicial,
+  onGuardada,
 }: {
   clientes: ClienteOpcion[];
   cuotasPorDefecto: number;
@@ -54,6 +57,16 @@ export function ContrataForm({
   /** Si se crea desde el perfil de un cliente: se omite el selector. */
   clientePreseleccionado?: ClienteOpcion;
   volverHref?: string;
+  /** Solo al crear (no en edición): monto/fecha de referencia con los que
+   * arranca el formulario, editables — usado al convertir una cita
+   * agendada en contrata real. Ignorado si se pasa `inicial`. */
+  montoInicial?: number;
+  fechaInicioInicial?: string;
+  /** Se invoca justo antes de mostrar la confirmación/pantalla de
+   * "pendiente", tanto online como offline — usado por la misma feature de
+   * citas para cerrar el círculo (marcar la cita como entregada) sin que
+   * este componente sepa nada de citas. */
+  onGuardada?: (info: { contrataId: string | null; offline: boolean }) => void;
 }) {
   const router = useRouter();
   const claims = useAuthClaims();
@@ -75,12 +88,16 @@ export function ContrataForm({
   const [sugerenciasAbiertas, setSugerenciasAbiertas] = useState(false);
   const [clienteNombre, setClienteNombre] = useState("");
   const [tipo, setTipo] = useState<TipoContrata>(inicial?.tipo ?? tipoInicial);
-  const [monto, setMonto] = useState(inicial ? String(inicial.monto) : "");
+  const [monto, setMonto] = useState(
+    inicial ? String(inicial.monto) : montoInicial ? String(montoInicial) : ""
+  );
   const [numCuotas, setNumCuotas] = useState(
     inicial?.numCuotas ?? cuotasPorDefecto
   );
   const [fechaInicio, setFechaInicio] = useState(
-    inicial?.fechaInicio ?? new Date().toISOString().slice(0, 10)
+    inicial?.fechaInicio ??
+      fechaInicioInicial ??
+      new Date().toISOString().slice(0, 10)
   );
   const [abono, setAbono] = useState(inicial ? String(inicial.abono) : "");
   const [notas, setNotas] = useState(inicial?.notas ?? "");
@@ -190,6 +207,7 @@ export function ContrataForm({
       await enqueue(claims.ownerId, "contrata.crear", payload);
       setGuardando(false);
       setPendienteSync(true);
+      onGuardada?.({ contrataId: null, offline: true });
       return;
     }
 
@@ -216,6 +234,7 @@ export function ContrataForm({
     // opción de mandarle los detalles al cliente por WhatsApp, que es justo
     // el momento de la entrega. Al editar sí se vuelve a la contrata.
     if (!editando) {
+      onGuardada?.({ contrataId: guardada.id, offline: false });
       setCreada(guardada as ContrataCreada);
       return;
     }

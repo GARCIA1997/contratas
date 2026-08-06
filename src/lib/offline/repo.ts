@@ -22,6 +22,8 @@ import {
 } from "@/lib/services/dashboard";
 import type { ContrataResumen } from "@/components/contratas/tipos";
 import { aggregarRutaDelDia, type ParadaRuta } from "@/lib/services/ruta";
+import { citasPendientesOrdenadas } from "@/lib/citas";
+import type { CitaLocal } from "@/lib/offline/db";
 
 /**
  * Capa de lectura offline: espejo de src/lib/services/*.ts pero leyendo
@@ -684,6 +686,36 @@ export async function getRutaDelDia(
   );
 
   return aggregarRutaDelDia(conContratas, hoy);
+}
+
+/** Todas las citas pendientes, ordenadas por fecha de entrega (pestaña "Entregar" en Ruta). */
+export async function getCitasPendientes(ownerId: string): Promise<CitaLocal[]> {
+  if (!db) return [];
+  const citas = (
+    await db.citas.where("ownerId").equals(ownerId).toArray()
+  ).filter((c) => !c._deletedAt);
+  return citasPendientesOrdenadas(citas);
+}
+
+/** Citas pendientes de un cliente puntual (para su perfil). */
+export async function getCitasDeCliente(
+  ownerId: string,
+  clienteId: string
+): Promise<CitaLocal[]> {
+  if (!db) return [];
+  return (await db.citas.where("clienteId").equals(clienteId).toArray())
+    .filter((c) => !c._deletedAt && c.ownerId === ownerId && c.estado === "PENDIENTE")
+    .sort((a, b) => a.fechaEntrega.localeCompare(b.fechaEntrega));
+}
+
+export async function getCita(
+  ownerId: string,
+  id: string
+): Promise<CitaLocal | null> {
+  if (!db) return null;
+  const cita = await db.citas.get(id);
+  if (!cita || cita._deletedAt || cita.ownerId !== ownerId) return null;
+  return cita;
 }
 
 export type IdsParaPrecarga = {

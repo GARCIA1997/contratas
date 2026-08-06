@@ -4,14 +4,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Phone, MessageCircle, MapPin, Check } from "lucide-react";
+import { Phone, MessageCircle, MapPin, Check, CalendarPlus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popup } from "@/components/ui/popup";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Saludo } from "@/components/saludo";
+import { CitaCard } from "@/components/citas/cita-card";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getRutaDelDia, getConfiguracion } from "@/lib/offline/repo";
+import {
+  getRutaDelDia,
+  getConfiguracion,
+  getCitasPendientes,
+} from "@/lib/offline/repo";
 import { enqueue } from "@/lib/offline/queue";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { formatMoneda } from "@/lib/utils";
@@ -216,6 +222,11 @@ export default function RutaDelDiaPage() {
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
     [ownerId]
   );
+  const [vista, setVista] = useState<"COBRAR" | "ENTREGAR">("COBRAR");
+  const citas = useLiveQuery(
+    () => (ownerId ? getCitasPendientes(ownerId) : undefined),
+    [ownerId]
+  );
   const config = useLiveQuery(
     () => (ownerId ? getConfiguracion(ownerId) : undefined),
     [ownerId]
@@ -263,50 +274,86 @@ export default function RutaDelDiaPage() {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <Saludo nombre={nombre} />
-        <p className="text-sm text-muted-foreground">Ruta de cobro de hoy</p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-1">
+          <Saludo nombre={nombre} />
+          <p className="text-sm text-muted-foreground">
+            {vista === "COBRAR" ? "Ruta de cobro de hoy" : "Contratas por entregar"}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/citas/nueva">
+            <CalendarPlus className="size-4" /> Agendar
+          </Link>
+        </Button>
       </div>
 
-      {paradas && paradas.length > 0 && (
-        <Card>
-          <CardContent className="flex items-center justify-between p-4">
-            <div>
-              <p className="text-xs text-muted-foreground">
-                {paradas.length}{" "}
-                {paradas.length === 1 ? "parada" : "paradas"} pendientes
-              </p>
-              <p className="text-lg font-bold">{formatMoneda(totalDia)}</p>
+      <SegmentedControl
+        value={vista}
+        onChange={setVista}
+        options={[
+          { value: "COBRAR", label: "Cobrar" },
+          { value: "ENTREGAR", label: "Entregar" },
+        ]}
+      />
+
+      {vista === "COBRAR" ? (
+        <>
+          {paradas && paradas.length > 0 && (
+            <Card>
+              <CardContent className="flex items-center justify-between p-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {paradas.length}{" "}
+                    {paradas.length === 1 ? "parada" : "paradas"} pendientes
+                  </p>
+                  <p className="text-lg font-bold">{formatMoneda(totalDia)}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {recibos[0] && (
+            <ReciboPopup
+              key={recibos[0].clienteId}
+              recibo={recibos[0]}
+              nombreApp={nombreApp}
+              onCerrar={() => descartarRecibo(recibos[0].clienteId)}
+            />
+          )}
+
+          <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
+            {paradas?.map((p) => (
+              <Parada
+                key={p.clienteId}
+                parada={p}
+                ownerId={ownerId as string}
+                nombreApp={nombreApp}
+                onCobrado={onCobrado}
+              />
+            ))}
+          </div>
+
+          {paradas && paradas.length === 0 && recibos.length === 0 && (
+            <p className="py-10 text-center text-xs text-muted-foreground">
+              No hay cobros pendientes para hoy.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          {citas && citas.length > 0 ? (
+            <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
+              {citas.map((c) => (
+                <CitaCard key={c.id} cita={c} ownerId={ownerId as string} />
+              ))}
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {recibos[0] && (
-        <ReciboPopup
-          key={recibos[0].clienteId}
-          recibo={recibos[0]}
-          nombreApp={nombreApp}
-          onCerrar={() => descartarRecibo(recibos[0].clienteId)}
-        />
-      )}
-
-      <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
-        {paradas?.map((p) => (
-          <Parada
-            key={p.clienteId}
-            parada={p}
-            ownerId={ownerId as string}
-            nombreApp={nombreApp}
-            onCobrado={onCobrado}
-          />
-        ))}
-      </div>
-
-      {paradas && paradas.length === 0 && recibos.length === 0 && (
-        <p className="py-10 text-center text-xs text-muted-foreground">
-          No hay cobros pendientes para hoy.
-        </p>
+          ) : (
+            <p className="py-10 text-center text-xs text-muted-foreground">
+              Sin citas agendadas.
+            </p>
+          )}
+        </>
       )}
     </div>
   );

@@ -317,6 +317,64 @@ export async function syncConfiguracion(ownerId: string): Promise<void> {
   await database.configuracion.put({ ownerId, ...cfg });
 }
 
+type CitaApi = {
+  id: string;
+  ownerId: string;
+  clienteId: string;
+  contrataOrigenId: string | null;
+  contrataCreadaId: string | null;
+  tipo: "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+  montoEstimado: number;
+  fechaEntrega: string;
+  notas: string | null;
+  estado: "PENDIENTE" | "ENTREGADA" | "CANCELADA";
+  creadoEn: string;
+  cliente: { nombre: string; telefono: string | null };
+};
+
+/** Trae las citas agendadas (todas, no solo las del día) y hace upsert en Dexie. */
+export async function syncCitas(ownerId: string): Promise<void> {
+  const database = db;
+  if (!database) return;
+  const res = await fetch("/api/citas", { cache: "no-store" });
+  if (!res.ok) return;
+  const citas: CitaApi[] = await res.json();
+
+  await database.transaction("rw", [database.citas], async () => {
+    const eliminadasEnServidor = new Set(
+      (await database.citas.where("ownerId").equals(ownerId).toArray())
+        .filter((c) => !c._dirty)
+        .map((c) => c.id)
+    );
+
+    for (const c of citas) {
+      eliminadasEnServidor.delete(c.id);
+      const local = await database.citas.get(c.id);
+      if (local?._dirty) continue;
+
+      await database.citas.put({
+        id: c.id,
+        ownerId: c.ownerId,
+        clienteId: c.clienteId,
+        clienteNombre: c.cliente.nombre,
+        clienteTelefono: c.cliente.telefono,
+        contrataOrigenId: c.contrataOrigenId,
+        contrataCreadaId: c.contrataCreadaId,
+        tipo: c.tipo,
+        montoEstimado: c.montoEstimado,
+        fechaEntrega: c.fechaEntrega,
+        notas: c.notas,
+        estado: c.estado,
+        creadoEn: c.creadoEn,
+      });
+    }
+
+    if (eliminadasEnServidor.size > 0) {
+      await database.citas.bulkDelete(Array.from(eliminadasEnServidor));
+    }
+  });
+}
+
 async function ejecutarSync(ownerId: string): Promise<void> {
   try {
     await Promise.all([
@@ -324,6 +382,7 @@ async function ejecutarSync(ownerId: string): Promise<void> {
       syncClientes(ownerId),
       syncDeudores(ownerId),
       syncConfiguracion(ownerId),
+      syncCitas(ownerId),
     ]);
   } catch {
     // Sin red o error del servidor: la app sigue funcionando desde caché local.

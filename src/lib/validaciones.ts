@@ -39,6 +39,20 @@ export const unificarContratasSchema = nuevaContrataBaseSchema.extend({
   contrataIds: z.array(z.string().min(1)).min(2, "Selecciona al menos dos contratas"),
 });
 
+export const citaSchema = z.object({
+  clienteId: z.string().min(1, "Elige un cliente"),
+  contrataOrigenId: z.string().min(1).optional().nullable(),
+  tipo: z.enum(["NUEVA", "RENOVACION", "SIN_DEFINIR"]).default("SIN_DEFINIR"),
+  montoEstimado: z.number().positive("El monto debe ser mayor a 0"),
+  fechaEntrega: z.string().datetime().or(z.string().min(1)),
+  notas: z.string().trim().max(500).optional().nullable(),
+  /** Solo en el camino offline: id generado en el cliente para que el
+   *  efecto optimista y el registro real del servidor compartan PK. */
+  id: z.string().min(1).optional(),
+});
+
+export const citaUpdateSchema = citaSchema.omit({ id: true }).partial();
+
 export const deudorSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre es obligatorio").max(120),
   deudaInicial: z.number().min(0, "La deuda no puede ser negativa"),
@@ -98,3 +112,5 @@ export type UsuarioInput = z.infer<typeof usuarioSchema>;
 export type RegistroInput = z.infer<typeof registroSchema>;
 export type RenovarContrataInput = z.infer<typeof renovarContrataSchema>;
 export type UnificarContratasInput = z.infer<typeof unificarContratasSchema>;
+export type CitaInput = z.infer<typeof citaSchema>;
+export type CitaUpdateInput = z.infer<typeof citaUpdateSchema>;

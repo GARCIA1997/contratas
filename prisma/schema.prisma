@@ -20,22 +20,23 @@ enum Rol {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  nombre        String?
-  email         String    @unique
-  passwordHash  String?
-  rol           Rol       @default(VIEWER)
-  image         String?
-  emailVerified DateTime?
-  accounts      Account[]
-  sessions      Session[]
-  clientes      Cliente[]
-  contratas     Contrata[]
-  deudores      Deudor[]
-  configuracion Configuracion?
-  suscripciones PushSubscription[]
-  cortesCaja    CorteCaja[]
-  creadoEn      DateTime  @default(now())
+  id             String             @id @default(cuid())
+  nombre         String?
+  email          String             @unique
+  passwordHash   String?
+  rol            Rol                @default(VIEWER)
+  image          String?
+  emailVerified  DateTime?
+  accounts       Account[]
+  sessions       Session[]
+  clientes       Cliente[]
+  contratas      Contrata[]
+  deudores       Deudor[]
+  configuracion  Configuracion?
+  suscripciones  PushSubscription[]
+  cortesCaja     CorteCaja[]
+  citasAgendadas CitaAgendada[]
+  creadoEn       DateTime           @default(now())
 
   // Espacio de trabajo: null = dueño de su propio espacio (registro público);
   // con valor = miembro invitado del espacio de ese dueño (creado desde
@@ -49,13 +50,13 @@ model User {
 }
 
 model PushSubscription {
-  id        String   @id @default(cuid())
-  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  ownerId   String
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  creadoEn  DateTime @default(now())
+  id       String   @id @default(cuid())
+  owner    User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId  String
+  endpoint String   @unique
+  p256dh   String
+  auth     String
+  creadoEn DateTime @default(now())
 
   @@index([ownerId])
 }
@@ -112,8 +113,8 @@ enum ModoQuincenal {
 }
 
 model Cliente {
-  id         String     @id @default(cuid())
-  owner      User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id         String         @id @default(cuid())
+  owner      User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   ownerId    String
   nombre     String
   telefono   String?
@@ -121,30 +122,33 @@ model Cliente {
   referencia String?
   notas      String?
   contratas  Contrata[]
-  creadoEn   DateTime   @default(now())
+  citas      CitaAgendada[]
+  creadoEn   DateTime       @default(now())
 
   @@index([ownerId])
 }
 
 model Contrata {
-  id               String       @id @default(cuid())
-  owner            User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  id               String         @id @default(cuid())
+  owner            User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   ownerId          String
-  cliente          Cliente      @relation(fields: [clienteId], references: [id])
+  cliente          Cliente        @relation(fields: [clienteId], references: [id])
   clienteId        String
   tipo             TipoContrata
   monto            Float
   abono            Float
   fechaInicio      DateTime
-  numCuotas        Int          @default(10)
+  numCuotas        Int            @default(10)
   mes              String
   notas            String?
   pagos            Pago[]
   /// Se marcó el saldo pendiente como deuda (proceso manual, ver Deudor).
-  convertidaADeuda Boolean      @default(false)
-  deudor           Deudor?      @relation(fields: [deudorId], references: [id], onDelete: SetNull)
+  convertidaADeuda Boolean        @default(false)
+  deudor           Deudor?        @relation(fields: [deudorId], references: [id], onDelete: SetNull)
   deudorId         String?
-  creadoEn         DateTime     @default(now())
+  citasComoOrigen  CitaAgendada[] @relation("CitaContrataOrigen")
+  citaQueLaCreo    CitaAgendada?  @relation("CitaContrataCreada")
+  creadoEn         DateTime       @default(now())
 
   @@index([clienteId])
   @@index([ownerId])
@@ -162,6 +166,49 @@ model Pago {
   montoAbonado    Float     @default(0)
 
   @@index([contrataId])
+}
+
+enum TipoCitaContrata {
+  NUEVA
+  RENOVACION
+  SIN_DEFINIR
+}
+
+enum EstadoCita {
+  PENDIENTE
+  ENTREGADA
+  CANCELADA
+}
+
+/// Contrata futura anotada de antemano ("Fulanito quiere 2 mil para el
+/// 15"), sin comprometerse todavía: monto y fecha son estimados, pueden
+/// cambiar o no concretarse. `fechaEntrega` es el día en que se entregaría
+/// el dinero — no el del primer pago (ese se calcula como siempre a partir
+/// de la fecha real de entrega, el día que se confirma). No afecta saldo,
+/// cartera ni estadísticas hasta que se convierte en una Contrata real.
+model CitaAgendada {
+  id               String           @id @default(cuid())
+  owner            User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId          String
+  cliente          Cliente          @relation(fields: [clienteId], references: [id])
+  clienteId        String
+  /// Si ya se sabe qué contrata se va a renovar. Opcional: puede decidirse
+  /// después, antes de convertir la cita en contrata real.
+  contrataOrigen   Contrata?        @relation("CitaContrataOrigen", fields: [contrataOrigenId], references: [id], onDelete: SetNull)
+  contrataOrigenId String?
+  /// La contrata real generada al confirmar esta cita (si se llegó a dar).
+  contrataCreada   Contrata?        @relation("CitaContrataCreada", fields: [contrataCreadaId], references: [id], onDelete: SetNull)
+  contrataCreadaId String?          @unique
+  tipo             TipoCitaContrata @default(SIN_DEFINIR)
+  montoEstimado    Float
+  fechaEntrega     DateTime
+  notas            String?
+  estado           EstadoCita       @default(PENDIENTE)
+  creadoEn         DateTime         @default(now())
+  actualizadoEn    DateTime         @updatedAt
+
+  @@index([ownerId, estado, fechaEntrega])
+  @@index([clienteId])
 }
 
 // ---------------------------------------------------------------------------

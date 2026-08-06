@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Combine, FileText, History, Pencil, Plus, ArrowLeft } from "lucide-react";
+import {
+  Combine,
+  FileText,
+  History,
+  Pencil,
+  Plus,
+  ArrowLeft,
+  CalendarPlus,
+} from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,9 +19,14 @@ import { EliminarCliente } from "@/components/clientes/eliminar-cliente";
 import { HistorialContratas } from "@/components/clientes/historial-contratas";
 import { CobroVencido } from "@/components/clientes/cobro-vencido";
 import { ScorePagoBadge } from "@/components/score-pago-badge";
-import { formatMoneda } from "@/lib/utils";
+import { CitaCard } from "@/components/citas/cita-card";
+import { cn, formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getClientePerfil, getCobroVencidoPreview } from "@/lib/offline/repo";
+import {
+  getClientePerfil,
+  getCobroVencidoPreview,
+  getCitasDeCliente,
+} from "@/lib/offline/repo";
 
 type ExtrasOnline = {
   cobroPreview: { total: number; items: unknown[] } | null;
@@ -65,6 +78,10 @@ export default function ClientePerfilPage() {
 
   const perfil = useLiveQuery(
     () => (ownerId ? getClientePerfil(ownerId, params.id) : undefined),
+    [ownerId, params.id]
+  );
+  const citasPendientes = useLiveQuery(
+    () => (ownerId ? getCitasDeCliente(ownerId, params.id) : undefined),
     [ownerId, params.id]
   );
 
@@ -223,19 +240,43 @@ export default function ClientePerfilPage() {
       </div>
 
       {esAdmin && (
-        <Button className="w-full" variant="outline" asChild>
-          <Link href={`/contratas/nueva?clienteId=${perfil.id}`}>
-            <Plus className="size-4" /> Nueva contrata
-          </Link>
-        </Button>
+        <div
+          className={cn(
+            "grid gap-2",
+            elegiblesUnificar >= 2 ? "grid-cols-3" : "grid-cols-2"
+          )}
+        >
+          <Button variant="outline" asChild>
+            <Link href={`/contratas/nueva?clienteId=${perfil.id}`}>
+              <Plus className="size-4" /> Nueva
+            </Link>
+          </Button>
+          {elegiblesUnificar >= 2 && (
+            <Button variant="outline" asChild>
+              <Link href={`/clientes/${perfil.id}/unificar`}>
+                <Combine className="size-4" /> Unificar
+              </Link>
+            </Button>
+          )}
+          <Button variant="outline" asChild>
+            <Link href={`/citas/nueva?clienteId=${perfil.id}`}>
+              <CalendarPlus className="size-4" /> Agendar
+            </Link>
+          </Button>
+        </div>
       )}
 
-      {esAdmin && elegiblesUnificar >= 2 && (
-        <Button className="w-full" variant="outline" asChild>
-          <Link href={`/clientes/${perfil.id}/unificar`}>
-            <Combine className="size-4" /> Unificar contratas
-          </Link>
-        </Button>
+      {citasPendientes && citasPendientes.length > 0 && (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
+            Próximas citas
+          </h2>
+          <div className="space-y-2">
+            {citasPendientes.map((c) => (
+              <CitaCard key={c.id} cita={c} ownerId={ownerId as string} />
+            ))}
+          </div>
+        </div>
       )}
 
       <div>

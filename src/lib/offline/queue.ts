@@ -7,6 +7,7 @@ import {
   syncClientes,
   syncDeudores,
   syncDeudorDetalle,
+  syncCitas,
 } from "@/lib/offline/sync";
 
 const ENDPOINTS: Record<
@@ -84,6 +85,34 @@ const ENDPOINTS: Record<
     url: `/api/clientes/${p.clienteId}/cobrar-vencidas`,
     init: { method: "POST" },
   }),
+  "cita.crear": (p) => ({
+    url: `/api/citas`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    },
+  }),
+  "cita.editar": (p) => ({
+    url: `/api/citas/${p.citaId}`,
+    init: {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p.input),
+    },
+  }),
+  "cita.cancelar": (p) => ({
+    url: `/api/citas/${p.citaId}/cancelar`,
+    init: { method: "POST" },
+  }),
+  "cita.entregar": (p) => ({
+    url: `/api/citas/${p.citaId}/entregar`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contrataCreadaId: p.contrataCreadaId ?? null }),
+    },
+  }),
 };
 
 /**
@@ -101,7 +130,14 @@ export async function enqueue(
   const id = crypto.randomUUID();
   await database.transaction(
     "rw",
-    [database.writeQueue, database.contratas, database.pagos, database.deudores, database.abonosDeudor],
+    [
+      database.writeQueue,
+      database.contratas,
+      database.pagos,
+      database.deudores,
+      database.abonosDeudor,
+      database.citas,
+    ],
     async () => {
       await database.writeQueue.add({
         id,
@@ -300,6 +336,29 @@ async function reconciliarTrasExito(
       contratas.map((c) => database.contratas.update(c.id, { _dirty: false }))
     );
     await syncContratas(ownerId);
+    return;
+  }
+  if (type === "cita.crear") {
+    // Igual que contrata.crear: no hay ninguna fila local que limpiar (la
+    // cita es enteramente nueva) — solo traerla del servidor.
+    await syncCitas(ownerId);
+    return;
+  }
+  if (
+    type === "cita.editar" ||
+    type === "cita.cancelar" ||
+    type === "cita.entregar"
+  ) {
+    // limpiarDirtySiSinPendientes no conoce el campo "citaId" (solo
+    // contrataId/deudorId) — se limpia aquí a mano antes del resync, igual
+    // que con renovar/unificar.
+    const database = db;
+    const citaId = payload.citaId as string;
+    if (database) {
+      const existe = await database.citas.get(citaId);
+      if (existe) await database.citas.update(citaId, { _dirty: false });
+    }
+    await syncCitas(ownerId);
     return;
   }
 }

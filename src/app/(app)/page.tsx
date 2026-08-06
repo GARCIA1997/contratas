@@ -13,7 +13,12 @@ import {
 import { Saludo } from "@/components/saludo";
 import { TendenciaChart } from "@/components/tendencia-chart";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getKpis, getTendencia, getIdsParaPrecarga } from "@/lib/offline/repo";
+import {
+  getKpis,
+  getTendencia,
+  getIdsParaPrecarga,
+  getCitasPendientes,
+} from "@/lib/offline/repo";
 import { precargarTodaLaApp } from "@/lib/offline/prefetch-all";
 import type { FiltroDashboard } from "@/lib/services/dashboard";
 import { formatMoneda, cn } from "@/lib/utils";
@@ -52,6 +57,10 @@ export default function DashboardPage() {
     () => (ownerId ? getTendencia(ownerId) : undefined),
     [ownerId]
   );
+  const citasPendientes = useLiveQuery(
+    () => (ownerId ? getCitasPendientes(ownerId) : undefined),
+    [ownerId]
+  );
 
   // El dashboard es la primera pantalla que se abre con señal — desde acá
   // se precarga TODA la app (cada contrata/cliente/deudor y sus
@@ -70,6 +79,10 @@ export default function DashboardPage() {
 
   const entregado = kpis.montoEntregadoMes;
   const nombre = claims.ready ? claims.nombre : null;
+  const totalEstimadoPorEntregar = (citasPendientes ?? []).reduce(
+    (s, c) => s + c.montoEstimado,
+    0
+  );
 
   // La tarjeta de cobranza se adapta al segmento elegido arriba: cada tipo
   // de contrata tiene su ventana natural (semana/quincena/mes), y en
@@ -201,6 +214,28 @@ export default function DashboardPage() {
             <p className="text-xs text-muted-foreground">Contratas activas</p>
             <p className="truncate text-base font-semibold sm:text-lg md:text-base lg:text-lg">
               {kpis.contratasActivas}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="p-4 pb-1">
+          <CardTitle className="text-xs font-medium text-muted-foreground">
+            Por entregar
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-3 p-4 pt-2">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Citas agendadas</p>
+            <p className="truncate text-base font-semibold sm:text-lg md:text-base lg:text-lg">
+              {citasPendientes?.length ?? 0}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Estimado total</p>
+            <p className="truncate text-base font-semibold text-primary sm:text-lg md:text-base lg:text-lg">
+              {formatMoneda(totalEstimadoPorEntregar)}
             </p>
           </div>
         </CardContent>
