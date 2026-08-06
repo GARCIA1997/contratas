@@ -28,6 +28,15 @@ function round(n: number) {
   return Math.round(n * 100) / 100;
 }
 
+/** La fecha de pago más reciente entre cuotas ya pagadas, o `null` si ninguna. */
+function ultimaFechaPago(pagos: { pagado: boolean; fechaPago: Date | null }[]): string | null {
+  const fechas = pagos
+    .filter((p) => p.pagado && p.fechaPago)
+    .map((p) => p.fechaPago as Date);
+  if (fechas.length === 0) return null;
+  return new Date(Math.max(...fechas.map((f) => f.getTime()))).toISOString();
+}
+
 export type ContrataDeCliente = {
   id: string;
   tipo: TipoContrata;
@@ -37,6 +46,12 @@ export type ContrataDeCliente = {
   total: number;
   saldo: number;
   estado: EstadoContrata;
+  creadoEn: string;
+  /** Fecha del último pago registrado (la más reciente entre sus cuotas
+   * pagadas) — para ordenar "Pagadas" por cuándo terminó de liquidarse, no
+   * por cuándo se creó la contrata (pueden no coincidir). `null` si ninguna
+   * cuota tiene pago registrado todavía. */
+  ultimaFechaPago: string | null;
 };
 
 export type ClientePerfil = {
@@ -82,6 +97,8 @@ export async function getClientePerfil(
     total: c.pagos.length,
     saldo: c.convertidaADeuda ? 0 : saldoPendiente(c.pagos, c.abono),
     estado: c.convertidaADeuda ? "EN_DEUDA" : estadoContrata(c.pagos),
+    creadoEn: c.creadoEn.toISOString(),
+    ultimaFechaPago: ultimaFechaPago(c.pagos),
   }));
 
   // "Activas" y el saldo pendiente del perfil excluyen las contratas ya
@@ -184,6 +201,8 @@ export async function getEstadoCuentaCliente(
     total: c.pagos.length,
     saldo: c.convertidaADeuda ? 0 : saldoPendiente(c.pagos, c.abono),
     estado: c.convertidaADeuda ? "EN_DEUDA" : estadoContrata(c.pagos),
+    creadoEn: c.creadoEn.toISOString(),
+    ultimaFechaPago: ultimaFechaPago(c.pagos),
     totalAbonado: round(c.pagos.reduce((s, p) => s + p.montoAbonado, 0)),
     pagos: c.pagos.map((p) => ({
       numeroCuota: p.numeroCuota,

@@ -30,12 +30,20 @@ export function HistorialContratas({
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("ACTIVAS");
 
   const visibles = useMemo(() => {
-    return contratas.filter((c) => {
+    const filtradas = contratas.filter((c) => {
       if (estadoFiltro === "ACTIVAS")
         return c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA";
       if (estadoFiltro === "PAGADAS") return c.estado === "LIQUIDADA";
       return true;
     });
+    // "Pagadas" se ordena por cuándo terminó de liquidarse (no por cuándo se
+    // creó la contrata — una contrata vieja puede haberse terminado de pagar
+    // después que una más nueva). Las demás pestañas van por fecha de
+    // creación, más reciente primero. Sin este sort explícito, "Pagadas"
+    // heredaba el mismo orden que "Activas" (por creadoEn) sin querer.
+    const clave: (c: ContrataDeCliente) => string = (c) =>
+      estadoFiltro === "PAGADAS" ? (c.ultimaFechaPago ?? c.creadoEn) : c.creadoEn;
+    return [...filtradas].sort((a, b) => clave(b).localeCompare(clave(a)));
   }, [contratas, estadoFiltro]);
 
   if (contratas.length === 0) {
