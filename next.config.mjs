@@ -14,6 +14,16 @@ const nextConfig = {
   // Standalone: genera .next/standalone con un server.js autocontenido,
   // ideal para Docker (imagen mínima) y también funciona con PM2/`node server.js`.
   output: "standalone",
+  // El VPS de producción tiene un solo vCPU: el paso de type-check de
+  // `next build` (webpack/tsc asumiendo varios núcleos) llegó a saturar la
+  // CPU al punto de tumbar SSH/HTTP por varios minutos y de exceder el
+  // timeout del deploy. tsc --noEmit y `next lint` ya corren completos en
+  // CI (GitHub Actions, con varios núcleos) antes de que cualquier cosa
+  // llegue a main — repetirlo aquí es trabajo redundante en la máquina más
+  // limitada de todas. Si algún día se despliega sin pasar por ese CI,
+  // quitar esto.
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
   experimental: {
     // El router de App Router revalida el RSC payload de una ruta ya
     // visitada cuando su entrada en el Router Cache queda "stale" (default:

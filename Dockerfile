@@ -26,7 +26,14 @@ COPY . .
 # depender de que la DB ya esté arriba durante el build de la imagen.
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma generate
-RUN npm run build -- --no-lint 2>/dev/null || npx next build
+# `npx next build` directo, NO `npm run build`: ese script encadena
+# `prisma migrate deploy`, que en esta etapa no tiene DB accesible (sin red
+# a los contenedores en runtime) y fallaba en silencio — el intento previo
+# de saltar lint con `-- --no-lint 2>/dev/null || npx next build` nunca
+# surtía efecto porque ese fallo disparaba el `||` y corría el build de
+# respaldo SIN --no-lint. type-check/lint ya se ignoran vía next.config.mjs
+# (ver comentario ahí: CI ya los corre completos antes de mergear).
+RUN npx next build
 
 # ---- runner: imagen final mínima ----
 FROM node:20-alpine AS runner
