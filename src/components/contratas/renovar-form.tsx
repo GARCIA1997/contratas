@@ -51,8 +51,12 @@ export function RenovarForm({
   maxCuotas: number;
   nombreApp: string;
   /** La página la usa para no redirigir de vuelta apenas la original quede
-   * liquidada — ver comentario en el page.tsx. */
-  onRenovada?: () => void;
+   * liquidada — ver comentario en el page.tsx. Recibe el id de la contrata
+   * nueva (null si se guardó offline, sin id todavía) y si fue offline —
+   * usado por la página de "convertir cita en contrata" para cerrar el
+   * círculo marcando la cita como entregada; el resto de los llamadores
+   * ignora el argumento. */
+  onRenovada?: (info?: { contrataId: string | null; offline: boolean }) => void;
 }) {
   const claims = useAuthClaims();
   const [incluirOtras, setIncluirOtras] = useState(false);
@@ -143,6 +147,7 @@ export function RenovarForm({
       });
       setGuardando(false);
       setPendienteSync(true);
+      onRenovada?.({ contrataId: null, offline: true });
       return;
     }
 
@@ -165,7 +170,7 @@ export function RenovarForm({
     // redirect de la página alcanza a dispararse con el flag todavía en
     // false y saca al usuario del panel de confirmación antes de que se
     // alcance a mostrar.
-    onRenovada?.();
+    onRenovada?.({ contrataId: data.nuevaContrata.id, offline: false });
     if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
     // Igual que "nueva contrata": se muestra la confirmación con la opción
     // de mandarle los detalles al cliente por WhatsApp (mismo detalle

@@ -5,8 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import type { TipoContrata } from "@prisma/client";
 import { ContrataForm } from "@/components/contratas/contrata-form";
+import { Card, CardContent } from "@/components/ui/card";
+import { formatMoneda } from "@/lib/utils";
+import { anclarFechaCliente } from "@/lib/fechas";
+import { entregarCita } from "@/components/citas/entregar-cita";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getClientes, getConfiguracion } from "@/lib/offline/repo";
+import { getClientes, getConfiguracion, getCita } from "@/lib/offline/repo";
 import { CONFIG_DEFAULTS } from "@/lib/config";
 
 export default function NuevaContrataPage() {
@@ -28,6 +32,11 @@ export default function NuevaContrataPage() {
     () => (ownerId ? getConfiguracion(ownerId) : undefined),
     [ownerId]
   );
+  const citaId = searchParams.get("citaId");
+  const cita = useLiveQuery(
+    () => (ownerId && citaId ? getCita(ownerId, citaId) : undefined),
+    [ownerId, citaId]
+  );
 
   if (!claims.ready || !esAdmin || !clientes || !config) return null;
 
@@ -46,18 +55,39 @@ export default function NuevaContrataPage() {
     : undefined;
 
   return (
-    <ContrataForm
-      clientes={opciones}
-      cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
-      maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
-      tipoInicial={tipoInicial}
-      nombreApp={config?.nombreApp ?? "Kredired"}
-      clientePreseleccionado={clientePreseleccionado}
-      volverHref={
-        clientePreseleccionado
-          ? `/clientes/${clientePreseleccionado.id}`
-          : "/contratas"
-      }
-    />
+    <div className="space-y-4 md:max-w-xl">
+      {cita && (
+        <Card className="border-dashed">
+          <CardContent className="space-y-1 p-4 text-sm">
+            <p className="font-medium">
+              Cita agendada: {formatMoneda(cita.montoEstimado)}
+            </p>
+            {cita.notas && (
+              <p className="text-xs text-muted-foreground">{cita.notas}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      <ContrataForm
+        clientes={opciones}
+        cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
+        maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
+        tipoInicial={tipoInicial}
+        nombreApp={config?.nombreApp ?? "Kredired"}
+        clientePreseleccionado={clientePreseleccionado}
+        volverHref={
+          clientePreseleccionado
+            ? `/clientes/${clientePreseleccionado.id}`
+            : "/contratas"
+        }
+        montoInicial={cita?.montoEstimado}
+        fechaInicioInicial={
+          cita ? anclarFechaCliente(cita.fechaEntrega).toISOString().slice(0, 10) : undefined
+        }
+        onGuardada={(info) => {
+          if (citaId && ownerId) void entregarCita(ownerId, citaId, info);
+        }}
+      />
+    </div>
   );
 }

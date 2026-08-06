@@ -222,4 +222,58 @@ export async function applyLocalEffect(
     }
     return;
   }
+
+  if (type === "cita.crear") {
+    // Igual que "contrata.crear": no existe todavía el id real (lo asigna
+    // el servidor) — se espera al pull-sync tras confirmarse para que
+    // aparezca en Ruta/perfil del cliente.
+    return;
+  }
+
+  if (type === "cita.editar") {
+    const { citaId, input } = payload as {
+      citaId: string;
+      input: {
+        tipo?: "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+        montoEstimado?: number;
+        fechaEntrega?: string;
+        contrataOrigenId?: string | null;
+        notas?: string | null;
+      };
+    };
+    await db.citas.update(citaId, {
+      ...(input.tipo !== undefined ? { tipo: input.tipo } : {}),
+      ...(input.montoEstimado !== undefined
+        ? { montoEstimado: input.montoEstimado }
+        : {}),
+      ...(input.fechaEntrega !== undefined
+        ? { fechaEntrega: input.fechaEntrega }
+        : {}),
+      ...(input.contrataOrigenId !== undefined
+        ? { contrataOrigenId: input.contrataOrigenId }
+        : {}),
+      ...(input.notas !== undefined ? { notas: input.notas } : {}),
+      _dirty: true,
+    });
+    return;
+  }
+
+  if (type === "cita.cancelar") {
+    const { citaId } = payload as { citaId: string };
+    await db.citas.update(citaId, { estado: "CANCELADA", _dirty: true });
+    return;
+  }
+
+  if (type === "cita.entregar") {
+    const { citaId, contrataCreadaId } = payload as {
+      citaId: string;
+      contrataCreadaId: string | null;
+    };
+    await db.citas.update(citaId, {
+      estado: "ENTREGADA",
+      contrataCreadaId: contrataCreadaId ?? null,
+      _dirty: true,
+    });
+    return;
+  }
 }

@@ -97,6 +97,27 @@ export type MetaLocal = {
   value: unknown;
 };
 
+export type EstadoCitaLocal = "PENDIENTE" | "ENTREGADA" | "CANCELADA";
+export type TipoCitaLocal = "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+
+export type CitaLocal = {
+  id: string;
+  ownerId: string;
+  clienteId: string;
+  clienteNombre: string;
+  clienteTelefono: string | null;
+  contrataOrigenId: string | null;
+  contrataCreadaId: string | null;
+  tipo: TipoCitaLocal;
+  montoEstimado: number;
+  fechaEntrega: string;
+  notas: string | null;
+  estado: EstadoCitaLocal;
+  creadoEn: string;
+  _dirty?: boolean;
+  _deletedAt?: string | null;
+};
+
 export type QueueStatus =
   | "pending"
   | "syncing"
@@ -115,7 +136,11 @@ export type QueueOpType =
   | "contrata.renovar"
   | "cliente.unificar"
   | "deudor.abonar"
-  | "cliente.cobrarVencidas";
+  | "cliente.cobrarVencidas"
+  | "cita.crear"
+  | "cita.editar"
+  | "cita.cancelar"
+  | "cita.entregar";
 
 export type WriteQueueItem = {
   id: string; // idempotency key (uuid)
@@ -137,6 +162,7 @@ class KrediredDB extends Dexie {
   configuracion!: EntityTable<ConfiguracionLocal, "ownerId">;
   meta!: EntityTable<MetaLocal, "key">;
   writeQueue!: EntityTable<WriteQueueItem, "id">;
+  citas!: EntityTable<CitaLocal, "id">;
 
   constructor() {
     super("kredired-offline");
@@ -149,6 +175,9 @@ class KrediredDB extends Dexie {
       configuracion: "ownerId",
       meta: "key",
       writeQueue: "id, ownerId, status, createdAt",
+    });
+    this.version(2).stores({
+      citas: "id, ownerId, clienteId, [ownerId+estado+fechaEntrega]",
     });
   }
 }
