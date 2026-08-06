@@ -274,11 +274,18 @@ export default function RutaDelDiaPage() {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <Saludo nombre={nombre} />
-        <p className="text-sm text-muted-foreground">
-          {vista === "COBRAR" ? "Ruta de cobro de hoy" : "Contratas por entregar"}
-        </p>
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-1">
+          <Saludo nombre={nombre} />
+          <p className="text-sm text-muted-foreground">
+            {vista === "COBRAR" ? "Ruta de cobro de hoy" : "Contratas por entregar"}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/citas/nueva">
+            <CalendarPlus className="size-4" /> Agendar
+          </Link>
+        </Button>
       </div>
 
       <SegmentedControl
@@ -335,12 +342,6 @@ export default function RutaDelDiaPage() {
         </>
       ) : (
         <>
-          <Button variant="outline" size="sm" className="w-full" asChild>
-            <Link href="/citas/nueva">
-              <CalendarPlus className="size-4" /> Agendar
-            </Link>
-          </Button>
-
           {citas && citas.length > 0 ? (
             <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
               {citas.map((c) => (
