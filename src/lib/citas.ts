@@ -47,3 +47,18 @@ export function citasDelDia<T extends CitaLike>(
         anclarFechaCliente(b.fechaEntrega).getTime()
     );
 }
+
+/**
+ * Todas las citas pendientes, sin filtrar por fecha (pestaña "Todas" en
+ * Ruta) — orden cronológico simple por fecha de entrega ascendente: las
+ * atrasadas más viejas primero, luego hoy, luego las futuras más cercanas.
+ */
+export function citasPendientesOrdenadas<T extends CitaLike>(citas: T[]): T[] {
+  return citas
+    .filter((c) => c.estado === "PENDIENTE")
+    .sort(
+      (a, b) =>
+        anclarFechaCliente(a.fechaEntrega).getTime() -
+        anclarFechaCliente(b.fechaEntrega).getTime()
+    );
+}

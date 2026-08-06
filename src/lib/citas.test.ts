@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { citasDelDia, estadoCitaVista, type CitaLike } from "./citas";
+import {
+  citasDelDia,
+  citasPendientesOrdenadas,
+  estadoCitaVista,
+  type CitaLike,
+} from "./citas";
 
 const HOY = new Date(2026, 6, 30);
 
@@ -83,5 +88,30 @@ describe("citasDelDia", () => {
       new Date(2026, 6, 28),
       HOY,
     ]);
+  });
+});
+
+describe("citasPendientesOrdenadas", () => {
+  it("incluye pasadas, hoy y futuras, ordenadas ascendente", () => {
+    const citas = [
+      cita({ fechaEntrega: new Date(2026, 7, 5) }),
+      cita({ fechaEntrega: new Date(2026, 6, 20) }),
+      cita({ fechaEntrega: HOY }),
+    ];
+    const resultado = citasPendientesOrdenadas(citas);
+    expect(resultado.map((c) => c.fechaEntrega)).toEqual([
+      new Date(2026, 6, 20),
+      HOY,
+      new Date(2026, 7, 5),
+    ]);
+  });
+
+  it("excluye entregadas y canceladas", () => {
+    const citas = [
+      cita({ estado: "ENTREGADA" }),
+      cita({ estado: "CANCELADA" }),
+      cita({ estado: "PENDIENTE" }),
+    ];
+    expect(citasPendientesOrdenadas(citas)).toHaveLength(1);
   });
 });

@@ -9,10 +9,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popup } from "@/components/ui/popup";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Saludo } from "@/components/saludo";
 import { CitaCard } from "@/components/citas/cita-card";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
-import { getRutaDelDia, getConfiguracion, getCitasDelDia } from "@/lib/offline/repo";
+import {
+  getRutaDelDia,
+  getConfiguracion,
+  getCitasDelDia,
+  getCitasPendientes,
+} from "@/lib/offline/repo";
 import { enqueue } from "@/lib/offline/queue";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { formatMoneda } from "@/lib/utils";
@@ -217,10 +223,16 @@ export default function RutaDelDiaPage() {
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
     [ownerId]
   );
-  const citas = useLiveQuery(
+  const [filtroCitas, setFiltroCitas] = useState<"HOY" | "TODAS">("HOY");
+  const citasHoy = useLiveQuery(
     () => (ownerId ? getCitasDelDia(ownerId) : undefined),
     [ownerId]
   );
+  const citasTodas = useLiveQuery(
+    () => (ownerId && filtroCitas === "TODAS" ? getCitasPendientes(ownerId) : undefined),
+    [ownerId, filtroCitas]
+  );
+  const citas = filtroCitas === "HOY" ? citasHoy : citasTodas;
   const config = useLiveQuery(
     () => (ownerId ? getConfiguracion(ownerId) : undefined),
     [ownerId]
@@ -321,16 +333,33 @@ export default function RutaDelDiaPage() {
         </p>
       )}
 
-      {citas && citas.length > 0 && (
+      {citasHoy && (citasHoy.length > 0 || filtroCitas === "TODAS") && (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-muted-foreground">
-            Citas para hoy
-          </h2>
-          <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
-            {citas.map((c) => (
-              <CitaCard key={c.id} cita={c} ownerId={ownerId as string} />
-            ))}
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              Citas
+            </h2>
+            <SegmentedControl
+              value={filtroCitas}
+              onChange={setFiltroCitas}
+              className="w-40"
+              options={[
+                { value: "HOY", label: "Hoy" },
+                { value: "TODAS", label: "Todas" },
+              ]}
+            />
           </div>
+          {citas && citas.length > 0 ? (
+            <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
+              {citas.map((c) => (
+                <CitaCard key={c.id} cita={c} ownerId={ownerId as string} />
+              ))}
+            </div>
+          ) : (
+            <p className="py-6 text-center text-xs text-muted-foreground">
+              Sin citas agendadas.
+            </p>
+          )}
         </div>
       )}
     </div>

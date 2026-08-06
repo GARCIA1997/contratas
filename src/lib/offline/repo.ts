@@ -22,7 +22,10 @@ import {
 } from "@/lib/services/dashboard";
 import type { ContrataResumen } from "@/components/contratas/tipos";
 import { aggregarRutaDelDia, type ParadaRuta } from "@/lib/services/ruta";
-import { citasDelDia as filtrarCitasDelDia } from "@/lib/citas";
+import {
+  citasDelDia as filtrarCitasDelDia,
+  citasPendientesOrdenadas,
+} from "@/lib/citas";
 import type { CitaLocal } from "@/lib/offline/db";
 
 /**
@@ -698,6 +701,15 @@ export async function getCitasDelDia(
     await db.citas.where("ownerId").equals(ownerId).toArray()
   ).filter((c) => !c._deletedAt);
   return filtrarCitasDelDia(citas, hoy);
+}
+
+/** Todas las citas pendientes, sin filtrar por fecha (pestaña "Todas" en Ruta). */
+export async function getCitasPendientes(ownerId: string): Promise<CitaLocal[]> {
+  if (!db) return [];
+  const citas = (
+    await db.citas.where("ownerId").equals(ownerId).toArray()
+  ).filter((c) => !c._deletedAt);
+  return citasPendientesOrdenadas(citas);
 }
 
 /** Citas pendientes de un cliente puntual (para su perfil). */
