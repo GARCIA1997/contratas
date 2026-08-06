@@ -20,7 +20,7 @@ import { HistorialContratas } from "@/components/clientes/historial-contratas";
 import { CobroVencido } from "@/components/clientes/cobro-vencido";
 import { ScorePagoBadge } from "@/components/score-pago-badge";
 import { CitaCard } from "@/components/citas/cita-card";
-import { formatMoneda } from "@/lib/utils";
+import { cn, formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getClientePerfil,
@@ -240,26 +240,30 @@ export default function ClientePerfilPage() {
       </div>
 
       {esAdmin && (
-        <div className="grid grid-cols-2 gap-2">
+        <div
+          className={cn(
+            "grid gap-2",
+            elegiblesUnificar >= 2 ? "grid-cols-3" : "grid-cols-2"
+          )}
+        >
           <Button variant="outline" asChild>
             <Link href={`/contratas/nueva?clienteId=${perfil.id}`}>
-              <Plus className="size-4" /> Nueva contrata
+              <Plus className="size-4" /> Nueva
             </Link>
           </Button>
+          {elegiblesUnificar >= 2 && (
+            <Button variant="outline" asChild>
+              <Link href={`/clientes/${perfil.id}/unificar`}>
+                <Combine className="size-4" /> Unificar
+              </Link>
+            </Button>
+          )}
           <Button variant="outline" asChild>
             <Link href={`/citas/nueva?clienteId=${perfil.id}`}>
               <CalendarPlus className="size-4" /> Agendar
             </Link>
           </Button>
         </div>
-      )}
-
-      {esAdmin && elegiblesUnificar >= 2 && (
-        <Button className="w-full" variant="outline" asChild>
-          <Link href={`/clientes/${perfil.id}/unificar`}>
-            <Combine className="size-4" /> Unificar contratas
-          </Link>
-        </Button>
       )}
 
       {citasPendientes && citasPendientes.length > 0 && (
