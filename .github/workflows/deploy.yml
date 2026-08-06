@@ -20,6 +20,13 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # El VPS tiene un solo vCPU — el default de 10m alcanzó a matar
+          # un `docker compose build` a medias (dejó el proceso de build
+          # huérfano consumiendo CPU y el VPS entero sin responder SSH/HTTP
+          # varios minutos). Con lint/type-check ya fuera del build
+          # (ver next.config.mjs) no debería acercarse a esto, pero se deja
+          # más margen por si el build vuelve a crecer.
+          command_timeout: 20m
           script: |
             set -e
             cd ~/kredired
