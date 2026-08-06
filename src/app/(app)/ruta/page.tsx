@@ -16,7 +16,6 @@ import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getRutaDelDia,
   getConfiguracion,
-  getCitasDelDia,
   getCitasPendientes,
 } from "@/lib/offline/repo";
 import { enqueue } from "@/lib/offline/queue";
@@ -223,16 +222,11 @@ export default function RutaDelDiaPage() {
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
     [ownerId]
   );
-  const [filtroCitas, setFiltroCitas] = useState<"HOY" | "TODAS">("HOY");
-  const citasHoy = useLiveQuery(
-    () => (ownerId ? getCitasDelDia(ownerId) : undefined),
+  const [vista, setVista] = useState<"COBRAR" | "ENTREGAR">("COBRAR");
+  const citas = useLiveQuery(
+    () => (ownerId ? getCitasPendientes(ownerId) : undefined),
     [ownerId]
   );
-  const citasTodas = useLiveQuery(
-    () => (ownerId && filtroCitas === "TODAS" ? getCitasPendientes(ownerId) : undefined),
-    [ownerId, filtroCitas]
-  );
-  const citas = filtroCitas === "HOY" ? citasHoy : citasTodas;
   const config = useLiveQuery(
     () => (ownerId ? getConfiguracion(ownerId) : undefined),
     [ownerId]
@@ -280,75 +274,73 @@ export default function RutaDelDiaPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-1">
-          <Saludo nombre={nombre} />
-          <p className="text-sm text-muted-foreground">Ruta de cobro de hoy</p>
-        </div>
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/citas/nueva">
-            <CalendarPlus className="size-4" /> Agendar
-          </Link>
-        </Button>
-      </div>
-
-      {paradas && paradas.length > 0 && (
-        <Card>
-          <CardContent className="flex items-center justify-between p-4">
-            <div>
-              <p className="text-xs text-muted-foreground">
-                {paradas.length}{" "}
-                {paradas.length === 1 ? "parada" : "paradas"} pendientes
-              </p>
-              <p className="text-lg font-bold">{formatMoneda(totalDia)}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {recibos[0] && (
-        <ReciboPopup
-          key={recibos[0].clienteId}
-          recibo={recibos[0]}
-          nombreApp={nombreApp}
-          onCerrar={() => descartarRecibo(recibos[0].clienteId)}
-        />
-      )}
-
-      <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
-        {paradas?.map((p) => (
-          <Parada
-            key={p.clienteId}
-            parada={p}
-            ownerId={ownerId as string}
-            nombreApp={nombreApp}
-            onCobrado={onCobrado}
-          />
-        ))}
-      </div>
-
-      {paradas && paradas.length === 0 && recibos.length === 0 && (
-        <p className="py-10 text-center text-xs text-muted-foreground">
-          No hay cobros pendientes para hoy.
+      <div className="space-y-1">
+        <Saludo nombre={nombre} />
+        <p className="text-sm text-muted-foreground">
+          {vista === "COBRAR" ? "Ruta de cobro de hoy" : "Contratas por entregar"}
         </p>
-      )}
+      </div>
 
-      {citasHoy && (citasHoy.length > 0 || filtroCitas === "TODAS") && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-muted-foreground">
-              Citas
-            </h2>
-            <SegmentedControl
-              value={filtroCitas}
-              onChange={setFiltroCitas}
-              className="w-40"
-              options={[
-                { value: "HOY", label: "Hoy" },
-                { value: "TODAS", label: "Todas" },
-              ]}
+      <SegmentedControl
+        value={vista}
+        onChange={setVista}
+        options={[
+          { value: "COBRAR", label: "Cobrar" },
+          { value: "ENTREGAR", label: "Entregar" },
+        ]}
+      />
+
+      {vista === "COBRAR" ? (
+        <>
+          {paradas && paradas.length > 0 && (
+            <Card>
+              <CardContent className="flex items-center justify-between p-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {paradas.length}{" "}
+                    {paradas.length === 1 ? "parada" : "paradas"} pendientes
+                  </p>
+                  <p className="text-lg font-bold">{formatMoneda(totalDia)}</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {recibos[0] && (
+            <ReciboPopup
+              key={recibos[0].clienteId}
+              recibo={recibos[0]}
+              nombreApp={nombreApp}
+              onCerrar={() => descartarRecibo(recibos[0].clienteId)}
             />
+          )}
+
+          <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
+            {paradas?.map((p) => (
+              <Parada
+                key={p.clienteId}
+                parada={p}
+                ownerId={ownerId as string}
+                nombreApp={nombreApp}
+                onCobrado={onCobrado}
+              />
+            ))}
           </div>
+
+          {paradas && paradas.length === 0 && recibos.length === 0 && (
+            <p className="py-10 text-center text-xs text-muted-foreground">
+              No hay cobros pendientes para hoy.
+            </p>
+          )}
+        </>
+      ) : (
+        <>
+          <Button variant="outline" size="sm" className="w-full" asChild>
+            <Link href="/citas/nueva">
+              <CalendarPlus className="size-4" /> Agendar
+            </Link>
+          </Button>
+
           {citas && citas.length > 0 ? (
             <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
               {citas.map((c) => (
@@ -356,11 +348,11 @@ export default function RutaDelDiaPage() {
               ))}
             </div>
           ) : (
-            <p className="py-6 text-center text-xs text-muted-foreground">
+            <p className="py-10 text-center text-xs text-muted-foreground">
               Sin citas agendadas.
             </p>
           )}
-        </div>
+        </>
       )}
     </div>
   );

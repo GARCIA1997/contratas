@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  citasDelDia,
   citasPendientesOrdenadas,
   estadoCitaVista,
   type CitaLike,
@@ -54,40 +53,6 @@ describe("estadoCitaVista", () => {
     expect(estadoCitaVista(cita({ fechaEntrega: "2026-07-29" }), HOY)).toBe(
       "ATRASADA"
     );
-  });
-});
-
-describe("citasDelDia", () => {
-  it("incluye pendientes de hoy y atrasadas, excluye futuras", () => {
-    const citas = [
-      cita({ fechaEntrega: HOY }),
-      cita({ fechaEntrega: new Date(2026, 6, 25) }),
-      cita({ fechaEntrega: new Date(2026, 7, 5) }),
-    ];
-    const resultado = citasDelDia(citas, HOY);
-    expect(resultado).toHaveLength(2);
-  });
-
-  it("excluye entregadas y canceladas aunque su fecha ya haya llegado", () => {
-    const citas = [
-      cita({ fechaEntrega: HOY, estado: "ENTREGADA" }),
-      cita({ fechaEntrega: HOY, estado: "CANCELADA" }),
-    ];
-    expect(citasDelDia(citas, HOY)).toHaveLength(0);
-  });
-
-  it("ordena por fecha ascendente, la más atrasada primero", () => {
-    const citas = [
-      cita({ fechaEntrega: new Date(2026, 6, 28) }),
-      cita({ fechaEntrega: new Date(2026, 6, 20) }),
-      cita({ fechaEntrega: HOY }),
-    ];
-    const resultado = citasDelDia(citas, HOY);
-    expect(resultado.map((c) => c.fechaEntrega)).toEqual([
-      new Date(2026, 6, 20),
-      new Date(2026, 6, 28),
-      HOY,
-    ]);
   });
 });
 

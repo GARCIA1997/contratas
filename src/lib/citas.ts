@@ -27,31 +27,9 @@ export function estadoCitaVista(
 }
 
 /**
- * Citas a mostrar como recordatorio del día en Ruta: pendientes cuya
- * `fechaEntrega` ya llegó (hoy o atrasada) — las futuras no se muestran
- * todavía. Ordenadas por fecha ascendente, la más atrasada primero.
- */
-export function citasDelDia<T extends CitaLike>(
-  citas: T[],
-  hoy: Date = new Date()
-): T[] {
-  const base = anclarFechaCliente(hoy);
-  return citas
-    .filter((c) => {
-      if (c.estado !== "PENDIENTE") return false;
-      return anclarFechaCliente(c.fechaEntrega) <= base;
-    })
-    .sort(
-      (a, b) =>
-        anclarFechaCliente(a.fechaEntrega).getTime() -
-        anclarFechaCliente(b.fechaEntrega).getTime()
-    );
-}
-
-/**
- * Todas las citas pendientes, sin filtrar por fecha (pestaña "Todas" en
- * Ruta) — orden cronológico simple por fecha de entrega ascendente: las
- * atrasadas más viejas primero, luego hoy, luego las futuras más cercanas.
+ * Todas las citas pendientes (pestaña "Entregar" en Ruta) — orden
+ * cronológico simple por fecha de entrega ascendente: las atrasadas más
+ * viejas primero, luego hoy, luego las futuras más cercanas.
  */
 export function citasPendientesOrdenadas<T extends CitaLike>(citas: T[]): T[] {
   return citas
