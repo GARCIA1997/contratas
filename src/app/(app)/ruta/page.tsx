@@ -22,7 +22,7 @@ import { enqueue } from "@/lib/offline/queue";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { formatMoneda } from "@/lib/utils";
 import { CONFIG_DEFAULTS } from "@/lib/config";
-import type { CuotaRuta, ParadaRuta } from "@/lib/services/ruta";
+import type { ParadaRuta } from "@/lib/services/ruta";
 
 function mensajeRecordatorio(
   nombreApp: string,
@@ -44,15 +44,7 @@ function mensajeRecordatorio(
   return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${monto}. ¡Gracias! — ${nombreApp}`;
 }
 
-type ReciboPendiente = {
-  clienteId: string;
-  nombre: string;
-  telefono: string | null;
-  total: number;
-  cuotas: CuotaRuta[];
-};
-
-function mensajeRecibo(nombreApp: string, r: ReciboPendiente) {
+function mensajeRecibo(nombreApp: string, r: ParadaRuta) {
   return [
     `🧾 *${nombreApp}*`,
     `*Recibo de pago*`,
@@ -70,58 +62,25 @@ function mensajeRecibo(nombreApp: string, r: ReciboPendiente) {
   ].join("\n");
 }
 
-/** Popup tras marcar "Cobrado" — sobrevive aunque la parada ya haya
- * desaparecido de la ruta en vivo (ver comentario en RutaDelDiaPage). Se
- * muestra un recibo a la vez, en cola: al cerrar uno aparece el siguiente. */
-function ReciboPopup({
-  recibo,
-  nombreApp,
-  onCerrar,
-}: {
-  recibo: ReciboPendiente;
-  nombreApp: string;
-  onCerrar: () => void;
-}) {
-  return (
-    <Popup open onClose={onCerrar}>
-      <p className="text-sm font-semibold">{recibo.nombre}</p>
-      <p className="text-xs text-muted-foreground">Cobro registrado</p>
-      <p className="py-2 text-3xl font-bold text-pagado">
-        {formatMoneda(recibo.total)}
-      </p>
-      <div className="flex flex-col gap-2 pt-2">
-        <Button asChild onClick={onCerrar}>
-          <a
-            href={linkWhatsApp(recibo.telefono, mensajeRecibo(nombreApp, recibo))}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <MessageCircle className="size-4" /> Enviar recibo
-          </a>
-        </Button>
-        <Button variant="outline" onClick={onCerrar}>
-          Cerrar
-        </Button>
-      </div>
-    </Popup>
-  );
-}
-
 function Parada({
   parada,
   ownerId,
   nombreApp,
-  onCobrado,
 }: {
   parada: ParadaRuta;
   ownerId: string;
   nombreApp: string;
-  onCobrado: (parada: ParadaRuta) => void;
 }) {
+  // El botón "Cobrado" ya no cobra directo al primer toque — un roce
+  // accidental en campo (celular en la bolsa, pantalla mojada) registraba
+  // un pago real sin querer. Ahora solo abre este modal de confirmación;
+  // cobrar es una acción explícita de las 3 de abajo, nunca del tap inicial.
+  const [confirmando, setConfirmando] = useState(false);
   const [cobrando, setCobrando] = useState(false);
   const [cobrado, setCobrado] = useState(false);
 
   async function marcarCobrado() {
+    setConfirmando(false);
     setCobrando(true);
     try {
       for (const cuota of parada.cuotas) {
@@ -132,7 +91,6 @@ function Parada({
         });
       }
       setCobrado(true);
-      onCobrado(parada);
     } finally {
       setCobrando(false);
     }
@@ -203,11 +161,50 @@ function Parada({
               <MessageCircle className="size-4" /> WhatsApp
             </a>
           </Button>
-          <Button size="sm" disabled={cobrando} onClick={marcarCobrado}>
+          <Button
+            size="sm"
+            disabled={cobrando}
+            onClick={() => setConfirmando(true)}
+          >
             <Check className="size-4" /> Cobrado
           </Button>
         </div>
       </CardContent>
+
+      <Popup open={confirmando} onClose={() => setConfirmando(false)}>
+        <p className="text-sm font-semibold">{parada.nombre}</p>
+        <p className="text-xs text-muted-foreground">Confirmar cobro</p>
+        <p className="py-2 text-3xl font-bold text-pagado">
+          {formatMoneda(parada.total)}
+        </p>
+        <div className="flex flex-col gap-2 pt-2">
+          {/* El envío se dispara desde el propio click del <a> (navegación
+              nativa del navegador, siempre confiable) mientras el cobro
+              corre en paralelo por el onClick — igual que hacía antes el
+              botón "Enviar recibo" del popup posterior. Esperar a que el
+              cobro termine antes de abrir WhatsApp arriesgaría que el
+              navegador bloquee la apertura por no venir de un click
+              síncrono. */}
+          <Button asChild onClick={marcarCobrado}>
+            <a
+              href={linkWhatsApp(
+                parada.telefono,
+                mensajeRecibo(nombreApp, parada)
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <MessageCircle className="size-4" /> Cobrar y enviar recibo
+            </a>
+          </Button>
+          <Button variant="outline" onClick={marcarCobrado}>
+            Solo cobrar
+          </Button>
+          <Button variant="ghost" onClick={() => setConfirmando(false)}>
+            Cancelar
+          </Button>
+        </div>
+      </Popup>
     </Card>
   );
 }
@@ -232,31 +229,6 @@ export default function RutaDelDiaPage() {
     [ownerId]
   );
   const nombreApp = config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp;
-
-  // Recibos de paradas ya cobradas en esta sesión — se guardan aparte (no
-  // derivados de `paradas`) porque en cuanto se marca "Cobrado" el pago
-  // optimista hace que esa parada YA NO aparezca en la ruta en vivo (deja de
-  // tener saldo pendiente): sin este estado separado, la tarjeta de recibo
-  // desaparecería junto con la parada antes de que se alcance a enviar por
-  // WhatsApp.
-  const [recibos, setRecibos] = useState<ReciboPendiente[]>([]);
-
-  function onCobrado(parada: ParadaRuta) {
-    setRecibos((r) => [
-      {
-        clienteId: parada.clienteId,
-        nombre: parada.nombre,
-        telefono: parada.telefono,
-        total: parada.total,
-        cuotas: parada.cuotas,
-      },
-      ...r,
-    ]);
-  }
-
-  function descartarRecibo(clienteId: string) {
-    setRecibos((r) => r.filter((x) => x.clienteId !== clienteId));
-  }
 
   // Esta es literalmente la pantalla de "voy a salir a cobrar y puedo
   // perder la señal" — a diferencia de los prefetch puntuales de otras
@@ -313,15 +285,6 @@ export default function RutaDelDiaPage() {
             </Card>
           )}
 
-          {recibos[0] && (
-            <ReciboPopup
-              key={recibos[0].clienteId}
-              recibo={recibos[0]}
-              nombreApp={nombreApp}
-              onCerrar={() => descartarRecibo(recibos[0].clienteId)}
-            />
-          )}
-
           <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
             {paradas?.map((p) => (
               <Parada
@@ -329,12 +292,11 @@ export default function RutaDelDiaPage() {
                 parada={p}
                 ownerId={ownerId as string}
                 nombreApp={nombreApp}
-                onCobrado={onCobrado}
               />
             ))}
           </div>
 
-          {paradas && paradas.length === 0 && recibos.length === 0 && (
+          {paradas && paradas.length === 0 && (
             <p className="py-10 text-center text-xs text-muted-foreground">
               No hay cobros pendientes para hoy.
             </p>
