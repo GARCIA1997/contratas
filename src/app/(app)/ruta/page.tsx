@@ -64,40 +64,15 @@ function mensajeRecibo(nombreApp: string, r: ParadaRuta) {
 
 function Parada({
   parada,
-  ownerId,
   nombreApp,
+  cobrando,
+  onSolicitarCobro,
 }: {
   parada: ParadaRuta;
-  ownerId: string;
   nombreApp: string;
+  cobrando: boolean;
+  onSolicitarCobro: (parada: ParadaRuta) => void;
 }) {
-  // El botón "Cobrado" ya no cobra directo al primer toque — un roce
-  // accidental en campo (celular en la bolsa, pantalla mojada) registraba
-  // un pago real sin querer. Ahora solo abre este modal de confirmación;
-  // cobrar es una acción explícita de las 3 de abajo, nunca del tap inicial.
-  const [confirmando, setConfirmando] = useState(false);
-  const [cobrando, setCobrando] = useState(false);
-  const [cobrado, setCobrado] = useState(false);
-
-  async function marcarCobrado() {
-    setConfirmando(false);
-    setCobrando(true);
-    try {
-      for (const cuota of parada.cuotas) {
-        await enqueue(ownerId, "contrata.pago.abonar", {
-          contrataId: cuota.contrataId,
-          numeroCuota: cuota.numeroCuota,
-          monto: cuota.pendiente,
-        });
-      }
-      setCobrado(true);
-    } finally {
-      setCobrando(false);
-    }
-  }
-
-  if (cobrado) return null;
-
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -164,47 +139,12 @@ function Parada({
           <Button
             size="sm"
             disabled={cobrando}
-            onClick={() => setConfirmando(true)}
+            onClick={() => onSolicitarCobro(parada)}
           >
             <Check className="size-4" /> Cobrado
           </Button>
         </div>
       </CardContent>
-
-      <Popup open={confirmando} onClose={() => setConfirmando(false)}>
-        <p className="text-sm font-semibold">{parada.nombre}</p>
-        <p className="text-xs text-muted-foreground">Confirmar cobro</p>
-        <p className="py-2 text-3xl font-bold text-pagado">
-          {formatMoneda(parada.total)}
-        </p>
-        <div className="flex flex-col gap-2 pt-2">
-          {/* El envío se dispara desde el propio click del <a> (navegación
-              nativa del navegador, siempre confiable) mientras el cobro
-              corre en paralelo por el onClick — igual que hacía antes el
-              botón "Enviar recibo" del popup posterior. Esperar a que el
-              cobro termine antes de abrir WhatsApp arriesgaría que el
-              navegador bloquee la apertura por no venir de un click
-              síncrono. */}
-          <Button asChild onClick={marcarCobrado}>
-            <a
-              href={linkWhatsApp(
-                parada.telefono,
-                mensajeRecibo(nombreApp, parada)
-              )}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <MessageCircle className="size-4" /> Cobrar y enviar recibo
-            </a>
-          </Button>
-          <Button variant="outline" onClick={marcarCobrado}>
-            Solo cobrar
-          </Button>
-          <Button variant="ghost" onClick={() => setConfirmando(false)}>
-            Cancelar
-          </Button>
-        </div>
-      </Popup>
     </Card>
   );
 }
@@ -229,6 +169,36 @@ export default function RutaDelDiaPage() {
     [ownerId]
   );
   const nombreApp = config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp;
+
+  // Modal de confirmación de cobro — vive UNA sola vez aquí, no por
+  // tarjeta. Dos motivos:
+  // 1. `Card` usa `.glass-card` (`backdrop-filter`), que en CSS crea un
+  //    nuevo "containing block" para hijos `position: fixed` — un Popup
+  //    anidado dentro de una Card quedaba atrapado dentro de su caja en vez
+  //    de cubrir la pantalla, y el botón "Cancelar" se lo comía la
+  //    siguiente tarjeta. Al vivir aquí, fuera de cualquier Card, el fixed
+  //    se posiciona contra el viewport como debe ser.
+  // 2. Un solo estado (en vez de uno por Parada) garantiza que solo pueda
+  //    haber un modal de cobro abierto a la vez — antes se podían abrir
+  //    varios si se tocaba "Cobrado" en más de una tarjeta seguido.
+  const [confirmando, setConfirmando] = useState<ParadaRuta | null>(null);
+  const [cobrandoId, setCobrandoId] = useState<string | null>(null);
+
+  async function marcarCobrado(parada: ParadaRuta) {
+    setConfirmando(null);
+    setCobrandoId(parada.clienteId);
+    try {
+      for (const cuota of parada.cuotas) {
+        await enqueue(ownerId as string, "contrata.pago.abonar", {
+          contrataId: cuota.contrataId,
+          numeroCuota: cuota.numeroCuota,
+          monto: cuota.pendiente,
+        });
+      }
+    } finally {
+      setCobrandoId(null);
+    }
+  }
 
   // Esta es literalmente la pantalla de "voy a salir a cobrar y puedo
   // perder la señal" — a diferencia de los prefetch puntuales de otras
@@ -290,8 +260,9 @@ export default function RutaDelDiaPage() {
               <Parada
                 key={p.clienteId}
                 parada={p}
-                ownerId={ownerId as string}
                 nombreApp={nombreApp}
+                cobrando={cobrandoId === p.clienteId}
+                onSolicitarCobro={setConfirmando}
               />
             ))}
           </div>
@@ -316,6 +287,41 @@ export default function RutaDelDiaPage() {
             </p>
           )}
         </>
+      )}
+
+      {confirmando && (
+        <Popup open onClose={() => setConfirmando(null)}>
+          <p className="text-sm font-semibold">{confirmando.nombre}</p>
+          <p className="text-xs text-muted-foreground">Confirmar cobro</p>
+          <p className="py-2 text-3xl font-bold text-pagado">
+            {formatMoneda(confirmando.total)}
+          </p>
+          <div className="flex flex-col gap-2 pt-2">
+            {/* El envío se dispara desde el propio click del <a> (navegación
+                nativa del navegador, siempre confiable) mientras el cobro
+                corre en paralelo por el onClick — esperar a que el cobro
+                termine antes de abrir WhatsApp arriesgaría que el navegador
+                bloquee la apertura por no venir de un click síncrono. */}
+            <Button asChild onClick={() => marcarCobrado(confirmando)}>
+              <a
+                href={linkWhatsApp(
+                  confirmando.telefono,
+                  mensajeRecibo(nombreApp, confirmando)
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MessageCircle className="size-4" /> Cobrar y enviar recibo
+              </a>
+            </Button>
+            <Button variant="outline" onClick={() => marcarCobrado(confirmando)}>
+              Solo cobrar
+            </Button>
+            <Button variant="ghost" onClick={() => setConfirmando(null)}>
+              Cancelar
+            </Button>
+          </div>
+        </Popup>
       )}
     </div>
   );
