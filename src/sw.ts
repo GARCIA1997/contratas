@@ -35,6 +35,74 @@ const serwist = new Serwist({
         ],
       }),
     },
+    // Reportado en campo: en comunidades con 3G real (no cero señal), las
+    // rutas de navegación de `defaultCache` (RSC/RSC-prefetch/documento
+    // HTML/"others" — este último es por donde pasa una recarga completa
+    // de página) usan NetworkFirst SIN `networkTimeoutSeconds`. Sin ese
+    // valor, Workbox espera la respuesta de red indefinidamente antes de
+    // caer al cache — si la petición se cuelga (conexión abierta, sin
+    // datos), la app se queda en blanco varios minutos en vez de mostrar
+    // al toque lo que ya tiene guardado. Estas 4 entradas repiten los
+    // mismos matchers y cacheName que `defaultCache` (así comparten el
+    // mismo cache, sin duplicar entradas) pero SÍ le ponen un timeout
+    // corto: a los 4s sin respuesta, sirve la versión cacheada de una vez.
+    // Van antes de `...defaultCache` porque Workbox usa la primera ruta
+    // que matchea — estas ganan.
+    {
+      matcher: ({ request, url: { pathname }, sameOrigin }) =>
+        request.headers.get("RSC") === "1" &&
+        request.headers.get("Next-Router-Prefetch") === "1" &&
+        sameOrigin &&
+        !pathname.startsWith("/api/"),
+      handler: new NetworkFirst({
+        cacheName: "pages-rsc-prefetch",
+        networkTimeoutSeconds: 4,
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
+        ],
+      }),
+    },
+    {
+      matcher: ({ request, url: { pathname }, sameOrigin }) =>
+        request.headers.get("RSC") === "1" &&
+        sameOrigin &&
+        !pathname.startsWith("/api/"),
+      handler: new NetworkFirst({
+        cacheName: "pages-rsc",
+        networkTimeoutSeconds: 4,
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
+        ],
+      }),
+    },
+    {
+      matcher: ({ request, url: { pathname }, sameOrigin }) =>
+        request.headers.get("Content-Type")?.includes("text/html") === true &&
+        sameOrigin &&
+        !pathname.startsWith("/api/"),
+      handler: new NetworkFirst({
+        cacheName: "pages",
+        networkTimeoutSeconds: 4,
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
+        ],
+      }),
+    },
+    {
+      // Catch-all mismo-origen no-API: por aquí pasa una navegación
+      // completa (recarga, primera visita, abrir un link desde fuera de la
+      // app) cuando no trae headers de RSC — el caso más común de "abrir
+      // la app en campo".
+      matcher: ({ url: { pathname }, sameOrigin }) =>
+        sameOrigin && !pathname.startsWith("/api/"),
+      handler: new NetworkFirst({
+        cacheName: "others",
+        networkTimeoutSeconds: 4,
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
+        ],
+      }),
+    },
     ...defaultCache,
   ],
   // `fallbacks.entries` -> `matchPrecache("/offline")` NUNCA funciona en la
