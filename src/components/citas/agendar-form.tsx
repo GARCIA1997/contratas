@@ -327,7 +327,8 @@ export function AgendarForm({
                         : c.tipo === "QUINCENAL"
                           ? "Quincenal"
                           : "Mensual"}{" "}
-                      · saldo {formatMoneda(c.saldo)}
+                      · cuota {c.cuotaPagadaMax}/{c.numCuotas} · saldo{" "}
+                      {formatMoneda(c.saldo)}
                     </span>
                     <input
                       type="radio"
