@@ -135,6 +135,11 @@ export type ContrataConSaldoLocal = {
   id: string;
   tipo: TipoContrata;
   saldo: number;
+  /** Cuota más alta ya pagada — para mostrar el progreso "8/10" al elegir
+   * cuál contrata renovar. No es "cuántas cuotas están pagadas": si se
+   * salta la 3 y se paga la 4, debe mostrar 4/10, no 1/10. */
+  cuotaPagadaMax: number;
+  numCuotas: number;
 };
 
 async function contratasDelClienteParaSaldo(
@@ -160,6 +165,11 @@ async function contratasDelClienteParaSaldo(
   );
 }
 
+/** Cuota más alta ya pagada — 0 si ninguna. */
+function cuotaPagadaMax(pagos: { numeroCuota: number; pagado: boolean }[]) {
+  return pagos.filter((p) => p.pagado).reduce((max, p) => Math.max(max, p.numeroCuota), 0);
+}
+
 /** Espejo offline de `contratasConSaldo` (usado por "unificar"): saldo total restante. */
 export async function getContratasConSaldo(
   ownerId: string,
@@ -171,6 +181,8 @@ export async function getContratasConSaldo(
     .map(({ contrata, pagos }) => ({
       id: contrata.id,
       tipo: contrata.tipo,
+      cuotaPagadaMax: cuotaPagadaMax(pagos),
+      numCuotas: contrata.numCuotas,
       saldo: saldoPendiente(
         pagos.map((p) => ({ ...p, fechaProgramada: new Date(p.fechaProgramada) })),
         contrata.abono
@@ -191,6 +203,8 @@ export async function getContratasConVencido(
     .map(({ contrata, pagos }) => ({
       id: contrata.id,
       tipo: contrata.tipo,
+      cuotaPagadaMax: cuotaPagadaMax(pagos),
+      numCuotas: contrata.numCuotas,
       saldo: montoVencidoOVigente(
         pagos.map((p) => ({
           ...p,
