@@ -58,14 +58,21 @@ export function CobroVencido({
     null
   );
   const [sinRecibo, setSinRecibo] = useState(false);
+  // Se fija en el primer intento y se reutiliza en los reintentos: si el
+  // servidor ya cobró pero la respuesta se perdió por la red, reintentar
+  // con la misma key hace que el servidor devuelva el resultado ya
+  // registrado en vez de cobrar dos veces.
+  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
 
   if (total <= 0 && !resultado && !sinRecibo) return null;
 
-  async function cobrar() {
-    const ok = confirm(
-      `Vas a registrar el pago completo de ${cuotas} cuota(s) por un total de ${formatMoneda(total)} (incluye vencidas y próximas a vencer). ¿Confirmar?`
-    );
-    if (!ok) return;
+  async function cobrar(opts?: { esReintento?: boolean }) {
+    if (!opts?.esReintento) {
+      const ok = confirm(
+        `Vas a registrar el pago completo de ${cuotas} cuota(s) por un total de ${formatMoneda(total)} (incluye vencidas y próximas a vencer). ¿Confirmar?`
+      );
+      if (!ok) return;
+    }
     setCargando(true);
     setError(null);
     try {
@@ -79,8 +86,11 @@ export function CobroVencido({
         setSinRecibo(true);
         return;
       }
+      const key = idempotencyKey ?? crypto.randomUUID();
+      setIdempotencyKey(key);
       const res = await fetch(`/api/clientes/${clienteId}/cobrar-vencidas`, {
         method: "POST",
+        headers: { "Idempotency-Key": key },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -174,14 +184,21 @@ export function CobroVencido({
         className="w-full"
         variant="default"
         disabled={cargando}
-        onClick={cobrar}
+        onClick={() => cobrar({ esReintento: idempotencyKey !== null })}
       >
         <CircleDollarSign className="size-4" />
         {cargando
           ? "Registrando…"
-          : `Cobrar pendiente · ${formatMoneda(total)} (${cuotas} cuota${cuotas === 1 ? "" : "s"})`}
+          : error
+            ? "Reintentar cobro"
+            : `Cobrar pendiente · ${formatMoneda(total)} (${cuotas} cuota${cuotas === 1 ? "" : "s"})`}
       </Button>
-      {error && <p className="text-center text-xs text-destructive">{error}</p>}
+      {error && (
+        <p className="text-center text-xs text-destructive">
+          {error}. Si el cobro ya se había registrado, reintentar no lo
+          duplicará.
+        </p>
+      )}
     </div>
   );
 }
