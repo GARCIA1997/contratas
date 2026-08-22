@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, MessageCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
-import { linkWhatsApp } from "@/lib/whatsapp";
 import { desgloseCuotas, type EstadoContrata } from "@/lib/contrata";
+import { CompartirRecibo } from "@/components/recibo/compartir-recibo";
+import { useMarcaRecibo } from "@/components/recibo/use-marca-recibo";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -123,9 +124,25 @@ export function EstadoCuentaView({
   nombreApp: string;
   cliente: EstadoCuentaUI;
 }) {
+  const marca = useMarcaRecibo();
   const mensaje = construirMensaje(nombreApp, cliente);
   const telefono = cliente.telefono;
-  const link = linkWhatsApp(telefono, mensaje);
+
+  // El estado de cuenta que se le manda al cliente solo incluye lo que sigue
+  // vivo: una contrata liquidada hace un año no le dice nada y solo alarga
+  // el documento. Los totales se recalculan sobre este mismo subconjunto —
+  // si no, las tres cifras de arriba no cuadrarían con el listado de abajo.
+  const activas = cliente.contratas.filter(
+    (c) => c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA"
+  );
+  const totalesActivas = activas.reduce(
+    (acc, c) => ({
+      capitalPrestado: acc.capitalPrestado + c.monto,
+      totalAbonado: acc.totalAbonado + c.totalAbonado,
+      saldoPendiente: acc.saldoPendiente + c.saldo,
+    }),
+    { capitalPrestado: 0, totalAbonado: 0, saldoPendiente: 0 }
+  );
 
   return (
     <div className="space-y-4 md:max-w-xl">
@@ -204,14 +221,39 @@ export function EstadoCuentaView({
         )}
       </div>
 
-      <Button className="w-full" asChild>
-        <a href={link} target="_blank" rel="noopener noreferrer">
-          <MessageCircle className="size-4" />
-          {telefono
-            ? "Enviar estado de cuenta por WhatsApp"
-            : "Compartir por WhatsApp"}
-        </a>
-      </Button>
+      <CompartirRecibo
+        etiqueta={
+          telefono ? "Enviar estado de cuenta por WhatsApp" : "Compartir estado de cuenta"
+        }
+        datos={{
+          variante: "estado",
+          nombreApp,
+          colorPrimario: marca.colorPrimario,
+          hechoPor: marca.hechoPor,
+          clienteNombre: cliente.nombre,
+          fecha: new Date(),
+          capitalPrestado: totalesActivas.capitalPrestado,
+          totalAbonado: totalesActivas.totalAbonado,
+          saldoPendiente: totalesActivas.saldoPendiente,
+          contratas: activas.map((c) => ({
+            tipo: c.tipo,
+            montoContrata: c.monto,
+            cuotasPagadas: c.pagados,
+            numCuotas: c.total,
+            saldo: c.saldo,
+            atrasada: c.estado === "VENCIDO",
+          })),
+        }}
+        logoUrl={marca.logoUrl}
+        telefono={telefono}
+        textoFallback={mensaje}
+      />
+      {activas.length !== cliente.contratas.length && (
+        <p className="text-center text-xs text-muted-foreground">
+          El estado de cuenta que se comparte incluye solo las{" "}
+          {activas.length === 1 ? "contrata activa" : `${activas.length} contratas activas`}.
+        </p>
+      )}
       {!telefono && (
         <p className="text-center text-xs text-muted-foreground">
           Este cliente no tiene teléfono guardado: elige el contacto al abrir

@@ -2,13 +2,13 @@
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { CheckCircle2, MessageCircle } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
-import { linkWhatsApp } from "@/lib/whatsapp";
+import { CompartirRecibo } from "@/components/recibo/compartir-recibo";
+import { useMarcaRecibo } from "@/components/recibo/use-marca-recibo";
 
 export type ContrataEntregada = {
   cliente: { nombre: string; telefono: string | null };
@@ -101,9 +101,9 @@ export function ReciboEntregaPanel({
   /** Título dentro del mensaje de WhatsApp, p. ej. "Detalles de tu renovación". */
   tituloMensaje: string;
 }) {
+  const marca = useMarcaRecibo();
   const mensaje = construirMensajeEntrega(nombreApp, contrata, tituloMensaje);
   const telefono = contrata.cliente.telefono;
-  const link = linkWhatsApp(telefono, mensaje);
 
   return (
     <>
@@ -118,14 +118,30 @@ export function ReciboEntregaPanel({
         </CardContent>
       </Card>
 
-      <Button className="w-full" asChild>
-        <a href={link} target="_blank" rel="noopener noreferrer">
-          <MessageCircle className="size-4" />
-          {telefono
-            ? "Enviar detalles por WhatsApp"
-            : "Compartir detalles por WhatsApp"}
-        </a>
-      </Button>
+      <CompartirRecibo
+        etiqueta={
+          telefono ? "Enviar comprobante por WhatsApp" : "Compartir comprobante"
+        }
+        datos={{
+          variante: "entrega",
+          nombreApp,
+          colorPrimario: marca.colorPrimario,
+          hechoPor: marca.hechoPor,
+          clienteNombre: contrata.cliente.nombre,
+          fecha: new Date(),
+          tipo: contrata.tipo,
+          monto: contrata.monto,
+          abono: contrata.abono,
+          numCuotas: contrata.numCuotas,
+          fechasPago: contrata.pagos.map((p) => ({
+            numeroCuota: p.numeroCuota,
+            fecha: fecha(p.fechaProgramada),
+          })),
+        }}
+        logoUrl={marca.logoUrl}
+        telefono={telefono}
+        textoFallback={mensaje}
+      />
       {!telefono && (
         <p className="text-center text-xs text-muted-foreground">
           Este cliente no tiene teléfono guardado: elige el contacto al abrir

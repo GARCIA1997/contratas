@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, MessageCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
-import { linkWhatsApp } from "@/lib/whatsapp";
 import { estadoContrata, desgloseCuotas } from "@/lib/contrata";
+import { CompartirRecibo } from "@/components/recibo/compartir-recibo";
+import { useMarcaRecibo } from "@/components/recibo/use-marca-recibo";
 
 type PagoUI = {
   numeroCuota: number;
@@ -115,9 +116,15 @@ export function ReciboView({
   nombreApp: string;
   contrata: ReciboContrata;
 }) {
+  const marca = useMarcaRecibo();
   const mensaje = construirMensaje(nombreApp, contrata);
   const telefono = contrata.clienteTelefono;
-  const link = linkWhatsApp(telefono, mensaje);
+  // El recibo-imagen de esta pantalla es acumulativo: resume TODO lo abonado
+  // de la contrata (no un cobro puntual), que es justo lo que el cliente
+  // pide cuando dice "mándame mi comprobante".
+  const cuotasAbonadas = contrata.pagos
+    .filter((p) => p.montoAbonado > 0)
+    .map((p) => ({ numeroCuota: p.numeroCuota, monto: p.montoAbonado }));
 
   return (
     <div className="space-y-4 md:max-w-xl">
@@ -207,12 +214,31 @@ export function ReciboView({
         </ul>
       </div>
 
-      <Button className="w-full" asChild>
-        <a href={link} target="_blank" rel="noopener noreferrer">
-          <MessageCircle className="size-4" />
-          {telefono ? "Enviar recibo por WhatsApp" : "Compartir por WhatsApp"}
-        </a>
-      </Button>
+      <CompartirRecibo
+        etiqueta={telefono ? "Enviar recibo por WhatsApp" : "Compartir recibo"}
+        datos={{
+          variante: "cobro",
+          nombreApp,
+          colorPrimario: marca.colorPrimario,
+          hechoPor: marca.hechoPor,
+          clienteNombre: contrata.clienteNombre,
+          fecha: new Date(),
+          total: contrata.totalAbonado,
+          contratas: [
+            {
+              tipo: contrata.tipo,
+              numCuotas: contrata.numCuotas,
+              montoContrata: contrata.monto,
+              saldoTrasCobro: contrata.saldo,
+              subtotal: contrata.totalAbonado,
+              cuotas: cuotasAbonadas,
+            },
+          ],
+        }}
+        logoUrl={marca.logoUrl}
+        telefono={telefono}
+        textoFallback={mensaje}
+      />
       {!telefono && (
         <p className="text-center text-xs text-muted-foreground">
           Este cliente no tiene teléfono guardado: elige el contacto al abrir

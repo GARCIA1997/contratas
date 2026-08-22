@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, MessageCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
-import { linkWhatsApp } from "@/lib/whatsapp";
+import { CompartirRecibo } from "@/components/recibo/compartir-recibo";
+import { useMarcaRecibo } from "@/components/recibo/use-marca-recibo";
 
 type AbonoUI = {
   id: string;
@@ -63,8 +64,8 @@ export function EstadoCuentaDeudorView({
   nombreApp: string;
   deudor: DeudorUI;
 }) {
+  const marca = useMarcaRecibo();
   const mensaje = construirMensaje(nombreApp, deudor);
-  const link = linkWhatsApp(null, mensaje);
   const abonado = deudor.deudaInicial - deudor.saldoActual;
 
   return (
@@ -140,14 +141,29 @@ export function EstadoCuentaDeudorView({
         )}
       </div>
 
-      <Button className="w-full" asChild>
-        <a href={link} target="_blank" rel="noopener noreferrer">
-          <MessageCircle className="size-4" />
-          Compartir por WhatsApp
-        </a>
-      </Button>
+      <CompartirRecibo
+        etiqueta="Compartir estado de cuenta"
+        datos={{
+          variante: "estadoDeudor",
+          nombreApp,
+          colorPrimario: marca.colorPrimario,
+          hechoPor: marca.hechoPor,
+          clienteNombre: deudor.nombre,
+          fecha: new Date(),
+          deudaInicial: deudor.deudaInicial,
+          abonado,
+          saldo: deudor.saldoActual,
+          abonos: deudor.abonos.map((a) => ({
+            fecha: fecha(a.fecha),
+            monto: a.monto,
+          })),
+        }}
+        logoUrl={marca.logoUrl}
+        telefono={null}
+        textoFallback={mensaje}
+      />
       <p className="text-center text-xs text-muted-foreground">
-        Elige el contacto al abrir WhatsApp.
+        Elige el contacto al compartir.
       </p>
     </div>
   );

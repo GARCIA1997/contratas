@@ -1,4 +1,5 @@
 import { startOfDay, addDays, differenceInCalendarDays } from "date-fns";
+import type { TipoContrata } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { anclarFechaCliente } from "@/lib/fechas";
 
@@ -17,6 +18,9 @@ export type ContrataParaRuta = {
   id: string;
   abono: number;
   convertidaADeuda: boolean;
+  /** Capital prestado — se muestra en el recibo/recordatorio como contexto. */
+  monto: number;
+  tipo: TipoContrata;
   pagos: PagoParaRuta[];
 };
 
@@ -33,6 +37,11 @@ export type CuotaRuta = {
   numeroCuota: number;
   /** Total de cuotas de esa contrata — para mostrar "Cuota 3/10" en el recibo. */
   numCuotas: number;
+  /** Capital prestado de la contrata a la que pertenece esta cuota. */
+  montoContrata: number;
+  tipo: TipoContrata;
+  /** Lo que quedará debiendo de esa contrata si se cobran todas sus cuotas de hoy. */
+  saldoTrasCobro: number;
   pendiente: number;
   fechaProgramada: string;
   diasAtraso: number;
@@ -71,16 +80,22 @@ export function aggregarRutaDelDia(
     const cuotas: CuotaRuta[] = [];
     for (const c of cliente.contratas) {
       if (c.convertidaADeuda) continue;
+      // Se juntan primero las de esta contrata para calcular el saldo que
+      // quedará tras cobrarlas todas (dato que va en el recibo).
+      const suyas: CuotaRuta[] = [];
       for (const p of c.pagos) {
         if (p.pagado) continue;
         const fechaCuota = anclarFechaCliente(p.fechaProgramada);
         if (fechaCuota > limite) continue;
         const pendiente = round(c.abono - p.montoAbonado);
         if (pendiente <= 0) continue;
-        cuotas.push({
+        suyas.push({
           contrataId: c.id,
           numeroCuota: p.numeroCuota,
           numCuotas: c.pagos.length,
+          montoContrata: c.monto,
+          tipo: c.tipo,
+          saldoTrasCobro: 0, // se rellena abajo, ya con el total de la contrata
           pendiente,
           fechaProgramada: p.fechaProgramada.toISOString(),
           // Positivo = vencida hace N días, 0 = hoy, negativo = vence en N
@@ -89,6 +104,12 @@ export function aggregarRutaDelDia(
           diasAtraso: differenceInCalendarDays(base, fechaCuota),
         });
       }
+      if (suyas.length === 0) continue;
+      const totalPlan = round(c.abono * c.pagos.length);
+      const yaAbonado = c.pagos.reduce((s, p) => s + p.montoAbonado, 0);
+      const aCobrar = suyas.reduce((s, q) => s + q.pendiente, 0);
+      const saldoTrasCobro = Math.max(0, round(totalPlan - yaAbonado - aCobrar));
+      for (const q of suyas) cuotas.push({ ...q, saldoTrasCobro });
     }
     if (cuotas.length === 0) continue;
     cuotas.sort((a, b) => b.diasAtraso - a.diasAtraso);
@@ -126,6 +147,8 @@ export async function computeRutaDelDia(
         id: k.id,
         abono: k.abono,
         convertidaADeuda: k.convertidaADeuda,
+        monto: k.monto,
+        tipo: k.tipo,
         pagos: k.pagos.map((p) => ({
           numeroCuota: p.numeroCuota,
           fechaProgramada: p.fechaProgramada,

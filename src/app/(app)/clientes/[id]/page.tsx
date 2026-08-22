@@ -22,15 +22,16 @@ import { ScorePagoBadge } from "@/components/score-pago-badge";
 import { CitaCard } from "@/components/citas/cita-card";
 import { cn, formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { CONFIG_DEFAULTS } from "@/lib/config";
 import {
   getClientePerfil,
   getCobroVencidoPreview,
   getCitasDeCliente,
+  getConfiguracion,
 } from "@/lib/offline/repo";
 
 type ExtrasOnline = {
   cobroPreview: { total: number; items: unknown[] } | null;
-  nombreApp: string | null;
 };
 
 /**
@@ -39,24 +40,17 @@ type ExtrasOnline = {
  * petición falla (sin conexión, por ejemplo).
  */
 function useExtrasOnline(clienteId: string, esAdmin: boolean): ExtrasOnline {
-  const [extras, setExtras] = useState<ExtrasOnline>({
-    cobroPreview: null,
-    nombreApp: null,
-  });
+  const [extras, setExtras] = useState<ExtrasOnline>({ cobroPreview: null });
 
   useEffect(() => {
     if (!esAdmin) return;
     let cancelado = false;
     (async () => {
       try {
-        const [cobroRes, configRes] = await Promise.all([
-          fetch(`/api/clientes/${clienteId}/cobrar-vencidas`),
-          fetch("/api/configuracion"),
-        ]);
+        const cobroRes = await fetch(`/api/clientes/${clienteId}/cobrar-vencidas`);
         if (cancelado) return;
         const cobroPreview = cobroRes.ok ? await cobroRes.json() : null;
-        const config = configRes.ok ? await configRes.json() : null;
-        setExtras({ cobroPreview, nombreApp: config?.nombreApp ?? null });
+        setExtras({ cobroPreview });
       } catch {
         // Sin red: el widget simplemente no aparece.
       }
@@ -109,6 +103,16 @@ export default function ClientePerfilPage() {
         : undefined,
     [extras.cobroPreview, ownerId, params.id]
   );
+  // Nombre/logo/color de marca para el recibo: se lee del espejo offline
+  // (Dexie), no de un fetch aparte — así funciona igual con o sin red.
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
+  const nombreApp = config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp;
+  const logoUrl = config?.logoUrl ?? CONFIG_DEFAULTS.logoUrl;
+  const colorPrimario = config?.colorPrimario ?? CONFIG_DEFAULTS.colorPrimario;
+  const nombreUsuario = claims.ready ? claims.nombre : null;
 
   if (perfil === undefined) {
     return (
@@ -206,23 +210,29 @@ export default function ClientePerfilPage() {
         </Card>
       </div>
 
-      {esAdmin && extras.cobroPreview && extras.nombreApp && (
+      {esAdmin && extras.cobroPreview && (
         <CobroVencido
           clienteId={perfil.id}
-          nombreApp={extras.nombreApp}
+          nombreApp={nombreApp}
           totalInicial={extras.cobroPreview.total}
           cuotasInicial={extras.cobroPreview.items.length}
           ownerId={ownerId}
+          logoUrl={logoUrl}
+          colorPrimario={colorPrimario}
+          nombreUsuario={nombreUsuario}
         />
       )}
 
       {esAdmin && !extras.cobroPreview && previewLocal && previewLocal.total > 0 && (
         <CobroVencido
           clienteId={perfil.id}
-          nombreApp="Kredired"
+          nombreApp={nombreApp}
           totalInicial={previewLocal.total}
           cuotasInicial={previewLocal.items}
           ownerId={ownerId}
+          logoUrl={logoUrl}
+          colorPrimario={colorPrimario}
+          nombreUsuario={nombreUsuario}
         />
       )}
 

@@ -23,6 +23,8 @@ describe("aggregarRutaDelDia — ventana de anticipación", () => {
           id: "k1",
           abono: 500,
           convertidaADeuda: false,
+        monto: 1000,
+        tipo: "SEMANAL" as const,
           pagos: [
             { numeroCuota: 1, fechaProgramada: HOY, pagado: false, montoAbonado: 0 },
           ],
@@ -41,6 +43,8 @@ describe("aggregarRutaDelDia — ventana de anticipación", () => {
           id: "k1",
           abono: 500,
           convertidaADeuda: false,
+        monto: 1000,
+        tipo: "SEMANAL" as const,
           pagos: [
             {
               numeroCuota: 1,
@@ -64,6 +68,8 @@ describe("aggregarRutaDelDia — ventana de anticipación", () => {
           id: "k1",
           abono: 500,
           convertidaADeuda: false,
+        monto: 1000,
+        tipo: "SEMANAL" as const,
           pagos: [
             {
               numeroCuota: 1,
@@ -87,6 +93,8 @@ describe("aggregarRutaDelDia — ventana de anticipación", () => {
           id: "k1",
           abono: 500,
           convertidaADeuda: false,
+        monto: 1000,
+        tipo: "SEMANAL" as const,
           pagos: [
             {
               numeroCuota: 1,
@@ -108,6 +116,8 @@ describe("aggregarRutaDelDia — ventana de anticipación", () => {
           id: "k1",
           abono: 500,
           convertidaADeuda: false,
+        monto: 1000,
+        tipo: "SEMANAL" as const,
           pagos: [
             { numeroCuota: 1, fechaProgramada: HOY, pagado: true, montoAbonado: 500 },
           ],
@@ -116,6 +126,8 @@ describe("aggregarRutaDelDia — ventana de anticipación", () => {
           id: "k2",
           abono: 500,
           convertidaADeuda: true,
+        monto: 1000,
+        tipo: "SEMANAL" as const,
           pagos: [
             { numeroCuota: 1, fechaProgramada: HOY, pagado: false, montoAbonado: 0 },
           ],

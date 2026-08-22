@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CircleDollarSign, MessageCircle } from "lucide-react";
+import { CircleDollarSign } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import { formatMoneda } from "@/lib/utils";
 import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
 import { enqueue } from "@/lib/offline/queue";
 import { syncContratas } from "@/lib/offline/sync";
-import { linkWhatsApp } from "@/lib/whatsapp";
+import { CompartirRecibo } from "@/components/recibo/compartir-recibo";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -18,21 +18,21 @@ const TIPO_LABEL: Record<TipoContrata, string> = {
   MENSUAL: "Mensual",
 };
 
-function construirMensaje(nombreApp: string, r: ResultadoCobroVencidas) {
-  const lineas = [
-    `*${nombreApp} — Recibo de cobro*`,
+function textoFallback(nombreApp: string, r: ResultadoCobroVencidas) {
+  return [
+    `*${nombreApp} — Recibo de pago*`,
     ``,
     `Cliente: ${r.clienteNombre}`,
     `Total cobrado: ${formatMoneda(r.total)}`,
     ``,
     ...r.contratas.flatMap((c) => [
-      `${TIPO_LABEL[c.tipo]} · ${formatMoneda(c.subtotal)}`,
+      `${TIPO_LABEL[c.tipo]} · préstamo de ${formatMoneda(c.montoContrata)}`,
       ...c.cuotas.map(
         (q) => `  · Cuota ${q.numeroCuota}/${c.numCuotas}: ${formatMoneda(q.monto)}`
       ),
+      `  Te resta por pagar: ${formatMoneda(c.saldoTrasCobro)}`,
     ]),
-  ];
-  return lineas.join("\n");
+  ].join("\n");
 }
 
 export function CobroVencido({
@@ -41,6 +41,9 @@ export function CobroVencido({
   totalInicial,
   cuotasInicial,
   ownerId,
+  logoUrl,
+  colorPrimario,
+  nombreUsuario,
 }: {
   clienteId: string;
   nombreApp: string;
@@ -48,15 +51,16 @@ export function CobroVencido({
   cuotasInicial: number;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
   ownerId?: string | null;
+  logoUrl?: string | null;
+  colorPrimario?: string;
+  nombreUsuario?: string | null;
 }) {
   const router = useRouter();
   const [total, setTotal] = useState(totalInicial);
   const [cuotas, setCuotas] = useState(cuotasInicial);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<ResultadoCobroVencidas | null>(
-    null
-  );
+  const [resultado, setResultado] = useState<ResultadoCobroVencidas | null>(null);
   const [sinRecibo, setSinRecibo] = useState(false);
   // Se fija en el primer intento y se reutiliza en los reintentos: si el
   // servidor ya cobró pero la respuesta se perdió por la red, reintentar
@@ -129,9 +133,6 @@ export function CobroVencido({
   }
 
   if (resultado) {
-    const mensaje = construirMensaje(nombreApp, resultado);
-    const link = linkWhatsApp(resultado.clienteTelefono, mensaje);
-
     return (
       <Card className="border-pagado/30">
         <CardContent className="space-y-3 p-4">
@@ -149,28 +150,36 @@ export function CobroVencido({
               >
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{TIPO_LABEL[c.tipo]}</span>
-                  <span className="font-semibold">
-                    {formatMoneda(c.subtotal)}
-                  </span>
+                  <span className="font-semibold">{formatMoneda(c.subtotal)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {c.cuotas
-                    .map((q) => `Cuota ${q.numeroCuota}/${c.numCuotas}`)
-                    .join(", ")}
+                  {c.cuotas.map((q) => `Cuota ${q.numeroCuota}/${c.numCuotas}`).join(", ")}
+                  {c.saldoTrasCobro > 0
+                    ? ` · resta ${formatMoneda(c.saldoTrasCobro)}`
+                    : " · liquidada"}
                 </p>
               </li>
             ))}
           </ul>
-          <Button className="w-full" asChild>
-            <a href={link} target="_blank" rel="noopener noreferrer">
-              <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
-            </a>
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full"
-            onClick={() => setResultado(null)}
-          >
+
+          <CompartirRecibo
+            datos={{
+              variante: "cobro",
+              nombreApp,
+              colorPrimario: colorPrimario ?? "#0F7BFF",
+              hechoPor: nombreUsuario ?? null,
+              clienteNombre: resultado.clienteNombre,
+              fecha: new Date(),
+              total: resultado.total,
+              contratas: resultado.contratas,
+            }}
+            logoUrl={logoUrl}
+            telefono={resultado.clienteTelefono}
+            textoFallback={textoFallback(nombreApp, resultado)}
+            etiqueta="Enviar recibo por WhatsApp"
+          />
+
+          <Button variant="ghost" className="w-full" onClick={() => setResultado(null)}>
             Cerrar
           </Button>
         </CardContent>

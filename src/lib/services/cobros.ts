@@ -16,6 +16,14 @@ export type CuotaVencidaItem = {
   numeroCuota: number;
   /** Total de cuotas de esa contrata — para mostrar "Cuota N/total" en el recibo. */
   numCuotas: number;
+  /** Capital prestado de la contrata — contexto en el recibo. */
+  montoContrata: number;
+  /**
+   * Lo que quedará debiendo de ESA contrata una vez aplicado este cobro. Es
+   * la primera pregunta del cliente al pagar ("¿cuánto me falta?"), así que
+   * el recibo la responde sin que tenga que preguntar.
+   */
+  saldoTrasCobro: number;
   fechaProgramada: string;
   pendiente: number;
 };
@@ -49,21 +57,32 @@ export async function previewCobroVencidas(
   const items: CuotaVencidaItem[] = [];
 
   for (const c of contratas) {
+    // Se juntan primero las cuotas de ESTA contrata para poder calcular el
+    // saldo que quedará tras cobrarlas todas (dato que va en el recibo).
+    const suyas: CuotaVencidaItem[] = [];
     for (const p of c.pagos) {
       if (p.pagado) continue;
       if (anclarFechaCliente(p.fechaProgramada) > limite) continue;
       const pendiente = round(c.abono - p.montoAbonado);
       if (pendiente <= 0) continue;
-      items.push({
+      suyas.push({
         contrataId: c.id,
         pagoId: p.id,
         tipo: c.tipo,
         numeroCuota: p.numeroCuota,
         numCuotas: c.pagos.length,
+        montoContrata: c.monto,
+        saldoTrasCobro: 0, // se rellena abajo, ya con el total de la contrata
         fechaProgramada: p.fechaProgramada.toISOString(),
         pendiente,
       });
     }
+    if (suyas.length === 0) continue;
+    const totalPlan = round(c.abono * c.pagos.length);
+    const yaAbonado = c.pagos.reduce((s, p) => s + p.montoAbonado, 0);
+    const aCobrar = suyas.reduce((s, q) => s + q.pendiente, 0);
+    const saldoTrasCobro = Math.max(0, round(totalPlan - yaAbonado - aCobrar));
+    for (const q of suyas) items.push({ ...q, saldoTrasCobro });
   }
 
   const total = round(items.reduce((s, i) => s + i.pendiente, 0));
@@ -74,6 +93,10 @@ export type ContrataResumenCobro = {
   contrataId: string;
   tipo: TipoContrata;
   numCuotas: number;
+  /** Capital prestado de la contrata. */
+  montoContrata: number;
+  /** Lo que queda por pagar de esta contrata después de este cobro. */
+  saldoTrasCobro: number;
   cuotas: { numeroCuota: number; monto: number }[];
   subtotal: number;
 };
@@ -130,6 +153,8 @@ export async function ejecutarCobroVencidas(
         contrataId: i.contrataId,
         tipo: i.tipo,
         numCuotas: i.numCuotas,
+        montoContrata: i.montoContrata,
+        saldoTrasCobro: i.saldoTrasCobro,
         cuotas: [{ numeroCuota: i.numeroCuota, monto: i.pendiente }],
         subtotal: i.pendiente,
       });

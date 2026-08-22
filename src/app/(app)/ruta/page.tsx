@@ -19,10 +19,63 @@ import {
   getCitasPendientes,
 } from "@/lib/offline/repo";
 import { enqueue } from "@/lib/offline/queue";
-import { linkWhatsApp } from "@/lib/whatsapp";
 import { formatMoneda } from "@/lib/utils";
 import { CONFIG_DEFAULTS } from "@/lib/config";
 import type { ParadaRuta } from "@/lib/services/ruta";
+import { CompartirRecibo } from "@/components/recibo/compartir-recibo";
+import type {
+  ReciboContrataGrupo,
+  ReciboCuotaPendiente,
+} from "@/components/recibo/recibo-card";
+
+/** Identidad de marca + quién opera, común a los recibos que salen de Ruta. */
+type Marca = {
+  nombreApp: string;
+  logoUrl: string | null;
+  colorPrimario: string;
+  hechoPor: string | null;
+};
+
+/**
+ * Las cuotas de una parada llegan planas; el recibo las muestra agrupadas por
+ * contrata (un cliente puede traer 2-3 préstamos a la vez y necesita ver cuál
+ * es cuál).
+ */
+function gruposDeParada(p: ParadaRuta): ReciboContrataGrupo[] {
+  const grupos = new Map<string, ReciboContrataGrupo>();
+  for (const q of p.cuotas) {
+    const previo = grupos.get(q.contrataId);
+    if (previo) {
+      previo.cuotas.push({ numeroCuota: q.numeroCuota, monto: q.pendiente });
+      previo.subtotal = Math.round((previo.subtotal + q.pendiente) * 100) / 100;
+    } else {
+      grupos.set(q.contrataId, {
+        tipo: q.tipo,
+        numCuotas: q.numCuotas,
+        montoContrata: q.montoContrata,
+        saldoTrasCobro: q.saldoTrasCobro,
+        subtotal: q.pendiente,
+        cuotas: [{ numeroCuota: q.numeroCuota, monto: q.pendiente }],
+      });
+    }
+  }
+  const lista = Array.from(grupos.values());
+  for (const g of lista) {
+    g.cuotas.sort((a, b) => a.numeroCuota - b.numeroCuota);
+  }
+  return lista;
+}
+
+function cuotasPendientes(p: ParadaRuta): ReciboCuotaPendiente[] {
+  return p.cuotas.map((q) => ({
+    numeroCuota: q.numeroCuota,
+    numCuotas: q.numCuotas,
+    tipo: q.tipo,
+    montoContrata: q.montoContrata,
+    pendiente: q.pendiente,
+    diasAtraso: q.diasAtraso,
+  }));
+}
 
 function mensajeRecordatorio(
   nombreApp: string,
@@ -64,12 +117,12 @@ function mensajeRecibo(nombreApp: string, r: ParadaRuta) {
 
 function Parada({
   parada,
-  nombreApp,
+  marca,
   cobrando,
   onSolicitarCobro,
 }: {
   parada: ParadaRuta;
-  nombreApp: string;
+  marca: Marca;
   cobrando: boolean;
   onSolicitarCobro: (parada: ParadaRuta) => void;
 }) {
@@ -119,23 +172,33 @@ function Parada({
               <Phone className="size-4" /> Llamar
             </a>
           </Button>
-          <Button variant="outline" size="sm" asChild>
-            <a
-              href={linkWhatsApp(
-                parada.telefono,
-                mensajeRecordatorio(
-                  nombreApp,
-                  parada.nombre,
-                  parada.total,
-                  parada.diasAtrasoMax
-                )
-              )}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <MessageCircle className="size-4" /> WhatsApp
-            </a>
-          </Button>
+          <CompartirRecibo
+            compacto
+            variant="outline"
+            size="sm"
+            className="w-full"
+            etiqueta="Recordar"
+            icono={<MessageCircle className="size-4" />}
+            datos={{
+              variante: "recordatorio",
+              nombreApp: marca.nombreApp,
+              colorPrimario: marca.colorPrimario,
+              hechoPor: marca.hechoPor,
+              clienteNombre: parada.nombre,
+              fecha: new Date(),
+              total: parada.total,
+              diasAtrasoMax: parada.diasAtrasoMax,
+              cuotas: cuotasPendientes(parada),
+            }}
+            logoUrl={marca.logoUrl}
+            telefono={parada.telefono}
+            textoFallback={mensajeRecordatorio(
+              marca.nombreApp,
+              parada.nombre,
+              parada.total,
+              parada.diasAtrasoMax
+            )}
+          />
           <Button
             size="sm"
             disabled={cobrando}
@@ -168,7 +231,12 @@ export default function RutaDelDiaPage() {
     () => (ownerId ? getConfiguracion(ownerId) : undefined),
     [ownerId]
   );
-  const nombreApp = config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp;
+  const marca: Marca = {
+    nombreApp: config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp,
+    logoUrl: config?.logoUrl ?? CONFIG_DEFAULTS.logoUrl,
+    colorPrimario: config?.colorPrimario ?? CONFIG_DEFAULTS.colorPrimario,
+    hechoPor: nombre,
+  };
 
   // Modal de confirmación de cobro — vive UNA sola vez aquí, no por
   // tarjeta. Dos motivos:
@@ -185,7 +253,6 @@ export default function RutaDelDiaPage() {
   const [cobrandoId, setCobrandoId] = useState<string | null>(null);
 
   async function marcarCobrado(parada: ParadaRuta) {
-    setConfirmando(null);
     setCobrandoId(parada.clienteId);
     try {
       for (const cuota of parada.cuotas) {
@@ -260,7 +327,7 @@ export default function RutaDelDiaPage() {
               <Parada
                 key={p.clienteId}
                 parada={p}
-                nombreApp={nombreApp}
+                marca={marca}
                 cobrando={cobrandoId === p.clienteId}
                 onSolicitarCobro={setConfirmando}
               />
@@ -297,24 +364,34 @@ export default function RutaDelDiaPage() {
             {formatMoneda(confirmando.total)}
           </p>
           <div className="flex flex-col gap-2 pt-2">
-            {/* El envío se dispara desde el propio click del <a> (navegación
-                nativa del navegador, siempre confiable) mientras el cobro
-                corre en paralelo por el onClick — esperar a que el cobro
-                termine antes de abrir WhatsApp arriesgaría que el navegador
-                bloquee la apertura por no venir de un click síncrono. */}
-            <Button asChild onClick={() => marcarCobrado(confirmando)}>
-              <a
-                href={linkWhatsApp(
-                  confirmando.telefono,
-                  mensajeRecibo(nombreApp, confirmando)
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <MessageCircle className="size-4" /> Cobrar y enviar recibo
-              </a>
-            </Button>
-            <Button variant="outline" onClick={() => marcarCobrado(confirmando)}>
+            {/* Registra el cobro y comparte el recibo como imagen en un solo
+                paso: el cobro corre en `onAntesDeCompartir` para que el PNG
+                ya refleje lo cobrado, y el modal se cierra al terminar. */}
+            <CompartirRecibo
+              etiqueta="Cobrar y enviar recibo"
+              datos={{
+                variante: "cobro",
+                nombreApp: marca.nombreApp,
+                colorPrimario: marca.colorPrimario,
+                hechoPor: marca.hechoPor,
+                clienteNombre: confirmando.nombre,
+                fecha: new Date(),
+                total: confirmando.total,
+                contratas: gruposDeParada(confirmando),
+              }}
+              logoUrl={marca.logoUrl}
+              telefono={confirmando.telefono}
+              textoFallback={mensajeRecibo(marca.nombreApp, confirmando)}
+              onAntesDeCompartir={() => marcarCobrado(confirmando)}
+              onListo={() => setConfirmando(null)}
+            />
+            <Button
+              variant="outline"
+              onClick={async () => {
+                await marcarCobrado(confirmando);
+                setConfirmando(null);
+              }}
+            >
               Solo cobrar
             </Button>
             <Button variant="ghost" onClick={() => setConfirmando(null)}>

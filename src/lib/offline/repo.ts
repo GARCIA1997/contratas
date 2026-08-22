@@ -681,6 +681,8 @@ export async function getRutaDelDia(
           id: c.id,
           abono: c.abono,
           convertidaADeuda: c.convertidaADeuda,
+          monto: c.monto,
+          tipo: c.tipo as TipoContrata,
           pagos: (await pagosDeContrata(c.id)).map((p) => ({
             numeroCuota: p.numeroCuota,
             fechaProgramada: new Date(p.fechaProgramada),
