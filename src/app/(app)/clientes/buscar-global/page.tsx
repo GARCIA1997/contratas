@@ -6,6 +6,7 @@ import { ArrowLeft, Loader2, MapPin, Phone, Search, UserSearch } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ScorePagoBadge } from "@/components/score-pago-badge";
 import type { ClienteGlobalResumen } from "@/lib/services/clientes-globales";
 
 const LARGO_MINIMO = 2;
@@ -103,7 +104,10 @@ export default function BuscarClienteGlobalPage() {
               <Link href={`/clientes/buscar-global/${c.id}`}>
                 <Card className="transition-colors hover:bg-secondary/40">
                   <CardContent className="space-y-1 p-4">
-                    <p className="font-semibold">{c.nombre}</p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <p className="font-semibold">{c.nombre}</p>
+                      <ScorePagoBadge score={c.scorePago} />
+                    </div>
                     {c.telefono && (
                       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Phone className="size-3" /> {c.telefono}

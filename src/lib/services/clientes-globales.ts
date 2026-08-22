@@ -30,6 +30,7 @@ export type ClienteGlobalResumen = {
   nombre: string;
   telefono: string | null;
   direccion: string | null;
+  scorePago: ResultadoScorePago;
 };
 
 /**
@@ -55,17 +56,35 @@ export async function buscarClientesGlobal(
     select: { id: true, nombre: true, telefono: true, direccion: true },
   });
 
-  const encontrados = candidatos.filter((c) => {
-    if (qNombre.length >= LARGO_MINIMO_BUSQUEDA && normalizarTexto(c.nombre).includes(qNombre)) {
-      return true;
-    }
-    if (qDigitos.length >= LARGO_MINIMO_TELEFONO && c.telefono) {
-      return soloDigitos(c.telefono).includes(qDigitos);
-    }
-    return false;
-  });
+  const encontrados = candidatos
+    .filter((c) => {
+      if (qNombre.length >= LARGO_MINIMO_BUSQUEDA && normalizarTexto(c.nombre).includes(qNombre)) {
+        return true;
+      }
+      if (qDigitos.length >= LARGO_MINIMO_TELEFONO && c.telefono) {
+        return soloDigitos(c.telefono).includes(qDigitos);
+      }
+      return false;
+    })
+    .slice(0, LIMITE_RESULTADOS);
 
-  return encontrados.slice(0, LIMITE_RESULTADOS);
+  if (encontrados.length === 0) return [];
+
+  // Segunda consulta, acotada a los pocos resultados que sí se van a
+  // mostrar: la puntualidad ayuda a decidir entre varias coincidencias
+  // antes de entrar al detalle de cada una.
+  const conPagos = await prisma.cliente.findMany({
+    where: { id: { in: encontrados.map((c) => c.id) } },
+    select: { id: true, contratas: { select: { pagos: true } } },
+  });
+  const pagosPorCliente = new Map(
+    conPagos.map((c) => [c.id, calcularScorePago(c.contratas.flatMap((k) => k.pagos))])
+  );
+
+  return encontrados.map((c) => ({
+    ...c,
+    scorePago: pagosPorCliente.get(c.id) ?? calcularScorePago([]),
+  }));
 }
 
 export type ContrataGlobalResumen = {
