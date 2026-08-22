@@ -84,6 +84,8 @@ export type ClienteGlobalDetalle = {
   nombre: string;
   telefono: string | null;
   direccion: string | null;
+  /** Nombre del administrador dueño de este cliente — para saber con quién hablar. */
+  ownerNombre: string;
   contratas: ContrataGlobalResumen[];
   totales: {
     capitalPrestado: number;
@@ -104,6 +106,7 @@ export async function getClienteGlobalDetalle(id: string): Promise<ClienteGlobal
     where: { id },
     include: {
       contratas: { include: { pagos: true }, orderBy: { creadoEn: "desc" } },
+      owner: { select: { nombre: true, email: true } },
     },
   });
   if (!cliente) throw new HttpError(404, "Cliente no encontrado");
@@ -135,6 +138,7 @@ export async function getClienteGlobalDetalle(id: string): Promise<ClienteGlobal
     nombre: cliente.nombre,
     telefono: cliente.telefono,
     direccion: cliente.direccion,
+    ownerNombre: cliente.owner.nombre ?? cliente.owner.email,
     contratas,
     totales,
     scorePago,

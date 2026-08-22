@@ -108,7 +108,8 @@ export default function ClienteGlobalDetallePage() {
       <div className="flex items-start gap-2.5 rounded-2xl border border-primary/30 bg-primary/5 p-3.5">
         <Eye className="mt-0.5 size-4 shrink-0 text-primary" />
         <p className="text-xs text-muted-foreground">
-          Este cliente pertenece a la cartera de otro administrador. Solo
+          Este cliente pertenece a la cartera de{" "}
+          <span className="font-medium text-foreground">{cliente.ownerNombre}</span>. Solo
           puedes consultarlo — no puedes editar sus datos ni sus contratas.
         </p>
       </div>
