@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Search } from "lucide-react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
 import { ClientesLista } from "@/components/clientes/clientes-lista";
@@ -25,14 +25,21 @@ export default function ClientesPage() {
           <ArrowLeft className="size-4" /> Dashboard
         </Link>
       </Button>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
         {esAdmin && (
-          <Button asChild size="sm">
-            <Link href="/clientes/nuevo">
-              <Plus className="size-4" /> Nuevo
-            </Link>
-          </Button>
+          <div className="flex gap-1.5">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/clientes/buscar-global">
+                <Search className="size-4" /> Otras carteras
+              </Link>
+            </Button>
+            <Button asChild size="sm">
+              <Link href="/clientes/nuevo">
+                <Plus className="size-4" /> Nuevo
+              </Link>
+            </Button>
+          </div>
         )}
       </div>
 
