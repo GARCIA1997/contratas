@@ -403,6 +403,17 @@ async function ejecutarSync(ownerId: string, enSerie: boolean): Promise<void> {
 let cadena: Promise<void> = Promise.resolve();
 
 /**
+ * Cada sync completo son ~1 MB. El bootstrap reacciona a los cambios de
+ * conexión del navegador y `connection.change` se dispara seguido en un
+ * celular en movimiento (cambia de antena, de wifi a datos), así que sin
+ * este mínimo entre syncs automáticos un trayecto en coche encadenaba
+ * decenas de descargas completas. No aplica a `forzar`: cuando el usuario
+ * pide datos frescos, se le dan.
+ */
+const MIN_MS_ENTRE_SYNCS_AUTOMATICOS = 30_000;
+let ultimoSyncAutomatico = 0;
+
+/**
  * Sincroniza todas las entidades cubiertas por la capa offline.
  *
  * Si ya hay una corriendo, esta se encola detrás en vez de descartarse.
@@ -423,6 +434,12 @@ export function syncAll(
   // en 3G. El botón «Recargar datos» pasa `forzar` y sí lo ejecuta, porque
   // ahí el usuario decidió esperar a cambio de datos frescos.
   if (calidad === "lenta" && !opciones.forzar) return Promise.resolve();
+
+  if (!opciones.forzar) {
+    const desdeElUltimo = Date.now() - ultimoSyncAutomatico;
+    if (desdeElUltimo < MIN_MS_ENTRE_SYNCS_AUTOMATICOS) return Promise.resolve();
+    ultimoSyncAutomatico = Date.now();
+  }
 
   cadena = cadena
     .catch(() => {})
