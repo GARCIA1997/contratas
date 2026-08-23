@@ -20,6 +20,7 @@ import {
   getCitasPendientes,
 } from "@/lib/offline/repo";
 import { precargarTodaLaApp } from "@/lib/offline/prefetch-all";
+import { calidadConexion } from "@/lib/offline/conexion";
 import type { FiltroDashboard } from "@/lib/services/dashboard";
 import { formatMoneda, cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -67,7 +68,10 @@ export default function DashboardPage() {
   // subpantallas) escalonado en el tiempo, para que perder la conexión
   // después ya no deje ninguna pantalla nunca visitada pegada en negro.
   useEffect(() => {
-    if (!ownerId || typeof navigator === "undefined" || !navigator.onLine) return;
+    // Solo con señal buena: en 3G la precarga compite con lo que el usuario
+    // está tocando ahora mismo, y ahí vale más la pena responder rápido con
+    // lo que ya está en caché que adelantar pantallas.
+    if (!ownerId || calidadConexion() !== "rapida") return;
     let cancelar: (() => void) | undefined;
     getIdsParaPrecarga(ownerId).then((ids) => {
       cancelar = precargarTodaLaApp(router, ids);

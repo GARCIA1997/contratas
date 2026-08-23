@@ -3,6 +3,11 @@ import { reportarError } from "@/lib/report-error";
 import { db, type QueueOpType } from "@/lib/offline/db";
 import { applyLocalEffect } from "@/lib/offline/effects";
 import {
+  calidadConexion,
+  fetchConTimeout,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
+import {
   syncContratas,
   syncClientes,
   syncDeudores,
@@ -171,7 +176,12 @@ let reflushPendiente: string | null = null;
 /** Vacía la cola en orden de creación contra las rutas API reales. */
 export async function flushQueue(ownerId: string): Promise<void> {
   const database = db;
-  if (!database || typeof navigator === "undefined" || !navigator.onLine) {
+  // A diferencia del pull-sync, la cola SÍ se vacía en red lenta: son las
+  // escrituras del usuario (cobros, abonos) y dejarlas esperando a una red
+  // buena es peor que tardarse. Lo que las protege ahora es el techo de
+  // espera de `fetchConTimeout` — antes, un fetch colgado en 3G detenía la
+  // cola entera sin recuperarse.
+  if (!database || calidadConexion() === "sin-red") {
     return;
   }
   if (flushing) {
@@ -205,10 +215,14 @@ export async function flushQueue(ownerId: string): Promise<void> {
       await database.writeQueue.update(op.id, { status: "syncing" });
       try {
         const { url, init } = ENDPOINTS[op.type](op.payload);
-        const res = await fetch(url, {
-          ...init,
-          headers: { ...(init.headers ?? {}), "Idempotency-Key": op.id },
-        });
+        const res = await fetchConTimeout(
+          url,
+          {
+            ...init,
+            headers: { ...(init.headers ?? {}), "Idempotency-Key": op.id },
+          },
+          TIMEOUT_ESCRITURA_MS
+        );
         if (!res.ok) {
           const status = res.status;
           const esConflicto = status >= 400 && status < 500;

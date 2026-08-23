@@ -298,7 +298,12 @@ model ProcessedOperation {
   id        String   @id
   ownerId   String
   endpoint  String
-  resultado Json
+  /// Null mientras la operación está reservada pero todavía ejecutándose.
+  resultado Json?
+  /// false = reservada y en curso; true = terminada y `resultado` es válido.
+  /// Ver `withIdempotency`: la fila se inserta ANTES de ejecutar la mutación
+  /// para que dos peticiones con la misma key no puedan ejecutarla las dos.
+  completada Boolean @default(false)
   creadoEn  DateTime @default(now())
 
   @@index([ownerId])

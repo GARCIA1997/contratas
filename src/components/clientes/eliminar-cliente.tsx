@@ -6,6 +6,11 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import {
+  fetchConTimeout,
+  mensajeDeError,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
 
 export function EliminarCliente({
   id,
@@ -25,9 +30,20 @@ export function EliminarCliente({
     }
     if (!confirm("¿Eliminar este cliente?")) return;
     setBorrando(true);
-    const res = await fetch(`/api/clientes/${id}`, { method: "DELETE" });
+    let res: Response;
+    try {
+      res = await fetchConTimeout(
+        `/api/clientes/${id}`,
+        { method: "DELETE" },
+        TIMEOUT_ESCRITURA_MS
+      );
+    } catch (e) {
+      setBorrando(false);
+      alert(mensajeDeError(e, "No se pudo eliminar."));
+      return;
+    }
     if (res.ok) {
-      if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
+      if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
       router.push("/clientes");
       router.refresh();
     } else {

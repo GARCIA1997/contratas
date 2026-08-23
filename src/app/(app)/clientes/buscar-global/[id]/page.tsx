@@ -66,7 +66,7 @@ export default function ClienteGlobalDetallePage() {
         throw new Error(data.error ?? "No se pudo registrar el cliente");
       }
       const nuevo = await res.json();
-      if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
+      if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
       router.push(`/clientes/${nuevo.id}`);
     } catch (e) {
       setErrorDuplicar(e instanceof Error ? e.message : "No se pudo registrar el cliente");

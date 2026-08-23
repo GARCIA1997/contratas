@@ -15,6 +15,12 @@ import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { enqueue } from "@/lib/offline/queue";
 import {
+  fetchConTimeout,
+  mensajeDeError,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
+import { useIdempotencia } from "@/lib/offline/use-idempotencia";
+import {
   ReciboEntregaPanel,
   type ContrataEntregada,
 } from "@/components/contratas/recibo-entrega";
@@ -54,6 +60,7 @@ export function UnificarForm({
   onUnificada?: () => void;
 }) {
   const claims = useAuthClaims();
+  const idem = useIdempotencia();
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
   const [pendienteSync, setPendienteSync] = useState(false);
   const [unificada, setUnificada] = useState<ContrataEntregada & { id: string } | null>(
@@ -98,15 +105,20 @@ export function UnificarForm({
     let cancelado = false;
     const timer = setTimeout(() => {
       (async () => {
-        const res = await fetch("/api/contratas/preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
-        });
-        if (!res.ok || cancelado) return;
-        const data = await res.json();
-        setFechas(data.fechas);
-        if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
+        try {
+          const res = await fetchConTimeout("/api/contratas/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          });
+          if (!res.ok || cancelado) return;
+          const data = await res.json();
+          setFechas(data.fechas);
+          if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
+        } catch {
+          // Solo es la vista previa: sin red se deja el abono que ya haya
+          // escrito el usuario en vez de romper el formulario.
+        }
       })();
     }, 400);
     return () => {
@@ -163,24 +175,36 @@ export function UnificarForm({
       return;
     }
 
-    const res = await fetch(`/api/clientes/${clienteId}/unificar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contrataIds, ...input }),
-    });
+    let res: Response;
+    try {
+      res = await fetchConTimeout(
+        `/api/clientes/${clienteId}/unificar`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...idem.header() },
+          body: JSON.stringify({ contrataIds, ...input }),
+        },
+        TIMEOUT_ESCRITURA_MS
+      );
+    } catch (e) {
+      setGuardando(false);
+      setError(mensajeDeError(e, "No se pudo unificar"));
+      return;
+    }
     setGuardando(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? "No se pudo unificar");
       return;
     }
+    idem.confirmado();
     const data = await res.json();
     // onUnificada() (marca "completado" en la página) va ANTES de syncAll —
     // ver comentario largo en renovar-form.tsx: sin este orden, el
     // useLiveQuery de la página puede reaccionar al cambio en Dexie y
     // redirigir antes de que React procese el setState de "completado".
     onUnificada?.();
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
+    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
     // Igual que "nueva contrata"/renovar: se muestra la confirmación con la
     // opción de mandarle los detalles al cliente por WhatsApp en vez de
     // navegar de inmediato.

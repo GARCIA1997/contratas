@@ -15,6 +15,12 @@ import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getContratasConSaldo } from "@/lib/offline/repo";
 import { syncCitas } from "@/lib/offline/sync";
 import { enqueue } from "@/lib/offline/queue";
+import {
+  fetchConTimeout,
+  mensajeDeError,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
+import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 
 export type ClienteOpcion = { id: string; nombre: string };
 
@@ -47,6 +53,7 @@ export function AgendarForm({
   volverHref?: string;
 }) {
   const router = useRouter();
+  const idem = useIdempotencia();
   const claims = useAuthClaims();
   const ownerId = claims.ready ? claims.ownerId : null;
   const reagendando = !!inicial;
@@ -151,17 +158,29 @@ export function AgendarForm({
         setPendienteSync(true);
         return;
       }
-      const res = await fetch(`/api/citas/${inicial!.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
+      let res: Response;
+      try {
+        res = await fetchConTimeout(
+          `/api/citas/${inicial!.id}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", ...idem.header() },
+            body: JSON.stringify(input),
+          },
+          TIMEOUT_ESCRITURA_MS
+        );
+      } catch (e) {
+        setGuardando(false);
+        setError(mensajeDeError(e));
+        return;
+      }
       setGuardando(false);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? "No se pudo guardar");
         return;
       }
+      idem.confirmado();
       if (ownerId) await syncCitas(ownerId);
       router.push(`/clientes/${clienteId}`);
       return;
@@ -174,17 +193,29 @@ export function AgendarForm({
       return;
     }
 
-    const res = await fetch("/api/citas", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
+    let res: Response;
+    try {
+      res = await fetchConTimeout(
+        "/api/citas",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...idem.header() },
+          body: JSON.stringify(input),
+        },
+        TIMEOUT_ESCRITURA_MS
+      );
+    } catch (e) {
+      setGuardando(false);
+      setError(mensajeDeError(e, "No se pudo agendar"));
+      return;
+    }
     setGuardando(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? "No se pudo agendar");
       return;
     }
+    idem.confirmado();
     if (ownerId) await syncCitas(ownerId);
     setGuardada(true);
   }

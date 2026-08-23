@@ -14,6 +14,10 @@ import { estadoCitaVista } from "@/lib/citas";
 import { enqueue } from "@/lib/offline/queue";
 import { syncCitas } from "@/lib/offline/sync";
 import type { CitaLocal } from "@/lib/offline/db";
+import {
+  fetchConTimeout,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
 
 const TIPO_LABEL: Record<CitaLocal["tipo"], string> = {
   NUEVA: "Nueva contrata",
@@ -45,8 +49,19 @@ export function CitaCard({
     if (sinConexion) {
       await enqueue(ownerId, "cita.cancelar", { citaId: cita.id });
     } else {
-      await fetch(`/api/citas/${cita.id}/cancelar`, { method: "POST" });
-      await syncCitas(ownerId);
+      try {
+        await fetchConTimeout(
+          `/api/citas/${cita.id}/cancelar`,
+          { method: "POST" },
+          TIMEOUT_ESCRITURA_MS
+        );
+        await syncCitas(ownerId);
+      } catch {
+        // Si la red falló, se encola para que no se pierda la intención.
+        // Cancelar dos veces deja el mismo estado, así que reintentar es
+        // seguro aunque la petición sí hubiera llegado.
+        await enqueue(ownerId, "cita.cancelar", { citaId: cita.id });
+      }
     }
     setDescartando(false);
   }
