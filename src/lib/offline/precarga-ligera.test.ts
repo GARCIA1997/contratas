@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { precargarTodaLaApp } from "@/lib/offline/prefetch-all";
+import { precargarRutaDelDia } from "@/lib/offline/precarga-ligera";
 
 function fingirRed(effectiveType: string, onLine = true) {
   Object.defineProperty(navigator, "onLine", { value: onLine, configurable: true });
@@ -15,7 +15,7 @@ function idsGrandes() {
   return { contratas: n("c", 303), clientes: n("k", 189), deudores: n("d", 24) };
 }
 
-describe("precargarTodaLaApp", () => {
+describe("precargarRutaDelDia", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     localStorage.clear();
@@ -27,14 +27,14 @@ describe("precargarTodaLaApp", () => {
     // Con la cartera real, la versión anterior disparaba ~2,235 peticiones
     // seguidas: en 3G eso saturaba la conexión durante minutos.
     const router = { prefetch: vi.fn() };
-    precargarTodaLaApp(router, idsGrandes());
+    precargarRutaDelDia(router, idsGrandes());
     vi.advanceTimersByTime(120_000);
     expect(router.prefetch.mock.calls.length).toBeLessThanOrEqual(60);
   });
 
   it("va en tandas pequeñas en vez de disparar todo de golpe", () => {
     const router = { prefetch: vi.fn() };
-    precargarTodaLaApp(router, idsGrandes());
+    precargarRutaDelDia(router, idsGrandes());
     const primeraTanda = router.prefetch.mock.calls.length;
     expect(primeraTanda).toBeLessThanOrEqual(4);
 
@@ -45,7 +45,7 @@ describe("precargarTodaLaApp", () => {
   it("no precarga nada si la red es lenta", () => {
     fingirRed("3g");
     const router = { prefetch: vi.fn() };
-    precargarTodaLaApp(router, idsGrandes());
+    precargarRutaDelDia(router, idsGrandes());
     vi.advanceTimersByTime(60_000);
     expect(router.prefetch).not.toHaveBeenCalled();
   });
@@ -54,7 +54,7 @@ describe("precargarTodaLaApp", () => {
     // En campo la señal cambia mientras uno camina; seguir precargando
     // sobre una red que acaba de caer es justo lo que trababa la app.
     const router = { prefetch: vi.fn() };
-    precargarTodaLaApp(router, idsGrandes());
+    precargarRutaDelDia(router, idsGrandes());
     vi.advanceTimersByTime(2000);
     const antes = router.prefetch.mock.calls.length;
     expect(antes).toBeGreaterThan(0);
@@ -66,7 +66,7 @@ describe("precargarTodaLaApp", () => {
 
   it("cancelar detiene las tandas siguientes", () => {
     const router = { prefetch: vi.fn() };
-    const cancelar = precargarTodaLaApp(router, idsGrandes());
+    const cancelar = precargarRutaDelDia(router, idsGrandes());
     const antes = router.prefetch.mock.calls.length;
     cancelar();
     vi.advanceTimersByTime(60_000);
@@ -75,7 +75,7 @@ describe("precargarTodaLaApp", () => {
 
   it("prioriza las pantallas fijas de uso diario antes que los registros", () => {
     const router = { prefetch: vi.fn() };
-    precargarTodaLaApp(router, idsGrandes());
+    precargarRutaDelDia(router, idsGrandes());
     const primeras = router.prefetch.mock.calls.map((c) => c[0]);
     expect(primeras).toContain("/ruta");
   });

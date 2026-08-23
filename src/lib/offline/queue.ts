@@ -118,6 +118,45 @@ const ENDPOINTS: Record<
       body: JSON.stringify({ contrataCreadaId: p.contrataCreadaId ?? null }),
     },
   }),
+  // El `id` viaja en el cuerpo: el registro nace con su id definitivo, así
+  // una contrata creada offline puede referenciar a un cliente también
+  // creado offline sin tener que remapear ids al sincronizar.
+  "cliente.crear": (p) => ({
+    url: `/api/clientes`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    },
+  }),
+  "cliente.editar": (p) => ({
+    url: `/api/clientes/${p.clienteId}`,
+    init: {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p.input),
+    },
+  }),
+  "cliente.eliminar": (p) => ({
+    url: `/api/clientes/${p.clienteId}`,
+    init: { method: "DELETE" },
+  }),
+  "deudor.crear": (p) => ({
+    url: `/api/deudores`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    },
+  }),
+  "deudor.editar": (p) => ({
+    url: `/api/deudores/${p.deudorId}`,
+    init: {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p.input),
+    },
+  }),
 };
 
 /**
@@ -135,8 +174,13 @@ export async function enqueue(
   const id = crypto.randomUUID();
   await database.transaction(
     "rw",
+    // Toda tabla que `applyLocalEffect` pueda tocar tiene que estar en el
+    // alcance de la transacción: Dexie lanza si el efecto escribe en una
+    // que no se declaró aquí, y el formulario se quedaba en «Guardando…»
+    // para siempre porque el enqueue no estaba protegido.
     [
       database.writeQueue,
+      database.clientes,
       database.contratas,
       database.pagos,
       database.deudores,
@@ -358,6 +402,41 @@ async function reconciliarTrasExito(
     await syncCitas(ownerId);
     return;
   }
+  if (type === "cliente.crear" || type === "cliente.editar") {
+    // `limpiarDirtySiSinPendientes` solo conoce contrataId/deudorId, así que
+    // el _dirty del cliente se limpia aquí: si no, `syncClientes` se
+    // rehusaría a pisarlo y el registro quedaría congelado con los datos
+    // locales para siempre.
+    const database = db;
+    const clienteId = (payload.id ?? payload.clienteId) as string | undefined;
+    if (database && clienteId) {
+      const existe = await database.clientes.get(clienteId);
+      if (existe) await database.clientes.update(clienteId, { _dirty: false });
+    }
+    await syncClientes(ownerId);
+    return;
+  }
+
+  if (type === "cliente.eliminar") {
+    // Ya no existe en el servidor: se saca de la caché en vez de limpiar su
+    // _dirty, que lo dejaría reaparecer en las listas.
+    const database = db;
+    if (database) await database.clientes.delete(payload.clienteId as string);
+    await syncClientes(ownerId);
+    return;
+  }
+
+  if (type === "deudor.crear" || type === "deudor.editar") {
+    const database = db;
+    const deudorId = (payload.id ?? payload.deudorId) as string | undefined;
+    if (database && deudorId) {
+      const existe = await database.deudores.get(deudorId);
+      if (existe) await database.deudores.update(deudorId, { _dirty: false });
+    }
+    await syncDeudores(ownerId);
+    return;
+  }
+
   if (
     type === "cita.editar" ||
     type === "cita.cancelar" ||

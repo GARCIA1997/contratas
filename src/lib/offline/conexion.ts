@@ -13,10 +13,6 @@
 
 export type CalidadConexion = "rapida" | "lenta" | "sin-red";
 
-/** Persistido: el usuario conoce el terreno mejor que cualquier heurística. */
-const CLAVE_MODO_AHORRO = "kredired:modo-ahorro";
-
-const EVENTO_CAMBIO = "kredired:conexion";
 
 type NetworkInformation = {
   effectiveType?: string;
@@ -30,30 +26,12 @@ function conexionDelNavegador(): NetworkInformation | undefined {
   return (navigator as unknown as { connection?: NetworkInformation }).connection;
 }
 
-export function modoAhorroManual(): boolean {
-  if (typeof localStorage === "undefined") return false;
-  return localStorage.getItem(CLAVE_MODO_AHORRO) === "1";
-}
-
-/**
- * Enciende/apaga el modo ahorro a mano. Avisa a toda la app en el mismo
- * tick (evento propio) — `storage` solo se dispara en OTRAS pestañas, así
- * que por sí solo no serviría para refrescar la que hizo el cambio.
- */
-export function setModoAhorroManual(activo: boolean): void {
-  if (typeof localStorage === "undefined") return;
-  if (activo) localStorage.setItem(CLAVE_MODO_AHORRO, "1");
-  else localStorage.removeItem(CLAVE_MODO_AHORRO);
-  window.dispatchEvent(new Event(EVENTO_CAMBIO));
-}
-
 /** Tipos de red que en campo se comportan como "mejor no intentes nada pesado". */
 const TIPOS_LENTOS = new Set(["slow-2g", "2g", "3g"]);
 
 export function calidadConexion(): CalidadConexion {
   if (typeof navigator === "undefined") return "rapida"; // SSR
   if (!navigator.onLine) return "sin-red";
-  if (modoAhorroManual()) return "lenta";
 
   const c = conexionDelNavegador();
   // `saveData` es el usuario pidiendo explícitamente ahorrar datos; hay que
@@ -61,33 +39,22 @@ export function calidadConexion(): CalidadConexion {
   if (c?.saveData) return "lenta";
   if (c?.effectiveType && TIPOS_LENTOS.has(c.effectiveType)) return "lenta";
 
-  // Safari/iOS no expone navigator.connection: ahí no se puede distinguir y
-  // se asume rápida. Para esos casos está el interruptor manual.
+  // Safari/iOS no expone navigator.connection: ahí no hay forma de medirlo
+  // y se asume rápida. En esos equipos la protección viene de los timeouts
+  // y de haber preparado la app antes de salir (ver preparar-offline).
   return "rapida";
 }
 
-/** ¿Conviene ahorrar? (lenta o sin red). */
-export function debeAhorrar(): boolean {
-  return calidadConexion() !== "rapida";
-}
-
-/**
- * Se dispara con `online`/`offline`, con cambios de `navigator.connection`
- * y con el interruptor manual.
- */
+/** Se dispara con `online`/`offline` y con cambios de `navigator.connection`. */
 export function suscribirseAConexion(cb: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   const c = conexionDelNavegador();
   window.addEventListener("online", cb);
   window.addEventListener("offline", cb);
-  window.addEventListener(EVENTO_CAMBIO, cb);
-  window.addEventListener("storage", cb);
   c?.addEventListener?.("change", cb);
   return () => {
     window.removeEventListener("online", cb);
     window.removeEventListener("offline", cb);
-    window.removeEventListener(EVENTO_CAMBIO, cb);
-    window.removeEventListener("storage", cb);
     c?.removeEventListener?.("change", cb);
   };
 }

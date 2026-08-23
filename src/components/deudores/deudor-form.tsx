@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { enqueue } from "@/lib/offline/queue";
 import {
   fetchConTimeout,
   mensajeDeError,
@@ -45,6 +46,38 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
     if (isNaN(deuda) || deuda < 0) return setError("Deuda inválida");
 
     setGuardando(true);
+
+    const datos = {
+      nombre: nombre.trim(),
+      deudaInicial: deuda,
+      notas: notas.trim() || null,
+    };
+
+    if (
+      typeof navigator !== "undefined" &&
+      !navigator.onLine &&
+      claims.ready &&
+      claims.ownerId
+    ) {
+      const id = editando ? inicial!.id : crypto.randomUUID();
+      try {
+        await enqueue(
+          claims.ownerId,
+          editando ? "deudor.editar" : "deudor.crear",
+          editando
+            ? { deudorId: id, input: datos }
+            : { id, ownerId: claims.ownerId, ...datos }
+        );
+      } catch (e) {
+        setGuardando(false);
+        setError(mensajeDeError(e, "No se pudo guardar sin conexión"));
+        return;
+      }
+      setGuardando(false);
+      router.push(`/deudores/${id}`);
+      return;
+    }
+
     let res: Response;
     try {
       res = await fetchConTimeout(
@@ -52,11 +85,7 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
         {
           method: editando ? "PUT" : "POST",
           headers: { "Content-Type": "application/json", ...idem.header() },
-          body: JSON.stringify({
-            nombre: nombre.trim(),
-            deudaInicial: deuda,
-            notas: notas.trim() || null,
-          }),
+          body: JSON.stringify(datos),
         },
         TIMEOUT_ESCRITURA_MS
       );

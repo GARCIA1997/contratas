@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   calidadConexion,
-  debeAhorrar,
   fetchConTimeout,
-  modoAhorroManual,
-  setModoAhorroManual,
   TimeoutDeRed,
 } from "@/lib/offline/conexion";
 
@@ -41,13 +38,11 @@ describe("calidadConexion", () => {
 
   it("4g es rápida", () => {
     expect(calidadConexion()).toBe("rapida");
-    expect(debeAhorrar()).toBe(false);
   });
 
   it.each(["slow-2g", "2g", "3g"])("%s se trata como lenta", (tipo) => {
     fingirRed({ onLine: true, effectiveType: tipo });
     expect(calidadConexion()).toBe("lenta");
-    expect(debeAhorrar()).toBe(true);
   });
 
   it("respeta el ahorro de datos del sistema aunque la red sea rápida", () => {
@@ -55,23 +50,13 @@ describe("calidadConexion", () => {
     expect(calidadConexion()).toBe("lenta");
   });
 
-  it("el interruptor manual fuerza lenta con red rápida", () => {
-    expect(calidadConexion()).toBe("rapida");
-    setModoAhorroManual(true);
-    expect(modoAhorroManual()).toBe(true);
-    expect(calidadConexion()).toBe("lenta");
-    setModoAhorroManual(false);
-    expect(calidadConexion()).toBe("rapida");
-  });
-
   it("sin navigator.connection (iOS) asume rápida en vez de bloquearse", () => {
     fingirRed({ onLine: true, sinApiConnection: true });
     expect(calidadConexion()).toBe("rapida");
   });
 
-  it("estando sin red, el modo ahorro manual no la disfraza de lenta", () => {
-    setModoAhorroManual(true);
-    fingirRed({ onLine: false });
+  it("sin red gana aunque el navegador reporte un tipo lento", () => {
+    fingirRed({ onLine: false, effectiveType: "2g" });
     expect(calidadConexion()).toBe("sin-red");
   });
 });

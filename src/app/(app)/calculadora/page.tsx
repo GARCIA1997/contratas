@@ -1,12 +1,24 @@
-import { requireUser } from "@/lib/session";
-import { getConfig } from "@/lib/config";
+"use client";
+
+import { useLiveQuery } from "dexie-react-hooks";
 import { CalculadoraPrestamo } from "@/components/calculadora/calculadora-prestamo";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { getConfiguracion } from "@/lib/offline/repo";
+import { CONFIG_DEFAULTS } from "@/lib/config";
 
-export const dynamic = "force-dynamic";
-
-export default async function CalculadoraPage() {
-  const user = await requireUser();
-  const config = await getConfig(user.ownerId);
+/**
+ * Client component a propósito: antes era Server Component solo para leer
+ * dos números de la configuración, lo que la volvía inservible sin señal
+ * —justo donde más se ocupa, cotizando frente al cliente en la puerta—.
+ * Esos dos valores ya viven en Dexie, así que se leen de ahí.
+ */
+export default function CalculadoraPage() {
+  const claims = useAuthClaims();
+  const ownerId = claims.ready ? claims.ownerId : null;
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
 
   return (
     <div className="space-y-4 md:max-w-xl">
@@ -21,8 +33,8 @@ export default async function CalculadoraPage() {
       </div>
 
       <CalculadoraPrestamo
-        cuotasPorDefecto={config.cuotasPorDefecto}
-        maxCuotas={config.maxCuotas}
+        cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
+        maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
       />
     </div>
   );

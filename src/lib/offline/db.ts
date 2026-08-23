@@ -140,7 +140,12 @@ export type QueueOpType =
   | "cita.crear"
   | "cita.editar"
   | "cita.cancelar"
-  | "cita.entregar";
+  | "cita.entregar"
+  | "cliente.crear"
+  | "cliente.editar"
+  | "cliente.eliminar"
+  | "deudor.crear"
+  | "deudor.editar";
 
 export type WriteQueueItem = {
   id: string; // idempotency key (uuid)

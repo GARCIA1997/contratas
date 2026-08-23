@@ -49,7 +49,7 @@ const RUTAS_CREACION = [
  * cambia mientras uno camina, y seguir precargando sobre una red que acaba
  * de caer a 3G es justo lo que hacía que la app se sintiera trabada.
  */
-export function precargarTodaLaApp(
+export function precargarRutaDelDia(
   router: RouterPrefetch,
   ids: IdsParaPrecarga,
   opciones: { tandaTam?: number; pausaMs?: number } = {}

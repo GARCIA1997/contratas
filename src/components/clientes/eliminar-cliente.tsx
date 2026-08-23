@@ -6,6 +6,7 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { enqueue } from "@/lib/offline/queue";
 import {
   fetchConTimeout,
   mensajeDeError,
@@ -30,6 +31,24 @@ export function EliminarCliente({
     }
     if (!confirm("¿Eliminar este cliente?")) return;
     setBorrando(true);
+
+    if (
+      typeof navigator !== "undefined" &&
+      !navigator.onLine &&
+      claims.ready &&
+      claims.ownerId
+    ) {
+      try {
+        await enqueue(claims.ownerId, "cliente.eliminar", { clienteId: id });
+      } catch (e) {
+        setBorrando(false);
+        alert(mensajeDeError(e, "No se pudo eliminar sin conexión."));
+        return;
+      }
+      router.push("/clientes");
+      return;
+    }
+
     let res: Response;
     try {
       res = await fetchConTimeout(

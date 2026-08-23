@@ -739,6 +739,28 @@ export type IdsParaPrecarga = {
 };
 
 /**
+ * TODO lo del espacio de trabajo activo — para el botón «Preparar para
+ * trabajar sin señal», que descarga la app completa a propósito.
+ *
+ * Scopeado por `ownerId` como todo el repo: nunca trae registros de otro
+ * administrador, ni siquiera los que se hayan visto en «buscar en otras
+ * carteras» (esos ni se guardan en Dexie).
+ */
+export async function getTodosLosIds(ownerId: string): Promise<IdsParaPrecarga> {
+  if (!db) return { contratas: [], clientes: [], deudores: [] };
+  const [contratas, clientes, deudores] = await Promise.all([
+    db.contratas.where("ownerId").equals(ownerId).toArray(),
+    db.clientes.where("ownerId").equals(ownerId).toArray(),
+    db.deudores.where("ownerId").equals(ownerId).toArray(),
+  ]);
+  return {
+    contratas: contratas.filter((c) => !c._deletedAt).map((c) => c.id),
+    clientes: clientes.filter((c) => !c._deletedAt).map((c) => c.id),
+    deudores: deudores.filter((d) => !d._deletedAt).map((d) => d.id),
+  };
+}
+
+/**
  * Qué vale la pena precargar para trabajar sin señal.
  *
  * Antes esto devolvía TODO el espacio de trabajo, y el dashboard precargaba

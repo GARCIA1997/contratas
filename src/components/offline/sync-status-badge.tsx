@@ -57,7 +57,7 @@ export function SyncStatusBadge({ ownerId }: { ownerId: string }) {
     }
   }
 
-  // En modo ahorro el badge se queda visible aunque no haya nada pendiente:
+  // Con red lenta el badge se queda visible aunque no haya nada pendiente:
   // es la única señal de que la app dejó de sincronizar sola, y sin ella
   // parecería que los datos están al día cuando no lo están.
   if (online && pending === 0 && calidad !== "lenta") return null;
@@ -90,7 +90,7 @@ export function SyncStatusBadge({ ownerId }: { ownerId: string }) {
         </>
       ) : calidad === "lenta" ? (
         <>
-          <Gauge className="size-3" /> Modo ahorro
+          <Gauge className="size-3" /> Red lenta
           {pending > 0 && ` · ${pending} por enviar`}
         </>
       ) : (
