@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { mensajeEstadoCuentaDeudor } from "@/lib/mensajes-whatsapp";
 
 type AbonoUI = {
   id: string;
@@ -29,31 +30,18 @@ function fecha(iso: string) {
   return format(anclarFechaCliente(iso), "d MMM yyyy", { locale: es });
 }
 
-const DIVISOR = "──────────────";
-
 function construirMensaje(nombreApp: string, d: DeudorUI) {
-  const abonado = d.deudaInicial - d.saldoActual;
-  const lineas = [
-    `🧾 *${nombreApp}*`,
-    `*Estado de cuenta*`,
-    ``,
-    `👤 ${d.nombre}`,
-    DIVISOR,
-    `💰 Deuda inicial: ${formatMoneda(d.deudaInicial)}`,
-    `✅ Abonado: ${formatMoneda(abonado)}`,
-    `🔸 Saldo restante: *${formatMoneda(d.saldoActual)}*`,
-  ];
-
-  if (d.abonos.length > 0) {
-    lineas.push(DIVISOR, `Historial de abonos:`);
-    d.abonos.forEach((a, i) => {
-      lineas.push(
-        `${i + 1}. ${fecha(a.fecha)} — ${formatMoneda(a.monto)} (restante ${formatMoneda(a.restante)})`
-      );
-    });
-  }
-
-  return lineas.join("\n");
+  return mensajeEstadoCuentaDeudor({
+    nombreApp,
+    nombre: d.nombre,
+    deudaInicial: d.deudaInicial,
+    saldoActual: d.saldoActual,
+    abonos: d.abonos.map((a) => ({
+      fecha: anclarFechaCliente(a.fecha),
+      monto: a.monto,
+      restante: a.restante,
+    })),
+  });
 }
 
 export function EstadoCuentaDeudorView({

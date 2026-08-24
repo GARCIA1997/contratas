@@ -7,10 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { mensajeEstadoCuenta } from "@/lib/mensajes-whatsapp";
 import { desgloseCuotas, type EstadoContrata } from "@/lib/contrata";
 import { anclarFechaCliente } from "@/lib/fechas";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 
 type PagoUI = {
   numeroCuota: number;
@@ -59,32 +58,30 @@ const ESTADO_LABEL: Record<EstadoContrata, string> = {
   EN_DEUDA: "En deuda",
 };
 
-const DIVISOR = "──────────────";
-
-function fechaDeDate(d: Date) {
-  return format(d, "d MMM yyyy", { locale: es });
-}
-
+/**
+ * El estado de cuenta que se le manda al cliente solo incluye lo que sigue
+ * vivo: una contrata liquidada hace un año no le dice nada y solo alarga el
+ * mensaje. Los totales se recalculan sobre ese mismo subconjunto — si no,
+ * las cifras de arriba no cuadrarían con el listado de abajo.
+ */
 function construirMensaje(nombreApp: string, c: EstadoCuentaUI) {
-  const lineas = [
-    `🧾 *${nombreApp}*`,
-    `*Estado de cuenta*`,
-    ``,
-    `👤 Cliente: ${c.nombre}`,
-    DIVISOR,
-  ];
+  const activas = c.contratas.filter(
+    (ct) => ct.estado !== "LIQUIDADA" && ct.estado !== "EN_DEUDA"
+  );
+  const totales = activas.reduce(
+    (acc, ct) => ({
+      capitalPrestado: acc.capitalPrestado + ct.monto,
+      totalAbonado: acc.totalAbonado + ct.totalAbonado,
+      saldoPendiente: acc.saldoPendiente + ct.saldo,
+    }),
+    { capitalPrestado: 0, totalAbonado: 0, saldoPendiente: 0 }
+  );
 
-  if (c.contratas.length === 0) {
-    lineas.push("Sin contratas registradas.");
-  } else {
-    c.contratas.forEach((ct, i) => {
-      lineas.push(
-        `${i + 1}. ${TIPO_LABEL[ct.tipo]} — ${ct.pagados}/${ct.total} cuotas — Monto: ${formatMoneda(ct.monto)}`
-      );
-
-      const activa = ct.estado !== "LIQUIDADA" && ct.estado !== "EN_DEUDA";
-      if (!activa) return;
-
+  return mensajeEstadoCuenta({
+    nombreApp,
+    clienteNombre: c.nombre,
+    ...totales,
+    contratas: activas.map((ct) => {
       const { atrasadas, incompletas } = desgloseCuotas(
         ct.pagos.map((p) => ({
           numeroCuota: p.numeroCuota,
@@ -94,26 +91,18 @@ function construirMensaje(nombreApp: string, c: EstadoCuentaUI) {
         })),
         ct.abono
       );
-
-      if (atrasadas.length > 0) {
-        const detalle = atrasadas
-          .map((a) => `Cuota ${a.numeroCuota} (${fechaDeDate(a.fechaProgramada)})`)
-          .join(", ");
-        lineas.push(`   ⚠️ Atrasadas: ${detalle}`);
-      }
-      if (incompletas.length > 0) {
-        const detalle = incompletas
-          .map(
-            (inc) =>
-              `Cuota ${inc.numeroCuota} — abonado ${formatMoneda(inc.montoAbonado)} (falta ${formatMoneda(inc.faltante)})`
-          )
-          .join(", ");
-        lineas.push(`   🔸 Incompletas: ${detalle}`);
-      }
-    });
-  }
-
-  return lineas.join("\n");
+      return {
+        tipo: ct.tipo,
+        montoContrata: ct.monto,
+        cuotasPagadas: ct.pagados,
+        numCuotas: ct.total,
+        saldo: ct.saldo,
+        atrasada: ct.estado === "VENCIDO",
+        atrasadas,
+        incompletas,
+      };
+    }),
+  });
 }
 
 export function EstadoCuentaView({

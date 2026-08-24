@@ -22,6 +22,11 @@ import {
 } from "@/lib/services/dashboard";
 import type { ContrataResumen } from "@/components/contratas/tipos";
 import { aggregarRutaDelDia, type ParadaRuta } from "@/lib/services/ruta";
+import {
+  agruparCobroPorContrata,
+  type CuotaVencidaItem,
+  type ResultadoCobroVencidas,
+} from "@/lib/services/cobros";
 import { citasPendientesOrdenadas } from "@/lib/citas";
 import type { CitaLocal } from "@/lib/offline/db";
 
@@ -615,38 +620,83 @@ export async function getDeudor(
 // Configuración
 // ---------------------------------------------------------------------------
 
-/** Espejo local (sin desglose por cuota) de previewCobroVencidas — usado
- * como respaldo cuando no hay red para pedir el preview real al servidor. */
 /**
  * Espejo offline de `previewCobroVencidas`: mismo umbral (vencidas +
  * próximas dentro de `DIAS_PROXIMO_VENCIMIENTO`), mismo anclaje de fecha
  * por día calendario (antes comparaba `Date` completos contra "ahora", lo
  * que con una ventana de varios días es más frágil ante desfases de hora).
  */
-export async function getCobroVencidoPreview(
+async function itemsCobroVencido(
   ownerId: string,
   clienteId: string,
-  hoy: Date = new Date()
-): Promise<{ total: number; items: number }> {
-  if (!db) return { total: 0, items: 0 };
+  hoy: Date
+): Promise<CuotaVencidaItem[]> {
+  if (!db) return [];
   const contratas = (
     await db.contratas.where("clienteId").equals(clienteId).toArray()
   ).filter((c) => !c._deletedAt && !c.convertidaADeuda && c.ownerId === ownerId);
   const base = startOfDay(hoy);
   const limite = addDays(base, DIAS_PROXIMO_VENCIMIENTO);
-  let total = 0;
-  let items = 0;
+  const items: CuotaVencidaItem[] = [];
+
   for (const c of contratas) {
-    const pagos = (await pagosDeContrata(c.id)).filter((p) => !p.pagado);
-    for (const p of pagos) {
+    const todosLosPagos = await pagosDeContrata(c.id);
+    const pendientes = todosLosPagos.filter((p) => !p.pagado);
+    for (const p of pendientes) {
       if (anclarFechaCliente(new Date(p.fechaProgramada)) > limite) continue;
       const pendiente = Math.round((c.abono - p.montoAbonado) * 100) / 100;
       if (pendiente <= 0) continue;
-      total = Math.round((total + pendiente) * 100) / 100;
-      items += 1;
+      items.push({
+        contrataId: c.id,
+        pagoId: p.id,
+        tipo: c.tipo as TipoContrata,
+        numeroCuota: p.numeroCuota,
+        numCuotas: todosLosPagos.length,
+        fechaProgramada: p.fechaProgramada,
+        pendiente,
+      });
     }
   }
-  return { total, items };
+  return items;
+}
+
+export async function getCobroVencidoPreview(
+  ownerId: string,
+  clienteId: string,
+  hoy: Date = new Date()
+): Promise<{ total: number; items: number }> {
+  const items = await itemsCobroVencido(ownerId, clienteId, hoy);
+  const total = Math.round(items.reduce((s, i) => s + i.pendiente, 0) * 100) / 100;
+  return { total, items: items.length };
+}
+
+/**
+ * El desglose completo del cobro — lo mismo que devuelve
+ * `POST /cobrar-vencidas`, pero calculado desde IndexedDB.
+ *
+ * Existe para que cobrar sin señal también entregue recibo: antes, sin red
+ * la app aplicaba el cobro y le decía al usuario que el recibo tendría que
+ * mandarlo después, justo en el momento en que el cliente está enfrente
+ * esperando su comprobante. Todos los datos ya estaban en el dispositivo.
+ */
+export async function getCobroVencidoDetalle(
+  ownerId: string,
+  clienteId: string,
+  hoy: Date = new Date()
+): Promise<ResultadoCobroVencidas | null> {
+  if (!db) return null;
+  const cliente = await db.clientes.get(clienteId);
+  if (!cliente || cliente.ownerId !== ownerId || cliente._deletedAt) return null;
+
+  const items = await itemsCobroVencido(ownerId, clienteId, hoy);
+  if (items.length === 0) return null;
+
+  return {
+    total: Math.round(items.reduce((s, i) => s + i.pendiente, 0) * 100) / 100,
+    clienteNombre: cliente.nombre,
+    clienteTelefono: cliente.telefono,
+    contratas: agruparCobroPorContrata(items),
+  };
 }
 
 export async function getConfiguracion(
