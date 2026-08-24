@@ -10,6 +10,7 @@ import { SyncStatusBadge } from "@/components/offline/sync-status-badge";
 import { RefreshButton } from "@/components/offline/refresh-button";
 import { PrepararOfflineButton } from "@/components/offline/preparar-offline-button";
 import { OfflineToast } from "@/components/offline/offline-toast";
+import { VersionBadge } from "@/components/version-badge";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 
 export default function AppLayout({
@@ -51,6 +52,7 @@ export default function AppLayout({
           <SyncStatusBadge ownerId={ownerId} />
           <PrepararOfflineButton ownerId={ownerId} />
           <RefreshButton ownerId={ownerId} />
+          <VersionBadge />
         </div>
         <main className="mx-auto max-w-lg px-4 pb-32 pt-2 md:max-w-3xl md:pb-8 lg:max-w-5xl">
           {children}

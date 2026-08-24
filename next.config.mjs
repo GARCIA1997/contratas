@@ -1,5 +1,11 @@
+import { createRequire } from "node:module";
 import withSerwistInit from "@serwist/next";
 import { withSentryConfig } from "@sentry/nextjs";
+
+// La versión sale de package.json y viaja al cliente como variable
+// pública: así el número que se ve en la app es exactamente el del build
+// que está corriendo, sin poder desincronizarse de la etiqueta de git.
+const { version } = createRequire(import.meta.url)("./package.json");
 
 const withSerwist = withSerwistInit({
   swSrc: "src/sw.ts",
@@ -14,6 +20,7 @@ const nextConfig = {
   // Standalone: genera .next/standalone con un server.js autocontenido,
   // ideal para Docker (imagen mínima) y también funciona con PM2/`node server.js`.
   output: "standalone",
+  env: { NEXT_PUBLIC_APP_VERSION: version },
   // El VPS de producción tiene un solo vCPU: el paso de type-check de
   // `next build` (webpack/tsc asumiendo varios núcleos) llegó a saturar la
   // CPU al punto de tumbar SSH/HTTP por varios minutos y de exceder el
