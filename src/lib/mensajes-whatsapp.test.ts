@@ -427,3 +427,28 @@ describe("las cifras del estado de cuenta cuadran a la vista", () => {
     expect(texto).toContain("de $7,000.00 que se te entregaron");
   });
 });
+
+describe("mensajeCobro sin datos de contrata (caso Ruta)", () => {
+  it("no indenta las cuotas cuando no hay encabezado de grupo del que colgar", () => {
+    const texto = mensajeCobro({
+      nombreApp: APP,
+      clienteNombre: "Don Chuy",
+      total: 800,
+      contratas: [{ numCuotas: 12, subtotal: 800, cuotas: [{ numeroCuota: 4, monto: 800 }] }],
+    });
+    expect(texto).toContain("\n✅ Cuota 4 de 12 — $800.00");
+    expect(texto).not.toContain("     ✅ Cuota 4");
+  });
+
+  it("sí indenta cuando el grupo tiene encabezado", () => {
+    const texto = mensajeCobro({
+      nombreApp: APP,
+      clienteNombre: "Ana",
+      total: 800,
+      contratas: [
+        { tipo: "SEMANAL", numCuotas: 12, subtotal: 800, cuotas: [{ numeroCuota: 4, monto: 800 }] },
+      ],
+    });
+    expect(texto).toContain("     ✅ Cuota 4 de 12");
+  });
+});

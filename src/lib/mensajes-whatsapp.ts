@@ -114,19 +114,24 @@ export function mensajeCobro(opts: {
   for (const c of opts.contratas) {
     const contexto =
       c.montoContrata !== undefined ? `préstamo de ${formatMoneda(c.montoContrata)}` : "";
+    const conEncabezado = Boolean(c.tipo) || Boolean(contexto);
     if (c.tipo) {
       detalle.push(`🔹 *${TIPO_LABEL[c.tipo]}*${contexto ? ` · ${contexto}` : ""}`);
     } else if (contexto) {
       detalle.push(`🔹 ${contexto}`);
     }
+    // La sangría solo tiene sentido colgando de un encabezado de grupo. Sin
+    // él (Ruta, que no arrastra el tipo de contrata) las cuotas quedaban
+    // indentadas bajo nada, como si faltara una línea.
+    const sangria = conEncabezado ? "     " : "";
     for (const q of c.cuotas) {
-      detalle.push(`     ✅ Cuota ${q.numeroCuota} de ${c.numCuotas} — ${formatMoneda(q.monto)}`);
+      detalle.push(`${sangria}✅ Cuota ${q.numeroCuota} de ${c.numCuotas} — ${formatMoneda(q.monto)}`);
     }
     if (c.saldoTrasCobro !== undefined) {
       detalle.push(
         c.saldoTrasCobro > 0
-          ? `     💠 Te resta por pagar: *${formatMoneda(c.saldoTrasCobro)}*`
-          : `     🎉 *¡Contrata liquidada!*`
+          ? `${sangria}💠 Te resta por pagar: *${formatMoneda(c.saldoTrasCobro)}*`
+          : `${sangria}🎉 *¡Contrata liquidada!*`
       );
     }
     detalle.push(``);
