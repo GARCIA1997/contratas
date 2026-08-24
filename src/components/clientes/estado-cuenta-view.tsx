@@ -8,7 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { mensajeEstadoCuenta } from "@/lib/mensajes-whatsapp";
-import type { EstadoContrata } from "@/lib/contrata";
+import { desgloseCuotas, type EstadoContrata } from "@/lib/contrata";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 type PagoUI = {
   numeroCuota: number;
@@ -80,14 +81,27 @@ function construirMensaje(nombreApp: string, c: EstadoCuentaUI) {
     nombreApp,
     clienteNombre: c.nombre,
     ...totales,
-    contratas: activas.map((ct) => ({
-      tipo: ct.tipo,
-      montoContrata: ct.monto,
-      cuotasPagadas: ct.pagados,
-      numCuotas: ct.total,
-      saldo: ct.saldo,
-      atrasada: ct.estado === "VENCIDO",
-    })),
+    contratas: activas.map((ct) => {
+      const { atrasadas, incompletas } = desgloseCuotas(
+        ct.pagos.map((p) => ({
+          numeroCuota: p.numeroCuota,
+          fechaProgramada: anclarFechaCliente(p.fechaProgramada),
+          pagado: p.pagado,
+          montoAbonado: p.montoAbonado,
+        })),
+        ct.abono
+      );
+      return {
+        tipo: ct.tipo,
+        montoContrata: ct.monto,
+        cuotasPagadas: ct.pagados,
+        numCuotas: ct.total,
+        saldo: ct.saldo,
+        atrasada: ct.estado === "VENCIDO",
+        atrasadas,
+        incompletas,
+      };
+    }),
   });
 }
 

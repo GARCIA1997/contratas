@@ -327,6 +327,56 @@ describe("mensajeEstadoCuenta", () => {
     expect(texto).toContain("2 de 10 cuotas pagadas");
   });
 
+  it("lista los números exactos de cuota atrasada, no solo que 'está atrasada'", () => {
+    const texto = mensajeEstadoCuenta({
+      nombreApp: APP,
+      clienteNombre: "Ana",
+      capitalPrestado: 5000,
+      totalAbonado: 1000,
+      saldoPendiente: 4000,
+      contratas: [
+        {
+          tipo: "SEMANAL",
+          montoContrata: 5000,
+          cuotasPagadas: 2,
+          numCuotas: 10,
+          saldo: 4000,
+          atrasada: true,
+          atrasadas: [{ numeroCuota: 3 }, { numeroCuota: 4 }],
+        },
+      ],
+    });
+    expect(texto).toContain("Cuotas atrasadas: 3, 4");
+  });
+
+  it("lista las cuotas con abono incompleto y cuánto falta", () => {
+    const texto = mensajeEstadoCuenta({
+      nombreApp: APP,
+      clienteNombre: "Ana",
+      capitalPrestado: 5000,
+      totalAbonado: 1000,
+      saldoPendiente: 4000,
+      contratas: [
+        {
+          tipo: "SEMANAL",
+          montoContrata: 5000,
+          cuotasPagadas: 2,
+          numCuotas: 10,
+          saldo: 4000,
+          atrasada: false,
+          incompletas: [{ numeroCuota: 3, montoAbonado: 200, faltante: 450 }],
+        },
+      ],
+    });
+    expect(texto).toContain("Cuota 3 incompleta — abonado $200.00, falta $450.00");
+  });
+
+  it("no menciona atrasadas/incompletas cuando no vienen", () => {
+    const [, texto] = TODOS[3];
+    expect(texto).not.toContain("Cuotas atrasadas");
+    expect(texto).not.toContain("incompleta");
+  });
+
   it("dice algo sensato cuando no hay contratas activas", () => {
     const texto = mensajeEstadoCuenta({
       nombreApp: APP,

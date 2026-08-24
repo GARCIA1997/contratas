@@ -305,6 +305,15 @@ export type ContrataEstado = {
   numCuotas: number;
   saldo: number;
   atrasada: boolean;
+  /**
+   * Qué números de cuota exactos están atrasados o con abono parcial —
+   * no solo que la contrata "está atrasada" en general. Un cliente con 3
+   * cuotas sueltas atrasadas de hace meses necesita saber CUÁLES para
+   * poder ponerse al corriente; "atrasada" a secas lo obliga a llamar
+   * para preguntar, que es justo lo que este mensaje debería evitarle.
+   */
+  atrasadas?: { numeroCuota: number }[];
+  incompletas?: { numeroCuota: number; montoAbonado: number; faltante: number }[];
 };
 
 export function mensajeEstadoCuenta(opts: {
@@ -328,6 +337,17 @@ export function mensajeEstadoCuenta(opts: {
             (c.atrasada ? `  ⚠️ _atrasada_` : ""),
           `     ✅ ${c.cuotasPagadas} de ${c.numCuotas} cuotas pagadas`,
           `     💠 Te resta por pagar: *${formatMoneda(c.saldo)}*`,
+          ...(c.atrasadas && c.atrasadas.length > 0
+            ? [
+                `     ⚠️ Cuotas atrasadas: ${c.atrasadas.map((a) => a.numeroCuota).join(", ")}`,
+              ]
+            : []),
+          ...(c.incompletas && c.incompletas.length > 0
+            ? c.incompletas.map(
+                (i) =>
+                  `     🔸 Cuota ${i.numeroCuota} incompleta — abonado ${formatMoneda(i.montoAbonado)}, falta ${formatMoneda(i.faltante)}`
+              )
+            : []),
           ``,
         ]);
 
