@@ -252,6 +252,9 @@ export async function getHistorialCliente(
 export async function crearCliente(ownerId: string, input: ClienteInput) {
   return prisma.cliente.create({
     data: {
+      // Ver `idGeneradoEnCliente` en validaciones.ts: la cola offline manda
+      // el id para que el registro nazca con su id definitivo.
+      ...(input.id ? { id: input.id } : {}),
       ownerId,
       nombre: input.nombre,
       telefono: input.telefono ?? null,

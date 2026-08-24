@@ -1,6 +1,17 @@
 import { z } from "zod";
 
+/**
+ * `id` opcional generado por el cliente: lo manda la cola offline al crear
+ * sin señal, para que el registro nazca con su id definitivo. Sin esto,
+ * una contrata creada offline para un cliente también creado offline
+ * apuntaría a un id temporal que el servidor no conoce. Es seguro: crear
+ * con un id que ya existe viola la llave primaria y falla, nunca pisa un
+ * registro ajeno.
+ */
+const idGeneradoEnCliente = z.string().trim().min(1).max(64).optional();
+
 export const clienteSchema = z.object({
+  id: idGeneradoEnCliente,
   nombre: z.string().trim().min(1, "El nombre es obligatorio").max(120),
   telefono: z.string().trim().max(30).optional().nullable(),
   direccion: z.string().trim().max(200).optional().nullable(),
@@ -54,6 +65,7 @@ export const citaSchema = z.object({
 export const citaUpdateSchema = citaSchema.omit({ id: true }).partial();
 
 export const deudorSchema = z.object({
+  id: idGeneradoEnCliente,
   nombre: z.string().trim().min(1, "El nombre es obligatorio").max(120),
   deudaInicial: z.number().min(0, "La deuda no puede ser negativa"),
   notas: z.string().trim().max(500).optional().nullable(),

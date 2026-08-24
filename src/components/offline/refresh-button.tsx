@@ -22,7 +22,7 @@ export function RefreshButton({ ownerId }: { ownerId: string }) {
     setCargando(true);
     try {
       await flushQueue(ownerId);
-      await syncAll(ownerId);
+      await syncAll(ownerId, { forzar: true });
       router.refresh();
     } finally {
       setCargando(false);

@@ -11,6 +11,11 @@ import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
 import { enqueue } from "@/lib/offline/queue";
 import { syncContratas } from "@/lib/offline/sync";
 import { CompartirRecibo } from "@/components/recibo/compartir-recibo";
+import {
+  fetchConTimeout,
+  mensajeDeError,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -92,10 +97,11 @@ export function CobroVencido({
       }
       const key = idempotencyKey ?? crypto.randomUUID();
       setIdempotencyKey(key);
-      const res = await fetch(`/api/clientes/${clienteId}/cobrar-vencidas`, {
-        method: "POST",
-        headers: { "Idempotency-Key": key },
-      });
+      const res = await fetchConTimeout(
+        `/api/clientes/${clienteId}/cobrar-vencidas`,
+        { method: "POST", headers: { "Idempotency-Key": key } },
+        TIMEOUT_ESCRITURA_MS
+      );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? "No se pudo registrar el cobro");
@@ -111,7 +117,7 @@ export function CobroVencido({
       if (ownerId) await syncContratas(ownerId);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "No se pudo registrar el cobro");
+      setError(mensajeDeError(e, "No se pudo registrar el cobro"));
     } finally {
       setCargando(false);
     }
