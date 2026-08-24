@@ -1,7 +1,5 @@
 "use client";
 
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import { CheckCircle2, MessageCircle } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
 import { Button } from "@/components/ui/button";
@@ -9,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { mensajeEntrega } from "@/lib/mensajes-whatsapp";
 
 export type ContrataEntregada = {
   cliente: { nombre: string; telefono: string | null };
@@ -19,67 +18,34 @@ export type ContrataEntregada = {
   pagos: { numeroCuota: number; fechaProgramada: string }[];
 };
 
-const TIPO_LABEL: Record<TipoContrata, string> = {
-  SEMANAL: "Semanal",
-  QUINCENAL: "Quincenal",
-  MENSUAL: "Mensual",
-};
-
-const DIVISOR = "──────────────";
-
-/** Cuántas fechas se listan completas antes de resumir (evita mensajes eternos). */
-const MAX_FECHAS_LISTADAS = 15;
-
-function fecha(iso: string) {
-  return format(anclarFechaCliente(iso), "d MMM yyyy", { locale: es });
-}
-
 /**
  * Mensaje de WhatsApp con el detalle completo de una contrata recién
- * entregada: monto, abono, número de pagos y calendario de fechas. Es el
- * mismo formato para las 3 acciones que entregan una contrata (crear,
- * renovar, unificar) — antes cada una mandaba un mensaje distinto (o
- * ninguno); solo cambia `titulo` según cuál sea.
+ * entregada. El formato vive en `mensajes-whatsapp.ts`, junto al del resto
+ * de mensajes salientes; aquí solo se traduce la forma de los datos.
+ *
+ * `_titulo` se conserva por compatibilidad con las 3 pantallas que entregan
+ * contrata (crear, renovar, unificar) pero ya no se usa: el documento se
+ * titula igual en las tres, porque para el cliente que lo recibe siempre es
+ * lo mismo — el comprobante de lo que se le acaba de entregar.
  */
 export function construirMensajeEntrega(
   nombreApp: string,
   c: ContrataEntregada,
-  titulo: string
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _titulo?: string
 ): string {
-  const total = Math.round(c.abono * c.numCuotas * 100) / 100;
-  const pagos = [...c.pagos].sort((a, b) => a.numeroCuota - b.numeroCuota);
-
-  const lineas = [
-    `🧾 *${nombreApp}*`,
-    `*${titulo}*`,
-    ``,
-    `👤 Cliente: ${c.cliente.nombre}`,
-    `📋 Tipo: ${TIPO_LABEL[c.tipo]}`,
-    DIVISOR,
-    `💰 Monto entregado: ${formatMoneda(c.monto)}`,
-    `📆 Abono por pago: ${formatMoneda(c.abono)}`,
-    `🔢 Número de pagos: ${c.numCuotas}`,
-    `💵 Total a pagar: *${formatMoneda(total)}*`,
-    DIVISOR,
-    `📅 *Fechas de pago:*`,
-  ];
-
-  if (pagos.length <= MAX_FECHAS_LISTADAS) {
-    pagos.forEach((p) => {
-      lineas.push(`${p.numeroCuota}. ${fecha(p.fechaProgramada)}`);
-    });
-  } else {
-    // Plazos largos: primeras tres, el resto resumido.
-    pagos.slice(0, 3).forEach((p) => {
-      lineas.push(`${p.numeroCuota}. ${fecha(p.fechaProgramada)}`);
-    });
-    const ultimo = pagos[pagos.length - 1];
-    lineas.push(
-      `… y ${pagos.length - 3} pagos más, hasta el ${fecha(ultimo.fechaProgramada)}`
-    );
-  }
-
-  return lineas.join("\n");
+  return mensajeEntrega({
+    nombreApp,
+    clienteNombre: c.cliente.nombre,
+    tipo: c.tipo,
+    monto: c.monto,
+    abono: c.abono,
+    numCuotas: c.numCuotas,
+    pagos: c.pagos.map((p) => ({
+      numeroCuota: p.numeroCuota,
+      fecha: anclarFechaCliente(p.fechaProgramada),
+    })),
+  });
 }
 
 /**

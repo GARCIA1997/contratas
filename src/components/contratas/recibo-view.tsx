@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { mensajeDetalleContrata } from "@/lib/mensajes-whatsapp";
 import { estadoContrata, desgloseCuotas } from "@/lib/contrata";
 
 type PagoUI = {
@@ -47,13 +48,6 @@ function fecha(iso: string) {
   return format(anclarFechaCliente(iso), "d MMM yyyy", { locale: es });
 }
 
-/** Como `fecha()` pero para un Date ya anclado (evita re-anclar dos veces). */
-function fechaDeDate(d: Date) {
-  return format(d, "d MMM yyyy", { locale: es });
-}
-
-const DIVISOR = "──────────────";
-
 function construirMensaje(nombreApp: string, c: ReciboContrata) {
   const estado = c.convertidaADeuda
     ? "EN_DEUDA"
@@ -63,49 +57,40 @@ function construirMensaje(nombreApp: string, c: ReciboContrata) {
           pagado: p.pagado,
         }))
       );
+  // Una contrata liquidada o pasada a deuda no tiene pendientes que listar:
+  // el desglose solo aplica mientras sigue viva.
   const activa = estado !== "LIQUIDADA" && estado !== "EN_DEUDA";
+  const { atrasadas, incompletas } = activa
+    ? desgloseCuotas(
+        c.pagos.map((p) => ({
+          numeroCuota: p.numeroCuota,
+          fechaProgramada: anclarFechaCliente(p.fechaProgramada),
+          pagado: p.pagado,
+          montoAbonado: p.montoAbonado,
+        })),
+        c.abono
+      )
+    : { atrasadas: [], incompletas: [] };
 
-  const lineas = [
-    `🧾 *${nombreApp}*`,
-    `*Recibo de pago*`,
-    ``,
-    `👤 Cliente: ${c.clienteNombre}`,
-    `📋 Contrata: ${TIPO_LABEL[c.tipo]}`,
-    DIVISOR,
-    `💰 Monto prestado: ${formatMoneda(c.monto)}`,
-    `📆 Abono por cuota: ${formatMoneda(c.abono)}`,
-    `✅ Cuotas pagadas: ${c.cuotasPagadas}/${c.numCuotas}`,
-  ];
-
-  if (activa) {
-    const { atrasadas, incompletas } = desgloseCuotas(
-      c.pagos.map((p) => ({
-        numeroCuota: p.numeroCuota,
-        fechaProgramada: anclarFechaCliente(p.fechaProgramada),
-        pagado: p.pagado,
-        montoAbonado: p.montoAbonado,
-      })),
-      c.abono
-    );
-
-    if (atrasadas.length > 0) {
-      lineas.push(DIVISOR, `⚠️ *Cuotas atrasadas:*`);
-      atrasadas.forEach((a) => {
-        lineas.push(`Cuota ${a.numeroCuota} — ${fechaDeDate(a.fechaProgramada)}`);
-      });
-    }
-
-    if (incompletas.length > 0) {
-      lineas.push(DIVISOR, `🔸 *Cuotas incompletas:*`);
-      incompletas.forEach((inc) => {
-        lineas.push(
-          `Cuota ${inc.numeroCuota} — abonado ${formatMoneda(inc.montoAbonado)} (falta ${formatMoneda(inc.faltante)})`
-        );
-      });
-    }
-  }
-
-  return lineas.join("\n");
+  return mensajeDetalleContrata({
+    nombreApp,
+    clienteNombre: c.clienteNombre,
+    tipo: c.tipo,
+    monto: c.monto,
+    abono: c.abono,
+    cuotasPagadas: c.cuotasPagadas,
+    numCuotas: c.numCuotas,
+    saldo: c.saldo,
+    atrasadas: atrasadas.map((a) => ({
+      numeroCuota: a.numeroCuota,
+      fecha: a.fechaProgramada,
+    })),
+    incompletas: incompletas.map((i) => ({
+      numeroCuota: i.numeroCuota,
+      montoAbonado: i.montoAbonado,
+      faltante: i.faltante,
+    })),
+  });
 }
 
 export function ReciboView({

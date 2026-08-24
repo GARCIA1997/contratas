@@ -11,6 +11,7 @@ import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
 import { enqueue } from "@/lib/offline/queue";
 import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import {
   fetchConTimeout,
   mensajeDeError,
@@ -24,20 +25,17 @@ const TIPO_LABEL: Record<TipoContrata, string> = {
 };
 
 function construirMensaje(nombreApp: string, r: ResultadoCobroVencidas) {
-  const lineas = [
-    `*${nombreApp} — Recibo de cobro*`,
-    ``,
-    `Cliente: ${r.clienteNombre}`,
-    `Total cobrado: ${formatMoneda(r.total)}`,
-    ``,
-    ...r.contratas.flatMap((c) => [
-      `${TIPO_LABEL[c.tipo]} · ${formatMoneda(c.subtotal)}`,
-      ...c.cuotas.map(
-        (q) => `  · Cuota ${q.numeroCuota}/${c.numCuotas}: ${formatMoneda(q.monto)}`
-      ),
-    ]),
-  ];
-  return lineas.join("\n");
+  return mensajeCobro({
+    nombreApp,
+    clienteNombre: r.clienteNombre,
+    total: r.total,
+    contratas: r.contratas.map((c) => ({
+      tipo: c.tipo,
+      numCuotas: c.numCuotas,
+      cuotas: c.cuotas,
+      subtotal: c.subtotal,
+    })),
+  });
 }
 
 export function CobroVencido({

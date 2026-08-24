@@ -20,46 +20,57 @@ import {
 } from "@/lib/offline/repo";
 import { enqueue } from "@/lib/offline/queue";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import {
+  mensajeCobro,
+  mensajeRecordatorio,
+  type CobroContrata,
+} from "@/lib/mensajes-whatsapp";
 import { formatMoneda } from "@/lib/utils";
 import { CONFIG_DEFAULTS } from "@/lib/config";
 import type { ParadaRuta } from "@/lib/services/ruta";
 
-function mensajeRecordatorio(
-  nombreApp: string,
-  nombre: string,
-  total: number,
-  diasAtrasoMax: number
-) {
-  const monto = formatMoneda(total);
-  // Firmado con el nombre de la app en todos los mensajes salientes — para
-  // que el cliente reconozca de quién viene incluso en este recordatorio
-  // corto (los demás mensajes ya lo llevan en el encabezado 🧾).
-  if (diasAtrasoMax > 0) {
-    return `Hola ${nombre}, te recuerdo que tienes un pago pendiente de ${monto} desde hace ${diasAtrasoMax} día${diasAtrasoMax === 1 ? "" : "s"}. ¡Gracias! — ${nombreApp}`;
-  }
-  if (diasAtrasoMax < 0) {
-    const dias = -diasAtrasoMax;
-    return `Hola ${nombre}, te recuerdo que tienes un pago de ${monto} próximo a vencer en ${dias} día${dias === 1 ? "" : "s"}. ¡Gracias! — ${nombreApp}`;
-  }
-  return `Hola ${nombre}, te recuerdo que hoy tienes un pago pendiente de ${monto}. ¡Gracias! — ${nombreApp}`;
+function recordatorioDeParada(nombreApp: string, r: ParadaRuta) {
+  return mensajeRecordatorio({
+    nombreApp,
+    clienteNombre: r.nombre,
+    total: r.total,
+    diasAtrasoMax: r.diasAtrasoMax,
+    cuotas: r.cuotas.map((c) => ({
+      numeroCuota: c.numeroCuota,
+      numCuotas: c.numCuotas,
+      pendiente: c.pendiente,
+      diasAtraso: c.diasAtraso,
+    })),
+  });
 }
 
-function mensajeRecibo(nombreApp: string, r: ParadaRuta) {
-  return [
-    `🧾 *${nombreApp}*`,
-    `*Recibo de pago*`,
-    ``,
-    `👤 Cliente: ${r.nombre}`,
-    // Mismo formato "N/total" que el estado de cuenta — para saber de un
-    // vistazo en qué número de pago va cada cuota, no solo cuántas se
-    // cobraron.
-    ...r.cuotas.map(
-      (c) => `✅ Cuota ${c.numeroCuota}/${c.numCuotas}: ${formatMoneda(c.pendiente)}`
-    ),
-    `💰 Total: ${formatMoneda(r.total)}`,
-    ``,
-    `¡Gracias por tu pago!`,
-  ].join("\n");
+/**
+ * En Ruta se cobran cuotas sueltas de varias contratas a la vez, y la parada
+ * no sabe a qué contrata pertenece cada una más allá de su id — así que cada
+ * contrata se manda como su propio grupo, sin capital ni saldo restante
+ * (esos datos no viajan en `ParadaRuta`). El mensaje los omite solo.
+ */
+function reciboDeParada(nombreApp: string, r: ParadaRuta) {
+  const porContrata = new Map<string, CobroContrata>();
+  for (const c of r.cuotas) {
+    const grupo = porContrata.get(c.contrataId);
+    if (grupo) {
+      grupo.cuotas.push({ numeroCuota: c.numeroCuota, monto: c.pendiente });
+      grupo.subtotal = Math.round((grupo.subtotal + c.pendiente) * 100) / 100;
+    } else {
+      porContrata.set(c.contrataId, {
+        numCuotas: c.numCuotas,
+        cuotas: [{ numeroCuota: c.numeroCuota, monto: c.pendiente }],
+        subtotal: c.pendiente,
+      });
+    }
+  }
+  return mensajeCobro({
+    nombreApp,
+    clienteNombre: r.nombre,
+    total: r.total,
+    contratas: Array.from(porContrata.values()),
+  });
 }
 
 function Parada({
@@ -123,12 +134,7 @@ function Parada({
             <a
               href={linkWhatsApp(
                 parada.telefono,
-                mensajeRecordatorio(
-                  nombreApp,
-                  parada.nombre,
-                  parada.total,
-                  parada.diasAtrasoMax
-                )
+                recordatorioDeParada(nombreApp, parada)
               )}
               target="_blank"
               rel="noopener noreferrer"
@@ -306,7 +312,7 @@ export default function RutaDelDiaPage() {
               <a
                 href={linkWhatsApp(
                   confirmando.telefono,
-                  mensajeRecibo(nombreApp, confirmando)
+                  reciboDeParada(nombreApp, confirmando)
                 )}
                 target="_blank"
                 rel="noopener noreferrer"
