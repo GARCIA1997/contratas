@@ -86,6 +86,35 @@ export type ResultadoCobroVencidas = {
 };
 
 /**
+ * Junta las cuotas cobradas por contrata — el desglose que ve el cliente en
+ * el recibo de WhatsApp. Puro y exportado a propósito: el espejo offline
+ * (offline/repo.ts) arma los mismos `items` desde IndexedDB y reusa esta
+ * función, para que un recibo hecho sin señal salga idéntico al que emite
+ * el servidor.
+ */
+export function agruparCobroPorContrata(
+  items: CuotaVencidaItem[]
+): ContrataResumenCobro[] {
+  const porContrata = new Map<string, ContrataResumenCobro>();
+  for (const i of items) {
+    const actual = porContrata.get(i.contrataId);
+    if (actual) {
+      actual.cuotas.push({ numeroCuota: i.numeroCuota, monto: i.pendiente });
+      actual.subtotal = round(actual.subtotal + i.pendiente);
+    } else {
+      porContrata.set(i.contrataId, {
+        contrataId: i.contrataId,
+        tipo: i.tipo,
+        numCuotas: i.numCuotas,
+        cuotas: [{ numeroCuota: i.numeroCuota, monto: i.pendiente }],
+        subtotal: i.pendiente,
+      });
+    }
+  }
+  return Array.from(porContrata.values());
+}
+
+/**
  * Marca como pagadas (pago completo) todas las cuotas vencidas de las
  * contratas de un cliente, en una sola transacción.
  */
@@ -119,27 +148,10 @@ export async function ejecutarCobroVencidas(
     )
   );
 
-  const porContrata = new Map<string, ContrataResumenCobro>();
-  for (const i of items) {
-    const actual = porContrata.get(i.contrataId);
-    if (actual) {
-      actual.cuotas.push({ numeroCuota: i.numeroCuota, monto: i.pendiente });
-      actual.subtotal = round(actual.subtotal + i.pendiente);
-    } else {
-      porContrata.set(i.contrataId, {
-        contrataId: i.contrataId,
-        tipo: i.tipo,
-        numCuotas: i.numCuotas,
-        cuotas: [{ numeroCuota: i.numeroCuota, monto: i.pendiente }],
-        subtotal: i.pendiente,
-      });
-    }
-  }
-
   return {
     total: round(items.reduce((s, i) => s + i.pendiente, 0)),
     clienteNombre: cliente.nombre,
     clienteTelefono: cliente.telefono,
-    contratas: Array.from(porContrata.values()),
+    contratas: agruparCobroPorContrata(items),
   };
 }

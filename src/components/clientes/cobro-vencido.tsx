@@ -13,10 +13,12 @@ import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import {
+  calidadConexion,
   fetchConTimeout,
   mensajeDeError,
   TIMEOUT_ESCRITURA_MS,
 } from "@/lib/offline/conexion";
+import { getCobroVencidoDetalle } from "@/lib/offline/repo";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -61,6 +63,8 @@ export function CobroVencido({
     null
   );
   const [sinRecibo, setSinRecibo] = useState(false);
+  /** El cobro se aplicó local y todavía no viajó al servidor. */
+  const [offlinePendiente, setOfflinePendiente] = useState(false);
   // Se fija en el primer intento y se reutiliza en los reintentos: si el
   // servidor ya cobró pero la respuesta se perdió por la red, reintentar
   // con la misma key hace que el servidor devuelva el resultado ya
@@ -79,14 +83,20 @@ export function CobroVencido({
     setCargando(true);
     setError(null);
     try {
-      if (typeof navigator !== "undefined" && !navigator.onLine && ownerId) {
-        // Sin red no hay forma de obtener el desglose para el recibo de
-        // WhatsApp (eso solo lo calcula el servidor) — se aplica optimista
-        // y se avisa que el recibo se podrá enviar una vez sincronizado.
+      if (calidadConexion() === "sin-red" && ownerId) {
+        // El desglose se calcula ANTES de encolar: el efecto optimista de
+        // la cola marca las cuotas como pagadas, y después ya no habría
+        // nada pendiente que desglosar. Con esto el cliente recibe su
+        // recibo en el momento, aunque el cobro viaje al servidor más
+        // tarde — el desglose sale de Dexie, que ya tiene todo lo que hace
+        // falta (ver getCobroVencidoDetalle).
+        const detalle = await getCobroVencidoDetalle(ownerId, clienteId);
         await enqueue(ownerId, "cliente.cobrarVencidas", { clienteId });
         setTotal(0);
         setCuotas(0);
-        setSinRecibo(true);
+        setOfflinePendiente(true);
+        if (detalle) setResultado(detalle);
+        else setSinRecibo(true);
         return;
       }
       const key = idempotencyKey ?? crypto.randomUUID();
@@ -140,10 +150,18 @@ export function CobroVencido({
       <Card className="border-pagado/30">
         <CardContent className="space-y-3 p-4">
           <div>
-            <p className="text-xs text-muted-foreground">Cobro registrado</p>
+            <p className="text-xs text-muted-foreground">
+              {offlinePendiente ? "Cobro registrado sin conexión" : "Cobro registrado"}
+            </p>
             <p className="text-2xl font-bold text-pagado">
               {formatMoneda(resultado.total)}
             </p>
+            {offlinePendiente && (
+              <p className="text-xs text-muted-foreground">
+                Se sincroniza solo en cuanto haya señal. El recibo ya se puede
+                enviar.
+              </p>
+            )}
           </div>
           <ul className="space-y-1.5">
             {resultado.contratas.map((c) => (
