@@ -1,4 +1,5 @@
 import { db } from "@/lib/offline/db";
+import { calidadConexion, fetchConTimeout } from "@/lib/offline/conexion";
 
 type ContrataApi = {
   id: string;
@@ -42,7 +43,7 @@ type ContrataApi = {
 export async function syncContratas(ownerId: string): Promise<void> {
   const database = db;
   if (!database) return;
-  const res = await fetch("/api/contratas", { cache: "no-store" });
+  const res = await fetchConTimeout("/api/contratas", { cache: "no-store" });
   if (!res.ok) return;
   const contratas: ContrataApi[] = await res.json();
 
@@ -147,7 +148,7 @@ type ClienteApi = {
 export async function syncClientes(ownerId: string): Promise<void> {
   const database = db;
   if (!database) return;
-  const res = await fetch("/api/clientes", { cache: "no-store" });
+  const res = await fetchConTimeout("/api/clientes", { cache: "no-store" });
   if (!res.ok) return;
   const clientes: ClienteApi[] = await res.json();
 
@@ -196,7 +197,7 @@ type DeudorResumenApi = {
 export async function syncDeudores(ownerId: string): Promise<void> {
   const database = db;
   if (!database) return;
-  const res = await fetch("/api/deudores", { cache: "no-store" });
+  const res = await fetchConTimeout("/api/deudores", { cache: "no-store" });
   if (!res.ok) return;
   const data: { deudores: DeudorResumenApi[] } = await res.json();
 
@@ -250,7 +251,7 @@ export async function syncDeudorDetalle(
 ): Promise<void> {
   const database = db;
   if (!database) return;
-  const res = await fetch(`/api/deudores/${deudorId}`, { cache: "no-store" });
+  const res = await fetchConTimeout(`/api/deudores/${deudorId}`, { cache: "no-store" });
   if (!res.ok) return;
   const d: DeudorDetalleApi = await res.json();
   const totalAbonado = Math.round(
@@ -311,7 +312,7 @@ type ConfiguracionApi = {
 export async function syncConfiguracion(ownerId: string): Promise<void> {
   const database = db;
   if (!database) return;
-  const res = await fetch("/api/configuracion", { cache: "no-store" });
+  const res = await fetchConTimeout("/api/configuracion", { cache: "no-store" });
   if (!res.ok) return;
   const cfg: ConfiguracionApi = await res.json();
   await database.configuracion.put({ ownerId, ...cfg });
@@ -336,7 +337,7 @@ type CitaApi = {
 export async function syncCitas(ownerId: string): Promise<void> {
   const database = db;
   if (!database) return;
-  const res = await fetch("/api/citas", { cache: "no-store" });
+  const res = await fetchConTimeout("/api/citas", { cache: "no-store" });
   if (!res.ok) return;
   const citas: CitaApi[] = await res.json();
 
@@ -375,22 +376,42 @@ export async function syncCitas(ownerId: string): Promise<void> {
   });
 }
 
-async function ejecutarSync(ownerId: string): Promise<void> {
+async function ejecutarSync(ownerId: string, enSerie: boolean): Promise<void> {
+  const tareas = [
+    () => syncContratas(ownerId),
+    () => syncClientes(ownerId),
+    () => syncDeudores(ownerId),
+    () => syncConfiguracion(ownerId),
+    () => syncCitas(ownerId),
+  ];
   try {
-    await Promise.all([
-      syncContratas(ownerId),
-      syncClientes(ownerId),
-      syncDeudores(ownerId),
-      syncConfiguracion(ownerId),
-      syncCitas(ownerId),
-    ]);
+    if (enSerie) {
+      // En red lenta, cinco peticiones a la vez solo se estorban entre sí:
+      // compiten por un ancho de banda mínimo y todas tardan más. En serie
+      // cada una avanza a su ritmo y la app puede usar lo que ya llegó.
+      for (const tarea of tareas) await tarea();
+    } else {
+      await Promise.all(tareas.map((t) => t()));
+    }
   } catch {
-    // Sin red o error del servidor: la app sigue funcionando desde caché local.
+    // Sin red, timeout o error del servidor: la app sigue funcionando desde
+    // la caché local, que es justamente para lo que existe.
   }
 }
 
 /** Cola de sincronizaciones: nunca corren dos a la vez, pero tampoco se pierde ninguna. */
 let cadena: Promise<void> = Promise.resolve();
+
+/**
+ * Cada sync completo son ~1 MB. El bootstrap reacciona a los cambios de
+ * conexión del navegador y `connection.change` se dispara seguido en un
+ * celular en movimiento (cambia de antena, de wifi a datos), así que sin
+ * este mínimo entre syncs automáticos un trayecto en coche encadenaba
+ * decenas de descargas completas. No aplica a `forzar`: cuando el usuario
+ * pide datos frescos, se le dan.
+ */
+const MIN_MS_ENTRE_SYNCS_AUTOMATICOS = 30_000;
+let ultimoSyncAutomatico = 0;
 
 /**
  * Sincroniza todas las entidades cubiertas por la capa offline.
@@ -402,10 +423,26 @@ let cadena: Promise<void> = Promise.resolve();
  * silenciosamente un no-op si coincidían con el sync del montaje, dejando
  * en pantalla datos que el servidor ya no tiene.
  */
-export function syncAll(ownerId: string): Promise<void> {
-  if (typeof navigator === "undefined" || !navigator.onLine) {
-    return Promise.resolve();
+export function syncAll(
+  ownerId: string,
+  opciones: { forzar?: boolean } = {}
+): Promise<void> {
+  const calidad = calidadConexion();
+  if (calidad === "sin-red") return Promise.resolve();
+  // En red lenta el sync automático no corre solo: son cinco peticiones y
+  // cerca de 1 MB, suficiente para dejar la app inservible varios minutos
+  // en 3G. El botón «Recargar datos» pasa `forzar` y sí lo ejecuta, porque
+  // ahí el usuario decidió esperar a cambio de datos frescos.
+  if (calidad === "lenta" && !opciones.forzar) return Promise.resolve();
+
+  if (!opciones.forzar) {
+    const desdeElUltimo = Date.now() - ultimoSyncAutomatico;
+    if (desdeElUltimo < MIN_MS_ENTRE_SYNCS_AUTOMATICOS) return Promise.resolve();
+    ultimoSyncAutomatico = Date.now();
   }
-  cadena = cadena.catch(() => {}).then(() => ejecutarSync(ownerId));
+
+  cadena = cadena
+    .catch(() => {})
+    .then(() => ejecutarSync(ownerId, calidad === "lenta"));
   return cadena;
 }

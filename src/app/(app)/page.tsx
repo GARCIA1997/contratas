@@ -19,7 +19,8 @@ import {
   getIdsParaPrecarga,
   getCitasPendientes,
 } from "@/lib/offline/repo";
-import { precargarTodaLaApp } from "@/lib/offline/prefetch-all";
+import { precargarRutaDelDia } from "@/lib/offline/precarga-ligera";
+import { calidadConexion } from "@/lib/offline/conexion";
 import type { FiltroDashboard } from "@/lib/services/dashboard";
 import { formatMoneda, cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -62,15 +63,18 @@ export default function DashboardPage() {
     [ownerId]
   );
 
-  // El dashboard es la primera pantalla que se abre con señal — desde acá
-  // se precarga TODA la app (cada contrata/cliente/deudor y sus
-  // subpantallas) escalonado en el tiempo, para que perder la conexión
-  // después ya no deje ninguna pantalla nunca visitada pegada en negro.
+  // Precarga ligera y automática: solo la ruta del día y las citas, para
+  // que perder la señal a media visita no deje una pantalla en negro.
+  // Descargar TODA la app es otra cosa —deliberada y bajo demanda— y vive
+  // en el botón «Preparar para trabajar sin señal» (preparar-offline.ts).
   useEffect(() => {
-    if (!ownerId || typeof navigator === "undefined" || !navigator.onLine) return;
+    // Solo con señal buena: en 3G la precarga compite con lo que el usuario
+    // está tocando ahora mismo, y ahí vale más la pena responder rápido con
+    // lo que ya está en caché que adelantar pantallas.
+    if (!ownerId || calidadConexion() !== "rapida") return;
     let cancelar: (() => void) | undefined;
     getIdsParaPrecarga(ownerId).then((ids) => {
-      cancelar = precargarTodaLaApp(router, ids);
+      cancelar = precargarRutaDelDia(router, ids);
     });
     return () => cancelar?.();
   }, [ownerId, router]);

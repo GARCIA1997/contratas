@@ -17,6 +17,12 @@ import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { enqueue } from "@/lib/offline/queue";
 import {
+  fetchConTimeout,
+  mensajeDeError,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
+import { useIdempotencia } from "@/lib/offline/use-idempotencia";
+import {
   ContrataCreadaPanel,
   type ContrataCreada,
 } from "@/components/contratas/contrata-creada";
@@ -70,6 +76,7 @@ export function ContrataForm({
 }) {
   const router = useRouter();
   const claims = useAuthClaims();
+  const idem = useIdempotencia();
   const editando = !!inicial;
   const clienteFijo = !editando && !!clientePreseleccionado;
 
@@ -131,15 +138,20 @@ export function ContrataForm({
     // viene con él) a mitad de la escritura.
     const timer = setTimeout(() => {
       (async () => {
-        const res = await fetch("/api/contratas/preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
-        });
-        if (!res.ok || cancelado) return;
-        const data = await res.json();
-        setFechas(data.fechas);
-        if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
+        try {
+          const res = await fetchConTimeout("/api/contratas/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          });
+          if (!res.ok || cancelado) return;
+          const data = await res.json();
+          setFechas(data.fechas);
+          if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
+        } catch {
+          // Solo es la vista previa: sin red se deja el abono que ya haya
+          // escrito el usuario en vez de romper el formulario.
+        }
       })();
     }, 400);
     return () => {
@@ -211,24 +223,39 @@ export function ContrataForm({
       return;
     }
 
-    const res = await fetch(
-      editando ? `/api/contratas/${inicial!.id}` : "/api/contratas",
-      {
-        method: editando ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
+    let res: Response;
+    try {
+      res = await fetchConTimeout(
+        editando ? `/api/contratas/${inicial!.id}` : "/api/contratas",
+        {
+          method: editando ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // Sin esta clave, un reintento tras un timeout crearía una
+            // contrata duplicada: el servidor pudo haberla aplicado aunque
+            // la respuesta nunca llegara.
+            ...idem.header(),
+          },
+          body: JSON.stringify(payload),
+        },
+        TIMEOUT_ESCRITURA_MS
+      );
+    } catch (e) {
+      setGuardando(false);
+      setError(mensajeDeError(e));
+      return;
+    }
     setGuardando(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? "No se pudo guardar");
       return;
     }
+    idem.confirmado();
     const guardada = await res.json();
     // La UI lee de IndexedDB (offline-first): sin este sync la contrata
     // nueva no aparece en listas/dashboard hasta la próxima recarga completa.
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
+    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
 
     // Al crear no se navega de inmediato: se muestra la confirmación con la
     // opción de mandarle los detalles al cliente por WhatsApp, que es justo

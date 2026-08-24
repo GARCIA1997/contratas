@@ -66,6 +66,7 @@ export async function getDeudor(
 export async function crearDeudor(ownerId: string, input: DeudorInput) {
   return prisma.deudor.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       ownerId,
       nombre: input.nombre,
       deudaInicial: input.deudaInicial,

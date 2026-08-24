@@ -1,27 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, CloudOff, RefreshCw } from "lucide-react";
+import { AlertTriangle, CloudOff, Gauge, RefreshCw } from "lucide-react";
 import { conflictCount, pendingCount, reintentarConflictos } from "@/lib/offline/queue";
 import { db } from "@/lib/offline/db";
+import {
+  calidadConexion,
+  suscribirseAConexion,
+  type CalidadConexion,
+} from "@/lib/offline/conexion";
 
 /** Indicador mínimo de conectividad + operaciones pendientes de sincronizar. */
 export function SyncStatusBadge({ ownerId }: { ownerId: string }) {
-  const [online, setOnline] = useState(true);
+  const [calidad, setCalidad] = useState<CalidadConexion>("rapida");
   const [pending, setPending] = useState(0);
   const [conflictos, setConflictos] = useState(0);
   const [reintentando, setReintentando] = useState(false);
+  const online = calidad !== "sin-red";
 
   useEffect(() => {
-    setOnline(navigator.onLine);
-    const on = () => setOnline(true);
-    const off = () => setOnline(false);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
+    const leer = () => setCalidad(calidadConexion());
+    leer();
+    return suscribirseAConexion(leer);
   }, []);
 
   useEffect(() => {
@@ -57,7 +57,10 @@ export function SyncStatusBadge({ ownerId }: { ownerId: string }) {
     }
   }
 
-  if (online && pending === 0) return null;
+  // Con red lenta el badge se queda visible aunque no haya nada pendiente:
+  // es la única señal de que la app dejó de sincronizar sola, y sin ella
+  // parecería que los datos están al día cuando no lo están.
+  if (online && pending === 0 && calidad !== "lenta") return null;
 
   // Las operaciones "en conflicto" nunca se reintentan solas (ver
   // queue.ts) — sin esta distinción, un elemento atorado se veía igual que
@@ -84,6 +87,11 @@ export function SyncStatusBadge({ ownerId }: { ownerId: string }) {
         <>
           <CloudOff className="size-3" /> Sin conexión
           {pending > 0 && ` · ${pending} por sincronizar`}
+        </>
+      ) : calidad === "lenta" ? (
+        <>
+          <Gauge className="size-3" /> Red lenta
+          {pending > 0 && ` · ${pending} por enviar`}
         </>
       ) : (
         <>

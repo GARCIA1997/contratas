@@ -276,4 +276,103 @@ export async function applyLocalEffect(
     });
     return;
   }
+
+  // A diferencia de "contrata.crear"/"cita.crear" —que esperan al servidor
+  // porque él asigna el id— aquí el id se genera en el cliente y viaja en
+  // el payload, así que la fila se puede insertar de una vez. Importa:
+  // recién creado el cliente sin señal, hay que poder darle una contrata
+  // en el momento, con el cliente enfrente.
+  if (type === "cliente.crear") {
+    const { id, ownerId, nombre, telefono, direccion, referencia, notas } =
+      payload as {
+        id: string;
+        ownerId: string;
+        nombre: string;
+        telefono: string | null;
+        direccion: string | null;
+        referencia: string | null;
+        notas: string | null;
+      };
+    await db.clientes.put({
+      id,
+      ownerId,
+      nombre,
+      telefono,
+      direccion,
+      referencia,
+      notas,
+      creadoEn: new Date().toISOString(),
+      _dirty: true,
+    });
+    return;
+  }
+
+  if (type === "cliente.editar") {
+    const { clienteId, input } = payload as {
+      clienteId: string;
+      input: Partial<{
+        nombre: string;
+        telefono: string | null;
+        direccion: string | null;
+        referencia: string | null;
+        notas: string | null;
+      }>;
+    };
+    await db.clientes.update(clienteId, { ...input, _dirty: true });
+    return;
+  }
+
+  if (type === "cliente.eliminar") {
+    const { clienteId } = payload as { clienteId: string };
+    // Borrado lógico: `_deletedAt` lo esconde de las listas pero conserva la
+    // fila hasta que el servidor confirme, para que `syncClientes` no la
+    // reviva mientras la operación sigue en la cola.
+    await db.clientes.update(clienteId, {
+      _deletedAt: new Date().toISOString(),
+      _dirty: true,
+    });
+    return;
+  }
+
+  if (type === "deudor.crear") {
+    const { id, ownerId, nombre, deudaInicial, notas } = payload as {
+      id: string;
+      ownerId: string;
+      nombre: string;
+      deudaInicial: number;
+      notas: string | null;
+    };
+    await db.deudores.put({
+      id,
+      ownerId,
+      nombre,
+      deudaInicial,
+      notas,
+      creadoEn: new Date().toISOString(),
+      saldoActual: deudaInicial,
+      numAbonos: 0,
+      _dirty: true,
+    });
+    return;
+  }
+
+  if (type === "deudor.editar") {
+    const { deudorId, input } = payload as {
+      deudorId: string;
+      input: Partial<{ nombre: string; deudaInicial: number; notas: string | null }>;
+    };
+    const deudor = await db.deudores.get(deudorId);
+    if (!deudor) return;
+    // Cambiar la deuda inicial mueve el saldo en la misma proporción: lo
+    // abonado no cambia, pero lo que resta sí.
+    const abonado = deudor.deudaInicial - deudor.saldoActual;
+    await db.deudores.update(deudorId, {
+      ...input,
+      ...(input.deudaInicial !== undefined
+        ? { saldoActual: Math.round((input.deudaInicial - abonado) * 100) / 100 }
+        : {}),
+      _dirty: true,
+    });
+    return;
+  }
 }

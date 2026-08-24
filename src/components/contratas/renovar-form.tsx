@@ -16,6 +16,12 @@ import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { enqueue } from "@/lib/offline/queue";
 import {
+  fetchConTimeout,
+  mensajeDeError,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
+import { useIdempotencia } from "@/lib/offline/use-idempotencia";
+import {
   ReciboEntregaPanel,
   type ContrataEntregada,
 } from "@/components/contratas/recibo-entrega";
@@ -59,6 +65,7 @@ export function RenovarForm({
   onRenovada?: (info?: { contrataId: string | null; offline: boolean }) => void;
 }) {
   const claims = useAuthClaims();
+  const idem = useIdempotencia();
   const [incluirOtras, setIncluirOtras] = useState(false);
   const [pendienteSync, setPendienteSync] = useState(false);
   const [renovada, setRenovada] = useState<ContrataEntregada & { id: string } | null>(
@@ -92,15 +99,20 @@ export function RenovarForm({
     let cancelado = false;
     const timer = setTimeout(() => {
       (async () => {
-        const res = await fetch("/api/contratas/preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
-        });
-        if (!res.ok || cancelado) return;
-        const data = await res.json();
-        setFechas(data.fechas);
-        if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
+        try {
+          const res = await fetchConTimeout("/api/contratas/preview", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          });
+          if (!res.ok || cancelado) return;
+          const data = await res.json();
+          setFechas(data.fechas);
+          if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
+        } catch {
+          // Solo es la vista previa: sin red se deja el abono que ya haya
+          // escrito el usuario en vez de romper el formulario.
+        }
       })();
     }, 400);
     return () => {
@@ -151,17 +163,29 @@ export function RenovarForm({
       return;
     }
 
-    const res = await fetch(`/api/contratas/${contrataId}/renovar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
+    let res: Response;
+    try {
+      res = await fetchConTimeout(
+        `/api/contratas/${contrataId}/renovar`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...idem.header() },
+          body: JSON.stringify(input),
+        },
+        TIMEOUT_ESCRITURA_MS
+      );
+    } catch (e) {
+      setGuardando(false);
+      setError(mensajeDeError(e, "No se pudo renovar"));
+      return;
+    }
     setGuardando(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? "No se pudo renovar");
       return;
     }
+    idem.confirmado();
     const data = await res.json();
     // onRenovada() (marca "completado" en la página) va ANTES de syncAll:
     // syncAll escribe en Dexie, y el useLiveQuery de la página reacciona a
@@ -171,7 +195,7 @@ export function RenovarForm({
     // false y saca al usuario del panel de confirmación antes de que se
     // alcance a mostrar.
     onRenovada?.({ contrataId: data.nuevaContrata.id, offline: false });
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
+    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
     // Igual que "nueva contrata": se muestra la confirmación con la opción
     // de mandarle los detalles al cliente por WhatsApp (mismo detalle
     // completo, calendario incluido) en vez de navegar de inmediato.

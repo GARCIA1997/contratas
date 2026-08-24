@@ -9,6 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { enqueue } from "@/lib/offline/queue";
+import {
+  fetchConTimeout,
+  mensajeDeError,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
+import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 
 export type DeudorInicial = {
   id: string;
@@ -20,6 +27,7 @@ export type DeudorInicial = {
 export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
   const router = useRouter();
   const claims = useAuthClaims();
+  const idem = useIdempotencia();
   const editando = !!inicial;
 
   const [nombre, setNombre] = useState(inicial?.nombre ?? "");
@@ -38,26 +46,63 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
     if (isNaN(deuda) || deuda < 0) return setError("Deuda inválida");
 
     setGuardando(true);
-    const res = await fetch(
-      editando ? `/api/deudores/${inicial!.id}` : "/api/deudores",
-      {
-        method: editando ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nombre: nombre.trim(),
-          deudaInicial: deuda,
-          notas: notas.trim() || null,
-        }),
+
+    const datos = {
+      nombre: nombre.trim(),
+      deudaInicial: deuda,
+      notas: notas.trim() || null,
+    };
+
+    if (
+      typeof navigator !== "undefined" &&
+      !navigator.onLine &&
+      claims.ready &&
+      claims.ownerId
+    ) {
+      const id = editando ? inicial!.id : crypto.randomUUID();
+      try {
+        await enqueue(
+          claims.ownerId,
+          editando ? "deudor.editar" : "deudor.crear",
+          editando
+            ? { deudorId: id, input: datos }
+            : { id, ownerId: claims.ownerId, ...datos }
+        );
+      } catch (e) {
+        setGuardando(false);
+        setError(mensajeDeError(e, "No se pudo guardar sin conexión"));
+        return;
       }
-    );
+      setGuardando(false);
+      router.push(`/deudores/${id}`);
+      return;
+    }
+
+    let res: Response;
+    try {
+      res = await fetchConTimeout(
+        editando ? `/api/deudores/${inicial!.id}` : "/api/deudores",
+        {
+          method: editando ? "PUT" : "POST",
+          headers: { "Content-Type": "application/json", ...idem.header() },
+          body: JSON.stringify(datos),
+        },
+        TIMEOUT_ESCRITURA_MS
+      );
+    } catch (e) {
+      setGuardando(false);
+      setError(mensajeDeError(e));
+      return;
+    }
     setGuardando(false);
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setError(data.error ?? "No se pudo guardar");
       return;
     }
+    idem.confirmado();
     const guardado = await res.json();
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId);
+    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
     router.push(`/deudores/${guardado.id}`);
     router.refresh();
   }

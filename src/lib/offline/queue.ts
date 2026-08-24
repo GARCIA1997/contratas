@@ -3,6 +3,11 @@ import { reportarError } from "@/lib/report-error";
 import { db, type QueueOpType } from "@/lib/offline/db";
 import { applyLocalEffect } from "@/lib/offline/effects";
 import {
+  calidadConexion,
+  fetchConTimeout,
+  TIMEOUT_ESCRITURA_MS,
+} from "@/lib/offline/conexion";
+import {
   syncContratas,
   syncClientes,
   syncDeudores,
@@ -113,6 +118,45 @@ const ENDPOINTS: Record<
       body: JSON.stringify({ contrataCreadaId: p.contrataCreadaId ?? null }),
     },
   }),
+  // El `id` viaja en el cuerpo: el registro nace con su id definitivo, así
+  // una contrata creada offline puede referenciar a un cliente también
+  // creado offline sin tener que remapear ids al sincronizar.
+  "cliente.crear": (p) => ({
+    url: `/api/clientes`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    },
+  }),
+  "cliente.editar": (p) => ({
+    url: `/api/clientes/${p.clienteId}`,
+    init: {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p.input),
+    },
+  }),
+  "cliente.eliminar": (p) => ({
+    url: `/api/clientes/${p.clienteId}`,
+    init: { method: "DELETE" },
+  }),
+  "deudor.crear": (p) => ({
+    url: `/api/deudores`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p),
+    },
+  }),
+  "deudor.editar": (p) => ({
+    url: `/api/deudores/${p.deudorId}`,
+    init: {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(p.input),
+    },
+  }),
 };
 
 /**
@@ -130,8 +174,13 @@ export async function enqueue(
   const id = crypto.randomUUID();
   await database.transaction(
     "rw",
+    // Toda tabla que `applyLocalEffect` pueda tocar tiene que estar en el
+    // alcance de la transacción: Dexie lanza si el efecto escribe en una
+    // que no se declaró aquí, y el formulario se quedaba en «Guardando…»
+    // para siempre porque el enqueue no estaba protegido.
     [
       database.writeQueue,
+      database.clientes,
       database.contratas,
       database.pagos,
       database.deudores,
@@ -171,7 +220,12 @@ let reflushPendiente: string | null = null;
 /** Vacía la cola en orden de creación contra las rutas API reales. */
 export async function flushQueue(ownerId: string): Promise<void> {
   const database = db;
-  if (!database || typeof navigator === "undefined" || !navigator.onLine) {
+  // A diferencia del pull-sync, la cola SÍ se vacía en red lenta: son las
+  // escrituras del usuario (cobros, abonos) y dejarlas esperando a una red
+  // buena es peor que tardarse. Lo que las protege ahora es el techo de
+  // espera de `fetchConTimeout` — antes, un fetch colgado en 3G detenía la
+  // cola entera sin recuperarse.
+  if (!database || calidadConexion() === "sin-red") {
     return;
   }
   if (flushing) {
@@ -205,10 +259,14 @@ export async function flushQueue(ownerId: string): Promise<void> {
       await database.writeQueue.update(op.id, { status: "syncing" });
       try {
         const { url, init } = ENDPOINTS[op.type](op.payload);
-        const res = await fetch(url, {
-          ...init,
-          headers: { ...(init.headers ?? {}), "Idempotency-Key": op.id },
-        });
+        const res = await fetchConTimeout(
+          url,
+          {
+            ...init,
+            headers: { ...(init.headers ?? {}), "Idempotency-Key": op.id },
+          },
+          TIMEOUT_ESCRITURA_MS
+        );
         if (!res.ok) {
           const status = res.status;
           const esConflicto = status >= 400 && status < 500;
@@ -344,6 +402,41 @@ async function reconciliarTrasExito(
     await syncCitas(ownerId);
     return;
   }
+  if (type === "cliente.crear" || type === "cliente.editar") {
+    // `limpiarDirtySiSinPendientes` solo conoce contrataId/deudorId, así que
+    // el _dirty del cliente se limpia aquí: si no, `syncClientes` se
+    // rehusaría a pisarlo y el registro quedaría congelado con los datos
+    // locales para siempre.
+    const database = db;
+    const clienteId = (payload.id ?? payload.clienteId) as string | undefined;
+    if (database && clienteId) {
+      const existe = await database.clientes.get(clienteId);
+      if (existe) await database.clientes.update(clienteId, { _dirty: false });
+    }
+    await syncClientes(ownerId);
+    return;
+  }
+
+  if (type === "cliente.eliminar") {
+    // Ya no existe en el servidor: se saca de la caché en vez de limpiar su
+    // _dirty, que lo dejaría reaparecer en las listas.
+    const database = db;
+    if (database) await database.clientes.delete(payload.clienteId as string);
+    await syncClientes(ownerId);
+    return;
+  }
+
+  if (type === "deudor.crear" || type === "deudor.editar") {
+    const database = db;
+    const deudorId = (payload.id ?? payload.deudorId) as string | undefined;
+    if (database && deudorId) {
+      const existe = await database.deudores.get(deudorId);
+      if (existe) await database.deudores.update(deudorId, { _dirty: false });
+    }
+    await syncDeudores(ownerId);
+    return;
+  }
+
   if (
     type === "cita.editar" ||
     type === "cita.cancelar" ||
