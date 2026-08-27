@@ -1,44 +1,42 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  esAndroid,
+  estadoInstalador,
+  instalarApp,
+  suscribirseAInstalador,
+} from "@/lib/pwa/instalador";
 
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
-
+/**
+ * Respaldo manual en Configuración: vive aquí para el caso en que el aviso
+ * automático (`InstalarAndroidBanner`) no aplica — ya se descartó, el
+ * navegador no ofreció el instalador nativo, o no es Android. Comparte el
+ * mismo estado que el banner (ver `lib/pwa/instalador.ts`) en vez de poner
+ * su propio listener de `beforeinstallprompt`.
+ */
 export function InstallButton() {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(
-    null
-  );
-  const [instalada, setInstalada] = useState(false);
+  const [estado, setEstado] = useState(estadoInstalador());
+  const [ocupado, setOcupado] = useState(false);
 
   useEffect(() => {
-    const standalone =
-      window.matchMedia?.("(display-mode: standalone)").matches ||
-      // iOS Safari
-      (window.navigator as unknown as { standalone?: boolean }).standalone;
-    if (standalone) setInstalada(true);
-
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as BeforeInstallPromptEvent);
-    };
-    const onInstalled = () => {
-      setInstalada(true);
-      setDeferred(null);
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
+    setEstado(estadoInstalador());
+    return suscribirseAInstalador(() => setEstado(estadoInstalador()));
   }, []);
 
-  if (instalada) {
+  async function instalar() {
+    setOcupado(true);
+    try {
+      await instalarApp();
+      setEstado(estadoInstalador());
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  if (estado.instalada) {
     return (
       <p className="text-center text-xs text-muted-foreground">
         La app está instalada en este dispositivo.
@@ -46,25 +44,37 @@ export function InstallButton() {
     );
   }
 
-  if (!deferred) {
+  if (estado.instalable) {
     return (
-      <p className="text-center text-xs text-muted-foreground">
-        Para instalar: usa «Añadir a pantalla de inicio» desde el menú del
-        navegador.
-      </p>
+      <Button variant="outline" className="w-full" disabled={ocupado} onClick={instalar}>
+        <Download className="size-4" /> {ocupado ? "Instalando…" : "Instalar aplicación"}
+      </Button>
     );
   }
 
-  async function instalar() {
-    if (!deferred) return;
-    await deferred.prompt();
-    await deferred.userChoice;
-    setDeferred(null);
+  // El navegador nunca ofreció el evento nativo — o ya se usó. En Android
+  // esto normalmente significa que Chrome no considera el momento oportuno
+  // (a veces exige un poco de uso previo del sitio), así que en vez de un
+  // botón que no haría nada, se dan los pasos manuales concretos: son
+  // siempre los mismos dos, y evitan una llamada de soporte.
+  if (esAndroid()) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-secondary/30 p-3 text-xs text-muted-foreground">
+        <p className="mb-1.5 font-medium text-foreground">Instalar manualmente</p>
+        <p>
+          Toca{" "}
+          <MoreVertical className="inline-block size-3.5 align-text-bottom" />{" "}
+          arriba a la derecha y elige «Instalar app» o «Añadir a pantalla de
+          inicio».
+        </p>
+      </div>
+    );
   }
 
   return (
-    <Button variant="outline" className="w-full" onClick={instalar}>
-      <Download className="size-4" /> Instalar aplicación
-    </Button>
+    <p className="text-center text-xs text-muted-foreground">
+      Para instalar: usa «Añadir a pantalla de inicio» desde el menú del
+      navegador.
+    </p>
   );
 }

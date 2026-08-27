@@ -10,6 +10,7 @@ import { SyncStatusBadge } from "@/components/offline/sync-status-badge";
 import { RefreshButton } from "@/components/offline/refresh-button";
 import { PrepararOfflineButton } from "@/components/offline/preparar-offline-button";
 import { OfflineToast } from "@/components/offline/offline-toast";
+import { InstalarAndroidBanner } from "@/components/pwa/instalar-android-banner";
 import { VersionBadge } from "@/components/version-badge";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 
@@ -44,6 +45,7 @@ export default function AppLayout({
     // `md:`/`lg:` nada cambia — el celular queda pixel-igual.
     <div className="min-h-dvh md:flex">
       <OfflineToast />
+      <InstalarAndroidBanner />
       <OfflineBootstrap ownerId={ownerId} />
       <SidebarNav />
       <div className="min-w-0 flex-1">
