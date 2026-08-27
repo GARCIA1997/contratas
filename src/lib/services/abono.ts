@@ -55,6 +55,8 @@ export type PagoParaAbono = {
 export type ContrataParaAbono = {
   contrataId: string;
   tipo: TipoContrata;
+  /** Capital prestado — se muestra junto al tipo en el desglose del abono. */
+  monto: number;
   abono: number;
   numCuotas: number;
   pagos: PagoParaAbono[];
@@ -93,6 +95,7 @@ type CuotaPendiente = {
 type ContrataProcesada = {
   contrataId: string;
   tipo: TipoContrata;
+  monto: number;
   numCuotas: number;
   cuotasRestantes: number;
   semana: CuotaPendiente | null;
@@ -130,6 +133,7 @@ function procesarContrata(c: ContrataParaAbono, limite: Date): ContrataProcesada
   return {
     contrataId: c.contrataId,
     tipo: c.tipo,
+    monto: c.monto,
     numCuotas: c.numCuotas,
     cuotasRestantes: c.pagos.filter((p) => !p.pagado).length,
     semana: semana
@@ -208,6 +212,7 @@ export function distribuirAbono(
       porContrata.set(a.contrataId, {
         contrataId: a.contrataId,
         tipo: info.tipo,
+        montoContrata: info.monto,
         numCuotas: info.numCuotas,
         cuotas: [{ numeroCuota: a.numeroCuota, monto: a.montoAplicado }],
         subtotal: a.montoAplicado,
@@ -257,6 +262,7 @@ export async function ejecutarAbonoParcial(
   const paraAbono: ContrataParaAbono[] = contratas.map((c) => ({
     contrataId: c.id,
     tipo: c.tipo,
+    monto: c.monto,
     abono: c.abono,
     numCuotas: c.pagos.length,
     pagos: c.pagos.map((p) => ({

@@ -717,6 +717,7 @@ export async function getContratasParaAbono(
   return conPagos.map(({ contrata, pagos }) => ({
       contrataId: contrata.id,
       tipo: contrata.tipo,
+      monto: contrata.monto,
       abono: contrata.abono,
       numCuotas: pagos.length,
       pagos: pagos.map((p) => ({

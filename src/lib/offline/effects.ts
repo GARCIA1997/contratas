@@ -238,6 +238,7 @@ export async function applyLocalEffect(
         return {
           contrataId: c.id,
           tipo: c.tipo,
+          monto: c.monto,
           abono: c.abono,
           numCuotas: c.numCuotas,
           pagos,

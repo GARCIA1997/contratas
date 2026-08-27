@@ -177,7 +177,15 @@ export function AbonarModal({
                       className="rounded-2xl border border-border/60 bg-secondary/30 px-3 py-2 text-sm"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-medium">{TIPO_LABEL[c.tipo]}</span>
+                        <span className="font-medium">
+                          {TIPO_LABEL[c.tipo]}
+                          {c.montoContrata !== undefined && (
+                            <span className="font-normal text-muted-foreground">
+                              {" "}
+                              · {formatMoneda(c.montoContrata)}
+                            </span>
+                          )}
+                        </span>
                         <span className="font-semibold">{formatMoneda(c.subtotal)}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -232,7 +240,15 @@ export function AbonarModal({
                             className="rounded-2xl border border-border/60 bg-secondary/30 px-3 py-2 text-sm"
                           >
                             <div className="flex items-center justify-between">
-                              <span className="font-medium">{TIPO_LABEL[c.tipo]}</span>
+                              <span className="font-medium">
+                                {TIPO_LABEL[c.tipo]}
+                                {c.montoContrata !== undefined && (
+                                  <span className="font-normal text-muted-foreground">
+                                    {" "}
+                                    · {formatMoneda(c.montoContrata)}
+                                  </span>
+                                )}
+                              </span>
                               <span className="font-semibold">{formatMoneda(c.subtotal)}</span>
                             </div>
                             <p className="text-xs text-muted-foreground">

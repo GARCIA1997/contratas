@@ -24,7 +24,16 @@ function contrata(
   abono: number,
   pagos: PagoParaAbono[]
 ): ContrataParaAbono {
-  return { contrataId, tipo: "SEMANAL", abono, numCuotas: pagos.length, pagos };
+  return {
+    contrataId,
+    tipo: "SEMANAL",
+    // Arbitrario para las pruebas — no afecta el reparto, solo se muestra
+    // como referencia en el desglose.
+    monto: abono * pagos.length,
+    abono,
+    numCuotas: pagos.length,
+    pagos,
+  };
 }
 
 /**
@@ -92,6 +101,13 @@ describe("distribuirAbono — etapa 1 (la semana de todas primero)", () => {
       "a-cinco-pagos",
       "b-diez-pagos",
     ]);
+  });
+
+  it("el recibo incluye el capital prestado de cada contrata", () => {
+    const r = distribuirAbono(escenarioBase(), 650, HOY);
+    const deA = r.contratas.find((c) => c.contrataId === "a-cinco-pagos")!;
+    // monto = abono * numCuotas por construcción del fixture (300 * 5).
+    expect(deA.montoContrata).toBe(1500);
   });
 });
 
