@@ -90,6 +90,14 @@ const ENDPOINTS: Record<
     url: `/api/clientes/${p.clienteId}/cobrar-vencidas`,
     init: { method: "POST" },
   }),
+  "cliente.abonarParcial": (p) => ({
+    url: `/api/clientes/${p.clienteId}/abonar`,
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ monto: p.monto }),
+    },
+  }),
   "cita.crear": (p) => ({
     url: `/api/citas`,
     init: {
@@ -382,7 +390,7 @@ async function reconciliarTrasExito(
     await syncDeudorDetalle(ownerId, payload.deudorId as string);
     return;
   }
-  if (type === "cliente.cobrarVencidas") {
+  if (type === "cliente.cobrarVencidas" || type === "cliente.abonarParcial") {
     const database = db;
     if (!database) return;
     const clienteId = payload.clienteId as string;

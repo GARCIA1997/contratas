@@ -18,6 +18,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EliminarCliente } from "@/components/clientes/eliminar-cliente";
 import { HistorialContratas } from "@/components/clientes/historial-contratas";
 import { CobroVencido } from "@/components/clientes/cobro-vencido";
+import { AbonarModal } from "@/components/clientes/abonar-modal";
+import { enBetaAbonoParcial } from "@/lib/beta";
 import { ScorePagoBadge } from "@/components/score-pago-badge";
 import { CitaCard } from "@/components/citas/cita-card";
 import { cn, formatMoneda } from "@/lib/utils";
@@ -75,6 +77,7 @@ export default function ClientePerfilPage() {
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready ? claims.esAdmin : false;
+  const enBetaAbono = enBetaAbonoParcial(claims.ready ? claims.email : null);
 
   const perfil = useLiveQuery(
     () => (ownerId ? getClientePerfil(ownerId, params.id) : undefined),
@@ -223,6 +226,17 @@ export default function ClientePerfilPage() {
           totalInicial={previewLocal.total}
           cuotasInicial={previewLocal.items}
           ownerId={ownerId}
+        />
+      )}
+
+      {/* Beta temporal — ver lib/beta.ts. */}
+      {esAdmin && enBetaAbono && ownerId && (
+        <AbonarModal
+          clienteId={perfil.id}
+          ownerId={ownerId}
+          nombreApp={extras.nombreApp ?? "Kredired"}
+          clienteNombre={perfil.nombre}
+          telefono={perfil.telefono}
         />
       )}
 

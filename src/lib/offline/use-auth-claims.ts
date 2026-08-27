@@ -12,12 +12,22 @@ import { onAuthChange } from "@/lib/offline/session-guard";
 
 type Resultado =
   | { ready: false }
-  | { ready: true; ownerId: null; esAdmin: false; nombre: null; offline: boolean }
+  | {
+      ready: true;
+      ownerId: null;
+      esAdmin: false;
+      nombre: null;
+      email: null;
+      offline: boolean;
+    }
   | {
       ready: true;
       ownerId: string;
       esAdmin: boolean;
       nombre: string | null;
+      /** Identidad de login (en esta app, el número de teléfono). Usada
+       *  hoy solo para gates temporales de beta (ver `lib/beta.ts`). */
+      email: string | null;
       offline: boolean;
     };
 
@@ -67,6 +77,7 @@ export function useAuthClaims(): Resultado {
       ownerId: session.user.ownerId || session.user.id,
       esAdmin: session.user.rol === "ADMIN",
       nombre: session.user.name ?? null,
+      email: session.user.email ?? null,
       offline: false,
     };
   }
@@ -82,6 +93,7 @@ export function useAuthClaims(): Resultado {
       ownerId: cached!.ownerId ?? cached!.userId,
       esAdmin: cached!.rol === "ADMIN",
       nombre: cached!.nombre,
+      email: cached!.email || null,
       offline: true,
     };
   }
@@ -94,5 +106,5 @@ export function useAuthClaims(): Resultado {
     return { ready: false };
   }
 
-  return { ready: true, ownerId: null, esAdmin: false, nombre: null, offline };
+  return { ready: true, ownerId: null, esAdmin: false, nombre: null, email: null, offline };
 }
