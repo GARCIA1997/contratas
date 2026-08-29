@@ -12,7 +12,7 @@
  */
 
 /** Abono parcial con reparto automático — ver plan en el PR correspondiente. */
-const BETA_ABONO_PARCIAL = new Set(["3131128425"]);
+const BETA_ABONO_PARCIAL = new Set(["3131128425", "3131182974"]);
 
 export function enBetaAbonoParcial(email: string | null): boolean {
   return email !== null && BETA_ABONO_PARCIAL.has(email);
