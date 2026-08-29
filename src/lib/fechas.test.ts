@@ -64,16 +64,40 @@ describe("calcularFechasPago", () => {
     expect(fechas[1].getTime() - fechas[0].getTime()).toBe(15 * 24 * 60 * 60 * 1000);
   });
 
-  it("QUINCENAL modo DIAS_1_Y_15: la cuota 1 es la fecha de inicio, las siguientes caen en día 1 o 15", () => {
+  it("QUINCENAL modo DIAS_1_Y_15: la cuota 1 se alinea al día 1 o 15 más cercano", () => {
+    // 10 de julio está a 5 días del 15 y a 9 del día 1 — el 15 es lo más cercano.
     const fechas = calcularFechasPago("QUINCENAL", "DIAS_1_Y_15", new Date(2026, 6, 10), 4, 1);
-    expect(fechas[0].getDate()).toBe(10);
-    for (const f of fechas.slice(1)) {
+    expect(fechas[0].getDate()).toBe(15);
+    for (const f of fechas) {
       expect([1, 15]).toContain(f.getDate());
     }
   });
 
-  it("QUINCENAL modo días 15 y último: la cuota 1 es la fecha de inicio literal", () => {
+  it("QUINCENAL modo días 15 y último: la cuota 1 se alinea al ancla más cercana, no se queda suelta", () => {
+    // 20 de julio está a 5 días del 15 y a 11 del último (31) — el 15 es lo más cercano.
     const fechas = calcularFechasPago("QUINCENAL", "DIAS_15_Y_ULTIMO", new Date(2026, 6, 20), 3, 1);
-    expect(fechas[0].getDate()).toBe(20);
+    expect(fechas[0].getDate()).toBe(15);
+  });
+
+  it("QUINCENAL modo días 15 y último: no genera dos cuotas pegadas cerca de fin de mes (bug reportado)", () => {
+    // 30 de agosto (2026, mes de 31 días) está a 1 día del último día del
+    // mes — antes del fix, la cuota 1 se quedaba en el 30 sin alinear y la
+    // cuota 2 saltaba al 31 (siguienteQuincenaFija), generando dos pagos
+    // casi pegados. Ahora la cuota 1 misma debe caer en el 31.
+    const fechas = calcularFechasPago("QUINCENAL", "DIAS_15_Y_ULTIMO", new Date(2026, 7, 30), 3, 1);
+    expect(fechas[0].getDate()).toBe(31);
+    expect(fechas[0].getMonth()).toBe(7); // agosto
+    // La siguiente cuota debe ser el 15 del mes siguiente, no otra fecha de agosto.
+    expect(fechas[1].getDate()).toBe(15);
+    expect(fechas[1].getMonth()).toBe(8); // septiembre
+    // Ninguna fecha debe repetirse ni quedar a un solo día de otra.
+    const dias = fechas.map((f) => f.getTime());
+    expect(new Set(dias).size).toBe(dias.length);
+  });
+
+  it("QUINCENAL modo días 15 y último: respeta la fecha si ya cae exacto en un ancla", () => {
+    const fechas = calcularFechasPago("QUINCENAL", "DIAS_15_Y_ULTIMO", new Date(2026, 6, 15), 2, 1);
+    expect(fechas[0].getDate()).toBe(15);
+    expect(fechas[0].getMonth()).toBe(6);
   });
 });
