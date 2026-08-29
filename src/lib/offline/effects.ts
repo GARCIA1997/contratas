@@ -3,6 +3,7 @@ import { db } from "@/lib/offline/db";
 import type { QueueOpType } from "@/lib/offline/db";
 import { DIAS_PROXIMO_VENCIMIENTO } from "@/lib/contrata";
 import { anclarFechaCliente } from "@/lib/fechas";
+import { distribuirAbono } from "@/lib/services/abono";
 
 /**
  * Aplica el efecto local (optimista) de una operación encolada directamente
@@ -220,6 +221,50 @@ export async function applyLocalEffect(
       }
       await db.contratas.update(c.id, { _dirty: true });
     }
+    return;
+  }
+
+  if (type === "cliente.abonarParcial") {
+    const { clienteId, monto } = payload as { clienteId: string; monto: number };
+    const contratas = (
+      await db.contratas.where("clienteId").equals(clienteId).toArray()
+    ).filter((c) => !c._deletedAt && !c.convertidaADeuda);
+
+    const pagosPorId = new Map<string, { montoAbonado: number }>();
+    const paraAbono = await Promise.all(
+      contratas.map(async (c) => {
+        const pagos = await db!.pagos.where("contrataId").equals(c.id).toArray();
+        for (const p of pagos) pagosPorId.set(p.id, p);
+        return {
+          contrataId: c.id,
+          tipo: c.tipo,
+          monto: c.monto,
+          abono: c.abono,
+          numCuotas: c.numCuotas,
+          pagos,
+        };
+      })
+    );
+
+    // Mismo `distribuirAbono` que corre en el servidor — se calcula igual
+    // aquí para que lo que el cobrador ya vio en la vista previa (armada
+    // con estos mismos datos) sea EXACTAMENTE lo que queda aplicado local,
+    // sin sorpresas cuando sincronice.
+    const resultado = distribuirAbono(paraAbono, monto);
+
+    const ahora = new Date().toISOString();
+    const contratasTocadas = new Set<string>();
+    for (const a of resultado.aplicaciones) {
+      const montoAbonadoPrevio = pagosPorId.get(a.pagoId)?.montoAbonado ?? 0;
+      await db.pagos.update(a.pagoId, {
+        montoAbonado: montoAbonadoPrevio + a.montoAplicado,
+        ...(a.quedaPagada ? { pagado: true, fechaPago: ahora } : {}),
+      });
+      contratasTocadas.add(a.contrataId);
+    }
+    await Promise.all(
+      Array.from(contratasTocadas).map((id) => db!.contratas.update(id, { _dirty: true }))
+    );
     return;
   }
 

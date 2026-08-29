@@ -27,6 +27,7 @@ import {
   type CuotaVencidaItem,
   type ResultadoCobroVencidas,
 } from "@/lib/services/cobros";
+import type { ContrataParaAbono } from "@/lib/services/abono";
 import { citasPendientesOrdenadas } from "@/lib/citas";
 import type { CitaLocal } from "@/lib/offline/db";
 
@@ -697,6 +698,36 @@ export async function getCobroVencidoDetalle(
     clienteTelefono: cliente.telefono,
     contratas: agruparCobroPorContrata(items),
   };
+}
+
+/**
+ * Todas las contratas activas del cliente con TODOS sus pagos (a diferencia
+ * de `itemsCobroVencido`, que solo trae lo vencido/próximo) — el reparto de
+ * un abono parcial puede llegar a adelantar cuotas futuras si el monto
+ * alcanza para más de lo que hoy está vencido, así que necesita ver el
+ * calendario completo de cada contrata. Se usa tanto para calcular la vista
+ * previa en el modal (con o sin señal) como para aplicar el efecto
+ * optimista offline en `offline/effects.ts`.
+ */
+export async function getContratasParaAbono(
+  ownerId: string,
+  clienteId: string
+): Promise<ContrataParaAbono[]> {
+  const conPagos = await contratasDelClienteParaSaldo(ownerId, clienteId);
+  return conPagos.map(({ contrata, pagos }) => ({
+      contrataId: contrata.id,
+      tipo: contrata.tipo,
+      monto: contrata.monto,
+      abono: contrata.abono,
+      numCuotas: pagos.length,
+      pagos: pagos.map((p) => ({
+        id: p.id,
+        numeroCuota: p.numeroCuota,
+        pagado: p.pagado,
+        montoAbonado: p.montoAbonado,
+        fechaProgramada: p.fechaProgramada,
+      })),
+    }));
 }
 
 export async function getConfiguracion(
