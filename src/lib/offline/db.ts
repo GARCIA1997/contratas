@@ -137,6 +137,7 @@ export type QueueOpType =
   | "cliente.unificar"
   | "deudor.abonar"
   | "cliente.cobrarVencidas"
+  | "cliente.abonarParcial"
   | "cita.crear"
   | "cita.editar"
   | "cita.cancelar"

@@ -12,6 +12,8 @@ import { Popup } from "@/components/ui/popup";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Saludo } from "@/components/saludo";
 import { CitaCard } from "@/components/citas/cita-card";
+import { AbonarModal } from "@/components/clientes/abonar-modal";
+import { enBetaAbonoParcial } from "@/lib/beta";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getRutaDelDia,
@@ -78,11 +80,16 @@ function Parada({
   nombreApp,
   cobrando,
   onSolicitarCobro,
+  ownerId,
+  mostrarAbono,
 }: {
   parada: ParadaRuta;
   nombreApp: string;
   cobrando: boolean;
   onSolicitarCobro: (parada: ParadaRuta) => void;
+  ownerId: string | null;
+  /** Beta temporal — ver lib/beta.ts. */
+  mostrarAbono: boolean;
 }) {
   return (
     <Card>
@@ -150,6 +157,16 @@ function Parada({
             <Check className="size-4" /> Cobrado
           </Button>
         </div>
+
+        {mostrarAbono && ownerId && (
+          <AbonarModal
+            clienteId={parada.clienteId}
+            ownerId={ownerId}
+            nombreApp={nombreApp}
+            clienteNombre={parada.nombre}
+            telefono={parada.telefono}
+          />
+        )}
       </CardContent>
     </Card>
   );
@@ -160,6 +177,7 @@ export default function RutaDelDiaPage() {
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const nombre = claims.ready ? claims.nombre : null;
+  const enBetaAbono = enBetaAbonoParcial(claims.ready ? claims.email : null);
 
   const paradas = useLiveQuery(
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
@@ -269,6 +287,8 @@ export default function RutaDelDiaPage() {
                 nombreApp={nombreApp}
                 cobrando={cobrandoId === p.clienteId}
                 onSolicitarCobro={setConfirmando}
+                ownerId={ownerId}
+                mostrarAbono={enBetaAbono}
               />
             ))}
           </div>

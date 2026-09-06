@@ -74,6 +74,10 @@ export type ContrataResumenCobro = {
   contrataId: string;
   tipo: TipoContrata;
   numCuotas: number;
+  /** Capital prestado — el "de cuánto es la contrata". Opcional: no todos
+   *  los llamadores tienen este dato a mano (p. ej. Ruta, que solo conoce
+   *  la cuota suelta, no la contrata completa). */
+  montoContrata?: number;
   cuotas: { numeroCuota: number; monto: number }[];
   subtotal: number;
 };
