@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { OfflineAwareLink } from "@/components/offline/offline-aware-link";
 import { ReporteEstadoResultados } from "@/components/estado-resultados/reporte";
+import { DescargarEstadoResultadosPdf } from "@/components/estado-resultados/descargar-pdf-boton";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getEstadoResultados } from "@/lib/offline/repo";
 import type { PeriodoEstado } from "@/lib/services/estado-resultados";
@@ -63,12 +64,18 @@ export default function EstadoResultadosPage() {
         </Card>
       ) : (
         <>
-          <SegmentedControl
-            value={periodo}
-            onChange={setPeriodo}
-            options={PERIODOS}
-            className="md:max-w-sm"
-          />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <SegmentedControl
+              value={periodo}
+              onChange={setPeriodo}
+              options={PERIODOS}
+              className="sm:max-w-sm sm:flex-1"
+            />
+            {/* Descarga el mismo período que se está viendo en pantalla. */}
+            <DescargarEstadoResultadosPdf periodo={periodo}>
+              Descargar PDF
+            </DescargarEstadoResultadosPdf>
+          </div>
 
           {!datos ? (
             <Card>

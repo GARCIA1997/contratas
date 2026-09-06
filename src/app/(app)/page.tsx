@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Saludo } from "@/components/saludo";
 import { TendenciaChart } from "@/components/tendencia-chart";
-import { AccesoEstadoResultados } from "@/components/estado-resultados/acceso-reporte";
+import { DescargarEstadoResultadosPdf } from "@/components/estado-resultados/descargar-pdf-boton";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getKpis,
@@ -142,7 +142,11 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {esAdmin && <AccesoEstadoResultados gananciaMes={kpis.ganancia.mes} />}
+      {esAdmin && (
+        <DescargarEstadoResultadosPdf className="w-full md:max-w-sm">
+          Estado de resultados en PDF
+        </DescargarEstadoResultadosPdf>
+      )}
 
       {/*
         En móvil (sin prefijo) esto sigue siendo un simple stack vertical
