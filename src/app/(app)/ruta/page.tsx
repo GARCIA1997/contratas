@@ -256,6 +256,12 @@ export default function RutaDelDiaPage() {
   // Las secciones por semana de la pestaña "Entregar". Se calcula siempre
   // (es barato y puro) para no meter un hook condicional.
   const semanas = agruparCitasPorSemana(citas ?? [], filtroEntrega);
+  // Cuántas quedan sin periodicidad — para explicar un filtro vacío en vez
+  // de dejarlo mudo (ver el mensaje de la lista vacía).
+  const sinPeriodicidad = agruparCitasPorSemana(
+    citas ?? [],
+    "SIN_DEFINIR"
+  ).reduce((n, s) => n + s.citas.length, 0);
 
   return (
     <div className="space-y-4">
@@ -367,9 +373,27 @@ export default function RutaDelDiaPage() {
               ))}
             </div>
           ) : citas && citas.length > 0 ? (
-            <p className="py-10 text-center text-xs text-muted-foreground">
-              No hay entregas {ETIQUETA_FILTRO[filtroEntrega]} pendientes.
-            </p>
+            <div className="space-y-1 py-10 text-center">
+              <p className="text-xs text-muted-foreground">
+                No hay entregas {ETIQUETA_FILTRO[filtroEntrega]} pendientes.
+              </p>
+              {/* Las citas agendadas antes de que existiera el campo de
+                  periodicidad no salen en ningún filtro, solo en "Todas".
+                  Sin este aviso, el filtro vacío parece un error de la app
+                  en vez de un dato que falta capturar. */}
+              {sinPeriodicidad > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Tienes{" "}
+                  <span className="font-semibold text-foreground">
+                    {sinPeriodicidad}
+                  </span>{" "}
+                  {sinPeriodicidad === 1 ? "entrega" : "entregas"} sin
+                  clasificar; {sinPeriodicidad === 1 ? "aparece" : "aparecen"}{" "}
+                  en «Todas». Al reagendarlas puedes indicar cada cuánto
+                  pagarán.
+                </p>
+              )}
+            </div>
           ) : (
             <p className="py-10 text-center text-xs text-muted-foreground">
               Sin citas agendadas.
