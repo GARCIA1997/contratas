@@ -1,11 +1,13 @@
 import {
   addDays,
   addMonths,
+  differenceInCalendarDays,
   getDate,
   getDay,
   lastDayOfMonth,
   setDate,
   startOfDay,
+  subMonths,
 } from "date-fns";
 import type { ModoQuincenal, TipoContrata } from "@prisma/client";
 
@@ -69,6 +71,43 @@ function siguienteQuincenaDia1y15(desde: Date): Date {
   return setDate(addMonths(desde, 1), 1);
 }
 
+/** El candidato de `candidatos` cuya distancia en días a `desde` es menor
+ *  (empate → gana el que aparece primero en la lista). */
+function masCercana(desde: Date, candidatos: Date[]): Date {
+  return candidatos.reduce((mejor, c) =>
+    Math.abs(differenceInCalendarDays(c, desde)) <
+    Math.abs(differenceInCalendarDays(mejor, desde))
+      ? c
+      : mejor
+  );
+}
+
+/**
+ * Alinea una fecha a la quincena fija (días 15 / último) más cercana —
+ * mismo espíritu que `alinearADiaCobro` para semanal: la cuota 1 puede
+ * moverse uno o dos días hacia adelante o hacia atrás para caer justo en
+ * el ancla, en vez de quedarse en una fecha suelta a un día de distancia
+ * (eso es lo que generaba dos cuotas casi pegadas: cuota 1 sin alinear +
+ * cuota 2 ya alineada por `siguienteQuincenaFija`).
+ */
+function alinearAQuincenaFija(desde: Date): Date {
+  return masCercana(desde, [
+    lastDayOfMonth(subMonths(desde, 1)),
+    setDate(desde, 15),
+    lastDayOfMonth(desde),
+    setDate(addMonths(desde, 1), 15),
+  ]);
+}
+
+/** Igual que `alinearAQuincenaFija`, para el modo días 1 y 15. */
+function alinearADia1y15(desde: Date): Date {
+  return masCercana(desde, [
+    setDate(desde, 1),
+    setDate(desde, 15),
+    setDate(addMonths(desde, 1), 1),
+  ]);
+}
+
 /**
  * Calcula las fechas programadas de todas las cuotas.
  *
@@ -119,7 +158,7 @@ export function calcularFechasPago(
 
   // QUINCENAL modo días 1 y 15
   if (modoQuincenal === "DIAS_1_Y_15") {
-    let cursor = inicio;
+    let cursor = alinearADia1y15(inicio);
     fechas.push(cursor);
     for (let n = 1; n < numCuotas; n++) {
       cursor = siguienteQuincenaDia1y15(cursor);
@@ -129,7 +168,7 @@ export function calcularFechasPago(
   }
 
   // QUINCENAL modo días 15 y último
-  let cursor = inicio;
+  let cursor = alinearAQuincenaFija(inicio);
   fechas.push(cursor);
   for (let n = 1; n < numCuotas; n++) {
     cursor = siguienteQuincenaFija(cursor);
