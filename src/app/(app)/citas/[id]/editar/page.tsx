@@ -46,6 +46,7 @@ export default function EditarCitaPage() {
         clienteId: cita.clienteId,
         contrataOrigenId: cita.contrataOrigenId,
         tipo: cita.tipo,
+        periodicidad: cita.periodicidad ?? null,
         montoEstimado: cita.montoEstimado,
         fechaEntrega: anclarFechaCliente(cita.fechaEntrega)
           .toISOString()

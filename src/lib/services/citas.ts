@@ -47,6 +47,7 @@ export async function crearCita(ownerId: string, input: CitaInput) {
       clienteId: input.clienteId,
       contrataOrigenId,
       tipo: input.tipo,
+      periodicidad: input.periodicidad ?? null,
       montoEstimado: input.montoEstimado,
       fechaEntrega: new Date(input.fechaEntrega),
       notas: input.notas ?? null,
@@ -121,6 +122,9 @@ export async function actualizarCita(
       ...(input.clienteId !== undefined ? { clienteId: input.clienteId } : {}),
       contrataOrigenId,
       ...(input.tipo !== undefined ? { tipo: input.tipo } : {}),
+      ...(input.periodicidad !== undefined
+        ? { periodicidad: input.periodicidad }
+        : {}),
       ...(input.montoEstimado !== undefined
         ? { montoEstimado: input.montoEstimado }
         : {}),

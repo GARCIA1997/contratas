@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popup } from "@/components/ui/popup";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { Saludo } from "@/components/saludo";
 import { CitaCard } from "@/components/citas/cita-card";
 import { AbonarModal } from "@/components/clientes/abonar-modal";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
@@ -28,7 +27,20 @@ import {
 } from "@/lib/mensajes-whatsapp";
 import { formatMoneda } from "@/lib/utils";
 import { CONFIG_DEFAULTS } from "@/lib/config";
+import {
+  agruparCitasPorSemana,
+  type FiltroPeriodicidad,
+} from "@/lib/citas";
 import type { ParadaRuta } from "@/lib/services/ruta";
+
+/** Para el mensaje de "no hay entregas X pendientes". */
+const ETIQUETA_FILTRO: Record<FiltroPeriodicidad, string> = {
+  TODAS: "",
+  SEMANAL: "semanales",
+  QUINCENAL: "quincenales",
+  MENSUAL: "mensuales",
+  SIN_DEFINIR: "sin periodicidad",
+};
 
 function recordatorioDeParada(nombreApp: string, r: ParadaRuta) {
   return mensajeRecordatorio({
@@ -181,13 +193,13 @@ export default function RutaDelDiaPage() {
   const claims = useAuthClaims();
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
-  const nombre = claims.ready ? claims.nombre : null;
 
   const paradas = useLiveQuery(
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
     [ownerId]
   );
   const [vista, setVista] = useState<"COBRAR" | "ENTREGAR">("COBRAR");
+  const [filtroEntrega, setFiltroEntrega] = useState<FiltroPeriodicidad>("TODAS");
   const citas = useLiveQuery(
     () => (ownerId ? getCitasPendientes(ownerId) : undefined),
     [ownerId]
@@ -241,16 +253,25 @@ export default function RutaDelDiaPage() {
   }, [paradas, router]);
 
   const totalDia = paradas?.reduce((s, p) => s + p.total, 0) ?? 0;
+  // Las secciones por semana de la pestaña "Entregar". Se calcula siempre
+  // (es barato y puro) para no meter un hook condicional.
+  const semanas = agruparCitasPorSemana(citas ?? [], filtroEntrega);
+  // Cuántas quedan sin periodicidad — para explicar un filtro vacío en vez
+  // de dejarlo mudo (ver el mensaje de la lista vacía).
+  const sinPeriodicidad = agruparCitasPorSemana(
+    citas ?? [],
+    "SIN_DEFINIR"
+  ).reduce((n, s) => n + s.citas.length, 0);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-2">
-        <div className="space-y-1">
-          <Saludo nombre={nombre} />
-          <p className="text-sm text-muted-foreground">
-            {vista === "COBRAR" ? "Ruta de cobro de hoy" : "Contratas por entregar"}
-          </p>
-        </div>
+      {/* Sin saludo: Ruta es la pantalla que se usa de pie en la calle y
+          cada renglón de arriba empuja las paradas fuera de la vista. El
+          saludo ya está en Inicio, que es donde tiene sentido. */}
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-xl font-bold tracking-tight">
+          {vista === "COBRAR" ? "Ruta de cobro de hoy" : "Contratas por entregar"}
+        </h1>
         <Button variant="outline" size="sm" asChild>
           <Link href="/citas/nueva">
             <CalendarPlus className="size-4" /> Agendar
@@ -304,11 +325,74 @@ export default function RutaDelDiaPage() {
         </>
       ) : (
         <>
-          {citas && citas.length > 0 ? (
-            <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
-              {citas.map((c) => (
-                <CitaCard key={c.id} cita={c} ownerId={ownerId as string} />
+          <SegmentedControl
+            value={filtroEntrega}
+            onChange={setFiltroEntrega}
+            options={[
+              { value: "TODAS", label: "Todas" },
+              { value: "SEMANAL", label: "Semanal" },
+              { value: "QUINCENAL", label: "Quincenal" },
+              { value: "MENSUAL", label: "Mensual" },
+            ]}
+          />
+
+          {semanas.length > 0 ? (
+            <div className="space-y-5">
+              {semanas.map((s) => (
+                <section key={s.clave} className="space-y-3">
+                  {/* Encabezado de sección: pegajoso para que al recorrer
+                      una semana larga siga a la vista de qué semana y de
+                      cuánto dinero se está hablando. */}
+                  {/* El offset se pega justo debajo del AppHeader, que es
+                      `sticky top-0` con 0.75rem de padding + 3.5rem de alto
+                      (más el safe-area del notch). Con `top-2` el
+                      encabezado de sección se metía DEBAJO de la barra y no
+                      se veía. z-10 < z-40 del header, para que sea la barra
+                      la que quede encima. */}
+                  <div className="sticky top-[calc(env(safe-area-inset-top)+4.75rem)] z-10 flex items-center justify-between gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1.5 backdrop-blur">
+                    {/* Sin `capitalize`: pondría mayúscula a cada palabra
+                        ("31 Ago – 6 Sep · 8 Entregas") y en español los
+                        meses van en minúscula. */}
+                    <p className="text-xs font-semibold">
+                      {s.titulo}
+                      <span className="ml-1.5 font-normal text-muted-foreground">
+                        · {s.citas.length}{" "}
+                        {s.citas.length === 1 ? "entrega" : "entregas"}
+                      </span>
+                    </p>
+                    <p className="shrink-0 text-sm font-bold text-primary">
+                      {formatMoneda(s.total)}
+                    </p>
+                  </div>
+                  <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
+                    {s.citas.map((c) => (
+                      <CitaCard key={c.id} cita={c} ownerId={ownerId as string} />
+                    ))}
+                  </div>
+                </section>
               ))}
+            </div>
+          ) : citas && citas.length > 0 ? (
+            <div className="space-y-1 py-10 text-center">
+              <p className="text-xs text-muted-foreground">
+                No hay entregas {ETIQUETA_FILTRO[filtroEntrega]} pendientes.
+              </p>
+              {/* Las citas agendadas antes de que existiera el campo de
+                  periodicidad no salen en ningún filtro, solo en "Todas".
+                  Sin este aviso, el filtro vacío parece un error de la app
+                  en vez de un dato que falta capturar. */}
+              {sinPeriodicidad > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Tienes{" "}
+                  <span className="font-semibold text-foreground">
+                    {sinPeriodicidad}
+                  </span>{" "}
+                  {sinPeriodicidad === 1 ? "entrega" : "entregas"} sin
+                  clasificar; {sinPeriodicidad === 1 ? "aparece" : "aparecen"}{" "}
+                  en «Todas». Al reagendarlas puedes indicar cada cuánto
+                  pagarán.
+                </p>
+              )}
             </div>
           ) : (
             <p className="py-10 text-center text-xs text-muted-foreground">

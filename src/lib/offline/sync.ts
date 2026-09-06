@@ -325,6 +325,7 @@ type CitaApi = {
   contrataOrigenId: string | null;
   contrataCreadaId: string | null;
   tipo: "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+  periodicidad: "SEMANAL" | "QUINCENAL" | "MENSUAL" | null;
   montoEstimado: number;
   fechaEntrega: string;
   notas: string | null;
@@ -362,6 +363,7 @@ export async function syncCitas(ownerId: string): Promise<void> {
         contrataOrigenId: c.contrataOrigenId,
         contrataCreadaId: c.contrataCreadaId,
         tipo: c.tipo,
+        periodicidad: c.periodicidad ?? null,
         montoEstimado: c.montoEstimado,
         fechaEntrega: c.fechaEntrega,
         notas: c.notas,

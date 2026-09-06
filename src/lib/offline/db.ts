@@ -109,6 +109,9 @@ export type CitaLocal = {
   contrataOrigenId: string | null;
   contrataCreadaId: string | null;
   tipo: TipoCitaLocal;
+  /** Cada cuánto pagará la contrata que salga de la cita. `null` cuando no
+   *  se definió al agendar (o la cita es anterior a este campo). */
+  periodicidad?: "SEMANAL" | "QUINCENAL" | "MENSUAL" | null;
   montoEstimado: number;
   fechaEntrega: string;
   notas: string | null;
