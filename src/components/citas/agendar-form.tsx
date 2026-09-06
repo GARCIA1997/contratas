@@ -29,6 +29,7 @@ export type CitaInicial = {
   clienteId: string;
   contrataOrigenId: string | null;
   tipo: TipoCitaContrata;
+  periodicidad?: "SEMANAL" | "QUINCENAL" | "MENSUAL" | null;
   montoEstimado: number;
   fechaEntrega: string; // yyyy-MM-dd
   notas: string | null;
@@ -39,6 +40,12 @@ const TIPO_LABEL: Record<TipoCitaContrata, string> = {
   RENOVACION: "Renovación",
   SIN_DEFINIR: "Sin definir",
 };
+
+const PERIODICIDAD_LABEL = {
+  SEMANAL: "Semanal",
+  QUINCENAL: "Quincenal",
+  MENSUAL: "Mensual",
+} as const;
 
 export function AgendarForm({
   clientes,
@@ -75,6 +82,9 @@ export function AgendarForm({
   const [contrataOrigenId, setContrataOrigenId] = useState<string | null>(
     inicial?.contrataOrigenId ?? null
   );
+  const [periodicidad, setPeriodicidad] = useState<
+    "SEMANAL" | "QUINCENAL" | "MENSUAL" | null
+  >(inicial?.periodicidad ?? null);
   const [montoEstimado, setMontoEstimado] = useState(
     inicial ? String(inicial.montoEstimado) : ""
   );
@@ -143,6 +153,7 @@ export function AgendarForm({
       clienteId,
       contrataOrigenId,
       tipo,
+      periodicidad,
       montoEstimado: montoNum,
       fechaEntrega,
       notas: notas.trim() || null,
@@ -342,6 +353,41 @@ export function AgendarForm({
                 {TIPO_LABEL[t]}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>¿Cada cuánto pagará?</Label>
+          {/* Opcional a propósito: al agendar muchas veces todavía no se
+              sabe, y la periodicidad real se fija al crear la contrata.
+              Sirve para agrupar la lista de "por entregar" en Ruta. Se
+              vuelve a tocar el botón activo para dejarlo sin definir. */}
+          <div className="grid grid-cols-4 gap-2">
+            {(["SEMANAL", "QUINCENAL", "MENSUAL"] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriodicidad(periodicidad === p ? null : p)}
+                className={`h-10 rounded-full border text-sm font-medium transition-colors ${
+                  periodicidad === p
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input bg-background"
+                }`}
+              >
+                {PERIODICIDAD_LABEL[p]}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setPeriodicidad(null)}
+              className={`h-10 rounded-full border text-sm font-medium transition-colors ${
+                periodicidad === null
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-background"
+              }`}
+            >
+              Sin definir
+            </button>
           </div>
         </div>
 

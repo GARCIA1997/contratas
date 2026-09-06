@@ -280,6 +280,7 @@ export async function applyLocalEffect(
       citaId: string;
       input: {
         tipo?: "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+        periodicidad?: "SEMANAL" | "QUINCENAL" | "MENSUAL" | null;
         montoEstimado?: number;
         fechaEntrega?: string;
         contrataOrigenId?: string | null;
@@ -288,6 +289,9 @@ export async function applyLocalEffect(
     };
     await db.citas.update(citaId, {
       ...(input.tipo !== undefined ? { tipo: input.tipo } : {}),
+      ...(input.periodicidad !== undefined
+        ? { periodicidad: input.periodicidad }
+        : {}),
       ...(input.montoEstimado !== undefined
         ? { montoEstimado: input.montoEstimado }
         : {}),

@@ -54,6 +54,9 @@ export const citaSchema = z.object({
   clienteId: z.string().min(1, "Elige un cliente"),
   contrataOrigenId: z.string().min(1).optional().nullable(),
   tipo: z.enum(["NUEVA", "RENOVACION", "SIN_DEFINIR"]).default("SIN_DEFINIR"),
+  /** Cada cuánto pagará la contrata que salga de la cita. Nullable: puede
+   *  no saberse al agendar y se decide al entregar. */
+  periodicidad: z.enum(["SEMANAL", "QUINCENAL", "MENSUAL"]).optional().nullable(),
   montoEstimado: z.number().positive("El monto debe ser mayor a 0"),
   fechaEntrega: z.string().datetime().or(z.string().min(1)),
   notas: z.string().trim().max(500).optional().nullable(),

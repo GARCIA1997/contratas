@@ -200,6 +200,11 @@ model CitaAgendada {
   contrataCreada   Contrata?        @relation("CitaContrataCreada", fields: [contrataCreadaId], references: [id], onDelete: SetNull)
   contrataCreadaId String?          @unique
   tipo             TipoCitaContrata @default(SIN_DEFINIR)
+  /// Cada cuánto va a pagar la contrata que salga de esta cita. Opcional
+  /// porque puede no saberse al agendar (y las citas anteriores a este
+  /// campo se quedan en null): la periodicidad real se fija al crear la
+  /// contrata. Sirve para agrupar la lista de "por entregar".
+  periodicidad     TipoContrata?
   montoEstimado    Float
   fechaEntrega     DateTime
   notas            String?
