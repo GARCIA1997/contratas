@@ -161,6 +161,114 @@ describe("mensajeCobro", () => {
     expect(texto).toContain("Te resta por pagar");
   });
 
+  it("no marca como pagada una cuota que solo recibió un abono parcial", () => {
+    // El bug que arregla: un abono de $500 sobre una cuota de $1,500 salía
+    // con el mismo ✅ que un pago completo, y el cliente entendía que su
+    // cuota ya estaba cubierta.
+    const texto = mensajeCobro({
+      nombreApp: APP,
+      clienteNombre: "Kenia Mora",
+      total: 500,
+      contratas: [
+        {
+          tipo: "SEMANAL",
+          numCuotas: 10,
+          montoContrata: 5000,
+          saldoTrasCobro: 4500,
+          subtotal: 500,
+          cuotas: [
+            { numeroCuota: 7, monto: 500, parcial: true, faltante: 1000 },
+          ],
+        },
+      ],
+    });
+    expect(texto).toContain("🟡 Cuota 7 de 10");
+    expect(texto).toContain("abono de $500.00");
+    expect(texto).toContain("le falta *$1,000.00*");
+    // Lo esencial: esa cuota NO puede llevar la palomita de "pagada".
+    expect(texto).not.toContain("✅ Cuota 7");
+  });
+
+  it("cambia el encabezado a «recibo de abono» cuando algo quedó incompleto", () => {
+    const texto = mensajeCobro({
+      nombreApp: APP,
+      clienteNombre: "Kenia Mora",
+      total: 500,
+      contratas: [
+        {
+          tipo: "SEMANAL",
+          numCuotas: 10,
+          subtotal: 500,
+          cuotas: [{ numeroCuota: 7, monto: 500, parcial: true, faltante: 1000 }],
+        },
+      ],
+    });
+    expect(texto).toContain("RECIBO DE ABONO");
+    expect(texto).toContain("TOTAL RECIBIDO");
+    expect(texto).toContain("abono parcial");
+    expect(texto).not.toContain("TOTAL COBRADO");
+  });
+
+  it("distingue cuota por cuota cuando en el mismo cobro hay completas y parciales", () => {
+    const texto = mensajeCobro({
+      nombreApp: APP,
+      clienteNombre: "Kenia Mora",
+      total: 2000,
+      contratas: [
+        {
+          tipo: "SEMANAL",
+          numCuotas: 10,
+          subtotal: 2000,
+          cuotas: [
+            { numeroCuota: 5, monto: 1500 },
+            { numeroCuota: 6, monto: 500, parcial: true, faltante: 1000 },
+          ],
+        },
+      ],
+    });
+    expect(texto).toContain("✅ Cuota 5 de 10");
+    expect(texto).toContain("🟡 Cuota 6 de 10");
+    expect(texto).not.toContain("✅ Cuota 6");
+  });
+
+  it("no mete la nota de abono parcial en un cobro completo", () => {
+    const texto = mensajeCobro({
+      nombreApp: APP,
+      clienteNombre: "Kenia Mora",
+      total: 1500,
+      contratas: [
+        {
+          tipo: "SEMANAL",
+          numCuotas: 10,
+          subtotal: 1500,
+          cuotas: [{ numeroCuota: 7, monto: 1500 }],
+        },
+      ],
+    });
+    expect(texto).toContain("RECIBO DE PAGO");
+    expect(texto).toContain("TOTAL COBRADO");
+    expect(texto).not.toContain("abono parcial");
+    expect(texto).not.toContain("🟡");
+  });
+
+  it("marca la cuota como incompleta aunque no se sepa cuánto falta", () => {
+    const texto = mensajeCobro({
+      nombreApp: APP,
+      clienteNombre: "Kenia Mora",
+      total: 500,
+      contratas: [
+        {
+          numCuotas: 10,
+          subtotal: 500,
+          cuotas: [{ numeroCuota: 7, monto: 500, parcial: true }],
+        },
+      ],
+    });
+    expect(texto).toContain("🟡 Cuota 7 de 10");
+    expect(texto).toContain("(cuota incompleta)");
+    expect(texto).not.toContain("le falta");
+  });
+
   it("celebra la contrata liquidada en vez de mostrar un saldo en cero", () => {
     const texto = mensajeCobro({
       nombreApp: APP,

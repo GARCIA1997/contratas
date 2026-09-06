@@ -70,6 +70,25 @@ export async function previewCobroVencidas(
   return { total, items };
 }
 
+/**
+ * Una cuota dentro de un recibo.
+ *
+ * `parcial` distingue "se pagó esta cuota" de "se abonó algo a esta cuota":
+ * un abono parcial dejaba el mismo ✅ que un pago completo en el recibo de
+ * WhatsApp, y el cliente entendía que su cuota ya estaba cubierta cuando no
+ * lo estaba. Se omite (o va en false) cuando el pago sí cubrió la cuota,
+ * que es el caso de todos los cobros de "Cobrar pendiente" y de Ruta.
+ */
+export type CuotaCobrada = {
+  numeroCuota: number;
+  /** Lo que se aplicó a esta cuota en este movimiento. */
+  monto: number;
+  /** true = el pago NO alcanzó a cubrir la cuota completa. */
+  parcial?: boolean;
+  /** Lo que le sigue faltando a esta cuota. Solo con `parcial`. */
+  faltante?: number;
+};
+
 export type ContrataResumenCobro = {
   contrataId: string;
   tipo: TipoContrata;
@@ -78,7 +97,7 @@ export type ContrataResumenCobro = {
    *  los llamadores tienen este dato a mano (p. ej. Ruta, que solo conoce
    *  la cuota suelta, no la contrata completa). */
   montoContrata?: number;
-  cuotas: { numeroCuota: number; monto: number }[];
+  cuotas: CuotaCobrada[];
   subtotal: number;
 };
 

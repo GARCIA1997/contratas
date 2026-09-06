@@ -96,7 +96,18 @@ export type CobroContrata = {
   montoContrata?: number;
   /** Lo que queda por pagar tras este cobro. */
   saldoTrasCobro?: number;
-  cuotas: { numeroCuota: number; monto: number }[];
+  cuotas: {
+    numeroCuota: number;
+    monto: number;
+    /**
+     * El pago NO alcanzó a cubrir la cuota. Sin esto, un abono parcial se
+     * imprimía con el mismo ✅ que un pago completo y el cliente entendía
+     * que su cuota ya estaba cubierta — el problema que este campo arregla.
+     */
+    parcial?: boolean;
+    /** Lo que le sigue faltando a esa cuota. Solo tiene sentido con `parcial`. */
+    faltante?: number;
+  }[];
   subtotal: number;
 };
 
@@ -125,7 +136,22 @@ export function mensajeCobro(opts: {
     // indentadas bajo nada, como si faltara una línea.
     const sangria = conEncabezado ? "     " : "";
     for (const q of c.cuotas) {
-      detalle.push(`${sangria}✅ Cuota ${q.numeroCuota} de ${c.numCuotas} — ${formatMoneda(q.monto)}`);
+      // 🟡 y la palabra "abono" para lo parcial; ✅ solo cuando la cuota
+      // de verdad quedó cubierta. Mismo código visual que las "cuotas
+      // incompletas" del estado de cuenta y del detalle de contrata, para
+      // que el cliente lo lea igual en los tres documentos.
+      if (q.parcial) {
+        detalle.push(
+          `${sangria}🟡 Cuota ${q.numeroCuota} de ${c.numCuotas} — abono de ${formatMoneda(q.monto)}` +
+            (q.faltante !== undefined
+              ? `, le falta *${formatMoneda(q.faltante)}*`
+              : ` _(cuota incompleta)_`)
+        );
+      } else {
+        detalle.push(
+          `${sangria}✅ Cuota ${q.numeroCuota} de ${c.numCuotas} — ${formatMoneda(q.monto)}`
+        );
+      }
     }
     if (c.saldoTrasCobro !== undefined) {
       detalle.push(
@@ -137,21 +163,39 @@ export function mensajeCobro(opts: {
     detalle.push(``);
   }
 
+  // Si alguna cuota quedó a medias, se dice con todas sus letras. El
+  // renglón 🟡 ya lo indica, pero este documento es el comprobante del
+  // cliente: vale más una línea de más que un reclamo después por creer
+  // que una cuota estaba saldada.
+  const hayParciales = opts.contratas.some((c) => c.cuotas.some((q) => q.parcial));
+  const nota = hayParciales
+    ? [
+        `🟡 _Las cuotas marcadas en amarillo recibieron un abono parcial:_`,
+        `_se registró tu pago, pero esa cuota todavía no queda cubierta._`,
+        ``,
+      ]
+    : [];
+
   return envolver({
     nombreApp: opts.nombreApp,
-    icono: "✅",
-    titulo: "Recibo de pago",
+    // El ✅ del encabezado también comunica "quedó saldado". En un recibo
+    // donde alguna cuota quedó a medias se cambia por el mismo 🟡 de los
+    // renglones parciales: era justo la señal que hacía leer el documento
+    // como un pago completo.
+    icono: hayParciales ? "🟡" : "✅",
+    titulo: hayParciales ? "Recibo de abono" : "Recibo de pago",
     cuerpo: [
       `👤 *${opts.clienteNombre}*`,
       `📅 ${fechaLarga(fecha)}`,
       ...atendio(opts.hechoPor),
       ``,
-      `💵 *TOTAL COBRADO: ${formatMoneda(opts.total)}*`,
+      `💵 *TOTAL ${hayParciales ? "RECIBIDO" : "COBRADO"}: ${formatMoneda(opts.total)}*`,
       ``,
       LINEA,
       `📋 *DETALLE*`,
       ``,
       ...detalle,
+      ...nota,
     ],
     cierre: [`🙏 *¡Gracias por tu pago!*`, `💾 Conserva este mensaje como comprobante.`, ``],
   });

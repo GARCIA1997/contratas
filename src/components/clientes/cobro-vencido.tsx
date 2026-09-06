@@ -6,7 +6,7 @@ import { CircleDollarSign, MessageCircle } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatMoneda } from "@/lib/utils";
+import { cn, formatMoneda } from "@/lib/utils";
 import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
 import { enqueue } from "@/lib/offline/queue";
 import { syncContratas } from "@/lib/offline/sync";
@@ -46,6 +46,7 @@ export function CobroVencido({
   totalInicial,
   cuotasInicial,
   ownerId,
+  enFila = false,
 }: {
   clienteId: string;
   nombreApp: string;
@@ -53,6 +54,13 @@ export function CobroVencido({
   cuotasInicial: number;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
   ownerId?: string | null;
+  /**
+   * El botón comparte renglón con otro (hoy "Abonar", en el perfil del
+   * cliente), dentro de un grid de 2 columnas. Compacta la etiqueta a dos
+   * renglones y hace que el recibo que aparece DESPUÉS de cobrar ocupe la
+   * fila completa — a media columna queda ilegible en un celular.
+   */
+  enFila?: boolean;
 }) {
   const router = useRouter();
   const [total, setTotal] = useState(totalInicial);
@@ -129,7 +137,7 @@ export function CobroVencido({
 
   if (sinRecibo) {
     return (
-      <Card className="border-pagado/30">
+      <Card className={cn("border-pagado/30", enFila && "col-span-2")}>
         <CardContent className="space-y-2 p-4 text-sm">
           <p className="font-medium text-pagado">Cobro registrado (sin conexión)</p>
           <p className="text-xs text-muted-foreground">
@@ -147,7 +155,7 @@ export function CobroVencido({
     const link = linkWhatsApp(resultado.clienteTelefono, mensaje);
 
     return (
-      <Card className="border-pagado/30">
+      <Card className={cn("border-pagado/30", enFila && "col-span-2")}>
         <CardContent className="space-y-3 p-4">
           <div>
             <p className="text-xs text-muted-foreground">
@@ -201,19 +209,42 @@ export function CobroVencido({
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className={cn("space-y-1.5", enFila && "min-w-0")}>
       <Button
-        className="w-full"
+        className={cn("w-full min-w-0", enFila && "h-auto py-1.5")}
         variant="default"
         disabled={cargando}
         onClick={() => cobrar({ esReintento: idempotencyKey !== null })}
       >
         <CircleDollarSign className="size-4" />
-        {cargando
-          ? "Registrando…"
-          : error
-            ? "Reintentar cobro"
-            : `Cobrar pendiente · ${formatMoneda(total)} (${cuotas} cuota${cuotas === 1 ? "" : "s"})`}
+        {/*
+          `truncate` porque el Button base es `whitespace-nowrap`: sin esto
+          una etiqueta más larga que el botón se sale de la píldora en vez
+          de recortarse.
+
+          A media fila la etiqueta va en dos renglones. Medido en un celular
+          de 375px: el texto dispone de 83px y "Cobrar $5,000.00" necesita
+          120px en una sola línea — bajarle la fuente no alcanzaba, y
+          recortar el monto (que es EL dato del botón) no es opción. El
+          número de cuotas no se pierde: el confirm previo al cobro lo dice
+          completo antes de aplicar nada.
+        */}
+        {cargando || error ? (
+          <span className="truncate">
+            {cargando ? "Registrando…" : "Reintentar cobro"}
+          </span>
+        ) : enFila ? (
+          <span className="flex min-w-0 flex-col items-start leading-tight">
+            <span className="text-[11px] font-normal opacity-90">Cobrar</span>
+            <span className="truncate text-sm font-semibold">
+              {formatMoneda(total)}
+            </span>
+          </span>
+        ) : (
+          <span className="truncate">
+            {`Cobrar pendiente · ${formatMoneda(total)} (${cuotas} cuota${cuotas === 1 ? "" : "s"})`}
+          </span>
+        )}
       </Button>
       {error && (
         <p className="text-center text-xs text-destructive">

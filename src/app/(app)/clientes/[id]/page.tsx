@@ -19,7 +19,6 @@ import { EliminarCliente } from "@/components/clientes/eliminar-cliente";
 import { HistorialContratas } from "@/components/clientes/historial-contratas";
 import { CobroVencido } from "@/components/clientes/cobro-vencido";
 import { AbonarModal } from "@/components/clientes/abonar-modal";
-import { enBetaAbonoParcial } from "@/lib/beta";
 import { ScorePagoBadge } from "@/components/score-pago-badge";
 import { CitaCard } from "@/components/citas/cita-card";
 import { cn, formatMoneda } from "@/lib/utils";
@@ -77,7 +76,6 @@ export default function ClientePerfilPage() {
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready ? claims.esAdmin : false;
-  const enBetaAbono = enBetaAbonoParcial(claims.ready ? claims.email : null);
 
   const perfil = useLiveQuery(
     () => (ownerId ? getClientePerfil(ownerId, params.id) : undefined),
@@ -130,6 +128,16 @@ export default function ClientePerfilPage() {
   }
 
   const { totales } = perfil;
+  // Si hay algo por cobrar, "Cobrar pendiente" y "Abonar" van a dos
+  // columnas; si no, "Abonar" se queda solo y ocupa el renglón completo.
+  //
+  // Se compara contra el TOTAL, no contra la presencia del preview: la API
+  // responde `{total: 0, items: []}` cuando no hay nada vencido, y ese
+  // objeto es truthy — dejaba a "Abonar" a media fila con la otra columna
+  // vacía. Es la misma condición con la que CobroVencido decide si se
+  // dibuja (devuelve null con total <= 0).
+  const hayCobroPendiente =
+    (extras.cobroPreview?.total ?? 0) > 0 || (previewLocal?.total ?? 0) > 0;
   const elegiblesUnificar = perfil.contratas.filter(
     (c) => c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA" && c.saldo > 0
   ).length;
@@ -209,35 +217,57 @@ export default function ClientePerfilPage() {
         </Card>
       </div>
 
-      {esAdmin && extras.cobroPreview && extras.nombreApp && (
-        <CobroVencido
-          clienteId={perfil.id}
-          nombreApp={extras.nombreApp}
-          totalInicial={extras.cobroPreview.total}
-          cuotasInicial={extras.cobroPreview.items.length}
-          ownerId={ownerId}
-        />
-      )}
+      {/*
+        "Cobrar pendiente" y "Abonar" comparten renglón. Grid y no flex: con
+        `flex-1 basis-0` los dos botones salían de anchos distintos (147 vs
+        189px medidos en el navegador), mientras que dos columnas de grid
+        quedan idénticas por definición.
 
-      {esAdmin && !extras.cobroPreview && previewLocal && previewLocal.total > 0 && (
-        <CobroVencido
-          clienteId={perfil.id}
-          nombreApp="Kredired"
-          totalInicial={previewLocal.total}
-          cuotasInicial={previewLocal.items}
-          ownerId={ownerId}
-        />
-      )}
+        Las columnas se ajustan al contenido real: si no hay nada vencido,
+        CobroVencido devuelve null y "Abonar" toma el ancho completo en vez
+        de quedar como media fila huérfana. Y el recibo que aparece después
+        de cobrar ocupa las dos columnas (ver `enFila`).
+      */}
+      {esAdmin && (
+        <div
+          className={cn(
+            "grid gap-2",
+            hayCobroPendiente ? "grid-cols-2" : "grid-cols-1"
+          )}
+        >
+          {extras.cobroPreview && extras.nombreApp && (
+            <CobroVencido
+              clienteId={perfil.id}
+              nombreApp={extras.nombreApp}
+              totalInicial={extras.cobroPreview.total}
+              cuotasInicial={extras.cobroPreview.items.length}
+              ownerId={ownerId}
+              enFila
+            />
+          )}
 
-      {/* Beta temporal — ver lib/beta.ts. */}
-      {esAdmin && enBetaAbono && ownerId && (
-        <AbonarModal
-          clienteId={perfil.id}
-          ownerId={ownerId}
-          nombreApp={extras.nombreApp ?? "Kredired"}
-          clienteNombre={perfil.nombre}
-          telefono={perfil.telefono}
-        />
+          {!extras.cobroPreview && previewLocal && previewLocal.total > 0 && (
+            <CobroVencido
+              clienteId={perfil.id}
+              nombreApp="Kredired"
+              totalInicial={previewLocal.total}
+              cuotasInicial={previewLocal.items}
+              ownerId={ownerId}
+              enFila
+            />
+          )}
+
+          {ownerId && (
+            <AbonarModal
+              clienteId={perfil.id}
+              ownerId={ownerId}
+              nombreApp={extras.nombreApp ?? "Kredired"}
+              clienteNombre={perfil.nombre}
+              telefono={perfil.telefono}
+              className="h-auto"
+            />
+          )}
+        </div>
       )}
 
       <div className="grid grid-cols-2 gap-2">
