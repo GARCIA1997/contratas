@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popup } from "@/components/ui/popup";
-import { formatMoneda } from "@/lib/utils";
+import { cn, formatMoneda } from "@/lib/utils";
 import { distribuirAbono, type ResultadoAbono } from "@/lib/services/abono";
 import { getContratasParaAbono } from "@/lib/offline/repo";
 import { enqueue } from "@/lib/offline/queue";
@@ -30,16 +30,18 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 /**
- * Botón "Abonar" + modal de reparto automático — beta temporal (ver
- * `lib/beta.ts`). Reusable desde el perfil del cliente y desde Ruta: no
- * depende de qué pantalla lo abrió, carga su propio estado de contratas
- * vía `getContratasParaAbono` (funciona con o sin señal, siempre desde
- * Dexie).
+ * Botón "Abonar" + modal de reparto automático. Reusable desde el perfil
+ * del cliente y desde Ruta: no depende de qué pantalla lo abrió, carga su
+ * propio estado de contratas vía `getContratasParaAbono` (funciona con o
+ * sin señal, siempre desde Dexie).
  *
  * El reparto (`distribuirAbono`) se calcula EN EL NAVEGADOR en cada tecla
  * del monto, antes de confirmar nada — así el cobrador ve exactamente a
  * dónde va su dinero antes de aplicarlo, y ese mismo cálculo se reusa como
  * recibo tanto si hay señal como si no.
+ *
+ * `size` y `className` existen para que el disparador se acomode a la fila
+ * donde vive (en Ruta comparte renglón con "Cobrado", que es `sm`).
  */
 export function AbonarModal({
   clienteId,
@@ -47,12 +49,16 @@ export function AbonarModal({
   nombreApp,
   clienteNombre,
   telefono,
+  size = "default",
+  className,
 }: {
   clienteId: string;
   ownerId: string;
   nombreApp: string;
   clienteNombre: string;
   telefono: string | null;
+  size?: "sm" | "default";
+  className?: string;
 }) {
   const router = useRouter();
   const [montado, setMontado] = useState(false);
@@ -142,7 +148,12 @@ export function AbonarModal({
 
   return (
     <>
-      <Button variant="outline" className="w-full" onClick={() => setAbierto(true)}>
+      <Button
+        variant="outline"
+        size={size}
+        className={cn("w-full", className)}
+        onClick={() => setAbierto(true)}
+      >
         <HandCoins className="size-4" /> Abonar
       </Button>
 

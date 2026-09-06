@@ -25,8 +25,7 @@ type Resultado =
       ownerId: string;
       esAdmin: boolean;
       nombre: string | null;
-      /** Identidad de login (en esta app, el número de teléfono). Usada
-       *  hoy solo para gates temporales de beta (ver `lib/beta.ts`). */
+      /** Identidad de login (en esta app, el número de teléfono). */
       email: string | null;
       offline: boolean;
     };

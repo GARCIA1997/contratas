@@ -13,7 +13,6 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Saludo } from "@/components/saludo";
 import { CitaCard } from "@/components/citas/cita-card";
 import { AbonarModal } from "@/components/clientes/abonar-modal";
-import { enBetaAbonoParcial } from "@/lib/beta";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getRutaDelDia,
@@ -81,15 +80,12 @@ function Parada({
   cobrando,
   onSolicitarCobro,
   ownerId,
-  mostrarAbono,
 }: {
   parada: ParadaRuta;
   nombreApp: string;
   cobrando: boolean;
   onSolicitarCobro: (parada: ParadaRuta) => void;
   ownerId: string | null;
-  /** Beta temporal — ver lib/beta.ts. */
-  mostrarAbono: boolean;
 }) {
   return (
     <Card>
@@ -131,7 +127,11 @@ function Parada({
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
+        {/* Dos renglones de dos: arriba contactar (llamar / WhatsApp),
+            abajo registrar dinero (abonar / cobrado). Separa lo que solo
+            comunica de lo que mueve saldo — "Cobrado" queda lejos de
+            "Llamar", que era el toque accidental fácil en la calle. */}
+        <div className="grid grid-cols-2 gap-2">
           <Button variant="outline" size="sm" disabled={!parada.telefono} asChild>
             <a href={parada.telefono ? `tel:${parada.telefono}` : undefined}>
               <Phone className="size-4" /> Llamar
@@ -149,6 +149,21 @@ function Parada({
               <MessageCircle className="size-4" /> WhatsApp
             </a>
           </Button>
+
+          {ownerId ? (
+            <AbonarModal
+              clienteId={parada.clienteId}
+              ownerId={ownerId}
+              nombreApp={nombreApp}
+              clienteNombre={parada.nombre}
+              telefono={parada.telefono}
+              size="sm"
+            />
+          ) : (
+            // Sin ownerId todavía (claims cargando) se deja la celda vacía
+            // para que "Cobrado" no se recorra a la columna izquierda.
+            <div />
+          )}
           <Button
             size="sm"
             disabled={cobrando}
@@ -157,16 +172,6 @@ function Parada({
             <Check className="size-4" /> Cobrado
           </Button>
         </div>
-
-        {mostrarAbono && ownerId && (
-          <AbonarModal
-            clienteId={parada.clienteId}
-            ownerId={ownerId}
-            nombreApp={nombreApp}
-            clienteNombre={parada.nombre}
-            telefono={parada.telefono}
-          />
-        )}
       </CardContent>
     </Card>
   );
@@ -177,7 +182,6 @@ export default function RutaDelDiaPage() {
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const nombre = claims.ready ? claims.nombre : null;
-  const enBetaAbono = enBetaAbonoParcial(claims.ready ? claims.email : null);
 
   const paradas = useLiveQuery(
     () => (ownerId ? getRutaDelDia(ownerId) : undefined),
@@ -288,7 +292,6 @@ export default function RutaDelDiaPage() {
                 cobrando={cobrandoId === p.clienteId}
                 onSolicitarCobro={setConfirmando}
                 ownerId={ownerId}
-                mostrarAbono={enBetaAbono}
               />
             ))}
           </div>
