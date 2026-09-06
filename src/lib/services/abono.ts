@@ -70,6 +70,8 @@ export type AplicacionCuota = {
   montoAplicado: number;
   /** true si con esto la cuota queda completamente pagada. */
   quedaPagada: boolean;
+  /** Lo que le sigue faltando a la cuota tras aplicar este abono (0 si quedó pagada). */
+  faltante: number;
 };
 
 export type ResultadoAbono = {
@@ -164,12 +166,14 @@ export function distribuirAbono(
   function aplicar(contrataId: string, cuota: CuotaPendiente): boolean {
     if (restante <= 0) return false;
     const monto = Math.min(restante, cuota.pendiente);
+    const quedaPagada = monto >= cuota.pendiente;
     aplicaciones.push({
       contrataId,
       pagoId: cuota.pagoId,
       numeroCuota: cuota.numeroCuota,
       montoAplicado: monto,
-      quedaPagada: monto >= cuota.pendiente,
+      quedaPagada,
+      faltante: quedaPagada ? 0 : round(cuota.pendiente - monto),
     });
     restante = round(restante - monto);
     return restante > 0;
@@ -204,9 +208,17 @@ export function distribuirAbono(
   const porContrata = new Map<string, ContrataResumenCobro>();
   for (const a of aplicaciones) {
     const info = procesadas.find((c) => c.contrataId === a.contrataId)!;
+    // El recibo tiene que poder distinguir "pagaste la cuota" de "abonaste
+    // a la cuota": si esto no viaja hasta el mensaje, un abono parcial sale
+    // con el mismo ✅ que un pago completo.
+    const cuota = {
+      numeroCuota: a.numeroCuota,
+      monto: a.montoAplicado,
+      ...(a.quedaPagada ? {} : { parcial: true, faltante: a.faltante }),
+    };
     const actual = porContrata.get(a.contrataId);
     if (actual) {
-      actual.cuotas.push({ numeroCuota: a.numeroCuota, monto: a.montoAplicado });
+      actual.cuotas.push(cuota);
       actual.subtotal = round(actual.subtotal + a.montoAplicado);
     } else {
       porContrata.set(a.contrataId, {
@@ -214,7 +226,7 @@ export function distribuirAbono(
         tipo: info.tipo,
         montoContrata: info.monto,
         numCuotas: info.numCuotas,
-        cuotas: [{ numeroCuota: a.numeroCuota, monto: a.montoAplicado }],
+        cuotas: [cuota],
         subtotal: a.montoAplicado,
       });
     }

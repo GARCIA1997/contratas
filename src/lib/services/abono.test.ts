@@ -109,6 +109,52 @@ describe("distribuirAbono — etapa 1 (la semana de todas primero)", () => {
     // monto = abono * numCuotas por construcción del fixture (300 * 5).
     expect(deA.montoContrata).toBe(1500);
   });
+
+  it("el recibo marca qué cuotas quedaron incompletas y cuánto les falta", () => {
+    // Sin esto el recibo de WhatsApp imprimía un ✅ sobre una cuota que
+    // solo recibió parte del dinero.
+    const r = distribuirAbono(escenarioBase(), 650, HOY);
+
+    const cuotaDeA = r.contratas.find((c) => c.contrataId === "a-cinco-pagos")!.cuotas[0];
+    expect(cuotaDeA.monto).toBe(300);
+    expect(cuotaDeA.parcial).toBeUndefined();
+    expect(cuotaDeA.faltante).toBeUndefined();
+
+    // B recibió 350 de los 400 de su cuota: quedan 50.
+    const cuotaDeB = r.contratas.find((c) => c.contrataId === "b-diez-pagos")!.cuotas[0];
+    expect(cuotaDeB.monto).toBe(350);
+    expect(cuotaDeB.parcial).toBe(true);
+    expect(cuotaDeB.faltante).toBe(50);
+  });
+
+  it("el faltante descuenta lo que la cuota ya traía abonado de antes", () => {
+    // Cuota de 300 que ya tenía 100 abonados → le faltan 200. Con un abono
+    // de 50, el recibo debe decir que aún le faltan 150 (no 250).
+    const contratas = [
+      contrata("unica", 300, [pago(1, { diasDesdeHoy: 0, montoAbonado: 100 })]),
+    ];
+    const r = distribuirAbono(contratas, 50, HOY);
+
+    expect(r.aplicaciones[0].montoAplicado).toBe(50);
+    expect(r.aplicaciones[0].quedaPagada).toBe(false);
+    expect(r.aplicaciones[0].faltante).toBe(150);
+    expect(r.contratas[0].cuotas[0]).toMatchObject({
+      monto: 50,
+      parcial: true,
+      faltante: 150,
+    });
+  });
+
+  it("una cuota que se completa exacto no queda marcada como parcial", () => {
+    const contratas = [
+      contrata("unica", 300, [pago(1, { diasDesdeHoy: 0, montoAbonado: 100 })]),
+    ];
+    const r = distribuirAbono(contratas, 200, HOY);
+
+    expect(r.aplicaciones[0].quedaPagada).toBe(true);
+    expect(r.aplicaciones[0].faltante).toBe(0);
+    expect(r.contratas[0].cuotas[0].parcial).toBeUndefined();
+  });
 });
 
 describe("distribuirAbono — etapa 2 (atrasadas, drenando completo por contrata)", () => {
