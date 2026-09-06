@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Users, ScrollText, FileBarChart } from "lucide-react";
+import {
+  Users,
+  ScrollText,
+  FileBarChart,
+  ChartNoAxesCombined,
+} from "lucide-react";
 import { OfflineAwareLink } from "@/components/offline/offline-aware-link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Button } from "@/components/ui/button";
@@ -65,14 +70,19 @@ export default function ConfigPage() {
               <ScrollText className="size-4" /> Actividad
             </OfflineAwareLink>
           </Button>
-          {/* Link normal (no OfflineAwareLink): el reporte es un Client
-              Component que lee de IndexedDB y abre sin señal. Los cortes de
-              caja mensuales, que sí son server-side, quedan enlazados desde
-              adentro del propio reporte. */}
-          <Button variant="outline" className="col-span-2" asChild>
+          {/* El reporte usa Link normal (es un Client Component que lee de
+              IndexedDB y abre sin señal); los cortes de caja sí son
+              server-side, así que van con OfflineAwareLink para no dejar la
+              pantalla en blanco al tocarlos sin conexión. */}
+          <Button variant="outline" asChild>
             <Link href="/estado-resultados">
-              <FileBarChart className="size-4" /> Estado de resultados
+              <ChartNoAxesCombined className="size-4" /> Estado de resultados
             </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <OfflineAwareLink href="/config/corte-caja">
+              <FileBarChart className="size-4" /> Cortes
+            </OfflineAwareLink>
           </Button>
         </div>
       )}
