@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Saludo } from "@/components/saludo";
 import { TendenciaChart } from "@/components/tendencia-chart";
-import { DescargarPdfIcono } from "@/components/estado-resultados/descargar-pdf-boton";
+import { AccesoEstadoResultadosIcono } from "@/components/estado-resultados/acceso-icono";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getKpis,
@@ -125,7 +125,7 @@ export default function DashboardPage() {
           <Saludo nombre={nombre} />
           <p className="text-sm text-muted-foreground">Resumen de tu cartera</p>
         </div>
-        {esAdmin && <DescargarPdfIcono />}
+        {esAdmin && <AccesoEstadoResultadosIcono />}
       </div>
 
       <div className="flex gap-1 rounded-lg bg-muted p-1 md:max-w-sm">
