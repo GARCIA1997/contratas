@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Saludo } from "@/components/saludo";
 import { TendenciaChart } from "@/components/tendencia-chart";
+import { AccesoEstadoResultados } from "@/components/estado-resultados/acceso-reporte";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getKpis,
@@ -83,6 +84,7 @@ export default function DashboardPage() {
 
   const entregado = kpis.montoEntregadoMes;
   const nombre = claims.ready ? claims.nombre : null;
+  const esAdmin = claims.ready ? claims.esAdmin : false;
   const totalEstimadoPorEntregar = (citasPendientes ?? []).reduce(
     (s, c) => s + c.montoEstimado,
     0
@@ -139,6 +141,8 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
+
+      {esAdmin && <AccesoEstadoResultados gananciaMes={kpis.ganancia.mes} />}
 
       {/*
         En móvil (sin prefijo) esto sigue siendo un simple stack vertical
