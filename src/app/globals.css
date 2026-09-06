@@ -41,6 +41,17 @@
 
     --radius: 1.15rem;
 
+    /* Paleta categórica de gráficas. Arranca en el azul de marca y se abre
+       en tonos que se distinguen entre sí incluso en pantalla chica y a la
+       luz del sol (el uso real es un celular en la calle). Se redefine en
+       oscuro con más luminosidad para que no se apaguen sobre el azul
+       marino. */
+    --chart-1: 213 100% 53%;
+    --chart-2: 160 100% 38%;
+    --chart-3: 268 80% 60%;
+    --chart-4: 32 95% 50%;
+    --chart-5: 190 90% 40%;
+
     /* Vidrio (Liquid Glass) */
     --glass-bg: 255 255 255;
     --glass-bg-alpha: 0.55;
@@ -82,6 +93,13 @@
     --estado-pagado: 160 100% 42%;
     --estado-vencido: 0 72% 60%;
     --estado-pendiente: 220 15% 65%;
+
+    /* Misma paleta de gráficas, subida de luminosidad para el fondo marino. */
+    --chart-1: 213 100% 65%;
+    --chart-2: 160 90% 48%;
+    --chart-3: 268 90% 74%;
+    --chart-4: 32 100% 63%;
+    --chart-5: 190 95% 55%;
 
     /* Vidrio con tinte azul noche #032967 */
     --glass-bg: 3 41 103;

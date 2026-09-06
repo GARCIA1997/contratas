@@ -28,6 +28,11 @@ import {
   type ResultadoCobroVencidas,
 } from "@/lib/services/cobros";
 import type { ContrataParaAbono } from "@/lib/services/abono";
+import {
+  aggregarEstadoResultados,
+  type EstadoResultados,
+  type PeriodoEstado,
+} from "@/lib/services/estado-resultados";
 import { citasPendientesOrdenadas } from "@/lib/citas";
 import type { CitaLocal } from "@/lib/offline/db";
 
@@ -291,6 +296,45 @@ export async function getTendencia(
   );
 
   return aggregateTendencia(conPagos, meses, hoy);
+}
+
+/**
+ * Estado de resultados completo, calculado en el navegador sobre IndexedDB.
+ * No tiene equivalente en el servidor a propósito: el agregador
+ * (`services/estado-resultados.ts`) es puro y los datos ya están sincronizados
+ * localmente, así que el reporte abre sin red y sin round-trip.
+ */
+export async function getEstadoResultados(
+  ownerId: string,
+  periodo: PeriodoEstado = "MES",
+  hoy: Date = new Date()
+): Promise<EstadoResultados> {
+  if (!db) return aggregarEstadoResultados([], periodo, hoy);
+
+  const contratas = (
+    await db.contratas.where("ownerId").equals(ownerId).toArray()
+  ).filter((c) => !c._deletedAt);
+
+  const conPagos = await Promise.all(
+    contratas.map(async (c) => ({
+      clienteId: c.clienteId,
+      clienteNombre: c.clienteNombre,
+      tipo: c.tipo,
+      monto: c.monto,
+      abono: c.abono,
+      numCuotas: c.numCuotas,
+      fechaInicio: new Date(c.fechaInicio),
+      convertidaADeuda: c.convertidaADeuda,
+      pagos: (await pagosDeContrata(c.id)).map((p) => ({
+        pagado: p.pagado,
+        montoAbonado: p.montoAbonado,
+        fechaProgramada: new Date(p.fechaProgramada),
+        fechaPago: p.fechaPago ? new Date(p.fechaPago) : null,
+      })),
+    }))
+  );
+
+  return aggregarEstadoResultados(conPagos, periodo, hoy);
 }
 
 export function contrataLocalFromRow(c: ContrataLocal) {

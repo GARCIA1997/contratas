@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Saludo } from "@/components/saludo";
 import { TendenciaChart } from "@/components/tendencia-chart";
+import { DescargarPdfIcono } from "@/components/estado-resultados/descargar-pdf-boton";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getKpis,
@@ -83,6 +84,7 @@ export default function DashboardPage() {
 
   const entregado = kpis.montoEntregadoMes;
   const nombre = claims.ready ? claims.nombre : null;
+  const esAdmin = claims.ready ? claims.esAdmin : false;
   const totalEstimadoPorEntregar = (citasPendientes ?? []).reduce(
     (s, c) => s + c.montoEstimado,
     0
@@ -118,9 +120,12 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <Saludo nombre={nombre} />
-        <p className="text-sm text-muted-foreground">Resumen de tu cartera</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <Saludo nombre={nombre} />
+          <p className="text-sm text-muted-foreground">Resumen de tu cartera</p>
+        </div>
+        {esAdmin && <DescargarPdfIcono />}
       </div>
 
       <div className="flex gap-1 rounded-lg bg-muted p-1 md:max-w-sm">
