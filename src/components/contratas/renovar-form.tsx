@@ -271,12 +271,13 @@ export function RenovarForm({
             <>
               <label className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-border p-3">
                 <span className="text-sm">
-                  Incluir también lo vencido/vigente de{" "}
+                  Incluir también lo vencido, vigente o próximo a vencer de
+                  {" "}
                   {otras.length === 1
                     ? "su otra contrata activa"
                     : `sus otras ${otras.length} contratas activas`}{" "}
-                  ({formatMoneda(saldoOtras)}) — solo se cubre la cuota en
-                  curso más atrasadas, el resto sigue activo
+                  ({formatMoneda(saldoOtras)}) — solo se cubren esas cuotas,
+                  el resto sigue activo
                 </span>
                 <input
                   type="checkbox"

@@ -26,6 +26,30 @@ async function validarContrataOrigen(
   }
 }
 
+/**
+ * Valida que las contratas elegidas para una futura unificación existan,
+ * sean del cliente y sigan activas. No exige el mínimo de 2 aquí a
+ * propósito (igual que `contrataOrigenId`, se puede agendar sin haber
+ * decidido todavía) — `unificarContratas` es quien exige 2+ al convertir.
+ */
+async function validarContratasUnificar(
+  ownerId: string,
+  clienteId: string,
+  ids: string[]
+) {
+  if (ids.length === 0) return;
+  const contratas = await prisma.contrata.findMany({
+    where: { id: { in: ids }, ownerId, clienteId, convertidaADeuda: false },
+    select: { id: true },
+  });
+  if (contratas.length !== new Set(ids).size) {
+    throw new HttpError(
+      400,
+      "Alguna de las contratas seleccionadas no pertenece a este cliente"
+    );
+  }
+}
+
 async function requireCita(ownerId: string, id: string) {
   const cita = await prisma.citaAgendada.findFirst({ where: { id, ownerId } });
   if (!cita) throw new HttpError(404, "Cita no encontrada");
@@ -34,18 +58,26 @@ async function requireCita(ownerId: string, id: string) {
 
 export async function crearCita(ownerId: string, input: CitaInput) {
   await requireCliente(ownerId, input.clienteId);
-  // "Nueva" nunca lleva contrata origen — se ignora aunque venga en el
-  // input (defensa en profundidad, además del guard en el formulario).
+  // "Nueva" nunca lleva contrata origen, y "Unificación" usa
+  // `contratasUnificarIds` en su lugar — se ignora lo que no aplique al
+  // tipo elegido, aunque venga en el input (defensa en profundidad, además
+  // del guard en el formulario).
   const contrataOrigenId =
-    input.tipo === "NUEVA" ? null : input.contrataOrigenId ?? null;
+    input.tipo === "NUEVA" || input.tipo === "UNIFICACION"
+      ? null
+      : input.contrataOrigenId ?? null;
   if (contrataOrigenId) {
     await validarContrataOrigen(ownerId, input.clienteId, contrataOrigenId);
   }
+  const contratasUnificarIds =
+    input.tipo === "UNIFICACION" ? input.contratasUnificarIds ?? [] : [];
+  await validarContratasUnificar(ownerId, input.clienteId, contratasUnificarIds);
   return prisma.citaAgendada.create({
     data: {
       ownerId,
       clienteId: input.clienteId,
       contrataOrigenId,
+      contratasUnificarIds,
       tipo: input.tipo,
       periodicidad: input.periodicidad ?? null,
       montoEstimado: input.montoEstimado,
@@ -105,10 +137,11 @@ export async function actualizarCita(
   const clienteId = input.clienteId ?? cita.clienteId;
   if (input.clienteId) await requireCliente(ownerId, input.clienteId);
   const tipoEfectivo = input.tipo ?? cita.tipo;
-  // "Nueva" nunca lleva contrata origen — se ignora aunque venga en el
+  // "Nueva" nunca lleva contrata origen, y "Unificación" usa
+  // `contratasUnificarIds` en su lugar — se ignora aunque venga en el
   // input (defensa en profundidad, además del guard en el formulario).
   const contrataOrigenId =
-    tipoEfectivo === "NUEVA"
+    tipoEfectivo === "NUEVA" || tipoEfectivo === "UNIFICACION"
       ? null
       : input.contrataOrigenId !== undefined
         ? input.contrataOrigenId
@@ -116,11 +149,19 @@ export async function actualizarCita(
   if (contrataOrigenId) {
     await validarContrataOrigen(ownerId, clienteId, contrataOrigenId);
   }
+  const contratasUnificarIds =
+    tipoEfectivo === "UNIFICACION"
+      ? input.contratasUnificarIds !== undefined
+        ? input.contratasUnificarIds
+        : cita.contratasUnificarIds
+      : [];
+  await validarContratasUnificar(ownerId, clienteId, contratasUnificarIds);
   return prisma.citaAgendada.update({
     where: { id },
     data: {
       ...(input.clienteId !== undefined ? { clienteId: input.clienteId } : {}),
       contrataOrigenId,
+      contratasUnificarIds,
       ...(input.tipo !== undefined ? { tipo: input.tipo } : {}),
       ...(input.periodicidad !== undefined
         ? { periodicidad: input.periodicidad }

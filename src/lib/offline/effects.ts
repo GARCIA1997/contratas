@@ -279,11 +279,12 @@ export async function applyLocalEffect(
     const { citaId, input } = payload as {
       citaId: string;
       input: {
-        tipo?: "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+        tipo?: "NUEVA" | "RENOVACION" | "UNIFICACION" | "SIN_DEFINIR";
         periodicidad?: "SEMANAL" | "QUINCENAL" | "MENSUAL" | null;
         montoEstimado?: number;
         fechaEntrega?: string;
         contrataOrigenId?: string | null;
+        contratasUnificarIds?: string[];
         notas?: string | null;
       };
     };
@@ -300,6 +301,9 @@ export async function applyLocalEffect(
         : {}),
       ...(input.contrataOrigenId !== undefined
         ? { contrataOrigenId: input.contrataOrigenId }
+        : {}),
+      ...(input.contratasUnificarIds !== undefined
+        ? { contratasUnificarIds: input.contratasUnificarIds }
         : {}),
       ...(input.notas !== undefined ? { notas: input.notas } : {}),
       _dirty: true,

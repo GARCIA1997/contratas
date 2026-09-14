@@ -140,7 +140,7 @@ describe("saldoPendiente", () => {
 });
 
 describe("cuotasVencidasOVigentes / montoVencidoOVigente", () => {
-  it("excluye cuotas futuras", () => {
+  it("excluye cuotas futuras fuera de la ventana de anticipación", () => {
     const hoy = new Date(2026, 6, 20);
     const pagos = [
       { fechaProgramada: new Date(2026, 6, 20), pagado: false, montoAbonado: 0 },
@@ -149,6 +149,44 @@ describe("cuotasVencidasOVigentes / montoVencidoOVigente", () => {
     const vigentes = cuotasVencidasOVigentes(pagos, hoy);
     expect(vigentes).toHaveLength(1);
     expect(montoVencidoOVigente(pagos, 1000, hoy)).toBe(1000);
+  });
+
+  // Bug reportado: al renovar, el checkbox de "incluir otras contratas"
+  // solo ofrecía marcar lo vencido u hoy — una cuota que Ruta ya mostraba
+  // como "vence en 2 días" no aparecía, así que no se podía cobrar en el
+  // mismo viaje que la renovación.
+  it("incluye una cuota que vence dentro de DIAS_ANTICIPACION_COBRO (la misma ventana que usa Ruta)", () => {
+    const hoy = new Date(2026, 6, 20);
+    const pagos = [
+      // Vence en 1 día — dentro de la ventana de Ruta.
+      { fechaProgramada: new Date(2026, 6, 21), pagado: false, montoAbonado: 0 },
+      // Vence en 2 días — el borde exacto de DIAS_ANTICIPACION_COBRO.
+      { fechaProgramada: new Date(2026, 6, 22), pagado: false, montoAbonado: 0 },
+      // Vence en 3 días — ya fuera de la ventana de Ruta.
+      { fechaProgramada: new Date(2026, 6, 23), pagado: false, montoAbonado: 0 },
+    ];
+    const vigentes = cuotasVencidasOVigentes(pagos, hoy);
+    expect(vigentes.map((p) => p.fechaProgramada.getDate())).toEqual([21, 22]);
+    expect(montoVencidoOVigente(pagos, 1000, hoy)).toBe(2000);
+  });
+
+  it("sigue incluyendo atrasadas y la de hoy, sin cambios", () => {
+    const hoy = new Date(2026, 6, 20);
+    const pagos = [
+      { fechaProgramada: new Date(2026, 6, 10), pagado: false, montoAbonado: 0 }, // atrasada
+      { fechaProgramada: new Date(2026, 6, 20), pagado: false, montoAbonado: 0 }, // hoy
+    ];
+    expect(cuotasVencidasOVigentes(pagos, hoy)).toHaveLength(2);
+    expect(montoVencidoOVigente(pagos, 500, hoy)).toBe(1000);
+  });
+
+  it("no cuenta una cuota ya pagada aunque caiga dentro de la ventana", () => {
+    const hoy = new Date(2026, 6, 20);
+    const pagos = [
+      { fechaProgramada: new Date(2026, 6, 21), pagado: true, montoAbonado: 500 },
+    ];
+    expect(cuotasVencidasOVigentes(pagos, hoy)).toHaveLength(0);
+    expect(montoVencidoOVigente(pagos, 500, hoy)).toBe(0);
   });
 });
 

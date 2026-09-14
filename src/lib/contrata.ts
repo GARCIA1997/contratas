@@ -1,4 +1,4 @@
-import { differenceInCalendarDays, startOfDay } from "date-fns";
+import { addDays, differenceInCalendarDays, startOfDay } from "date-fns";
 import type { TipoContrata } from "@prisma/client";
 import { anclarFechaCliente } from "./fechas";
 
@@ -63,6 +63,17 @@ export type PagoLike = {
 };
 
 export const DIAS_PROXIMO_VENCIMIENTO = 3;
+
+/**
+ * Días de anticipación con los que Ruta decide a quién visitar hoy (ver
+ * `aggregarRutaDelDia` en `services/ruta.ts`). Vive aquí, no allá, porque
+ * `cuotasVencidasOVigentes`/`montoVencidoOVigente` la reutilizan: el
+ * checkbox "incluir otras contratas" de renovar debe mostrar y liquidar
+ * exactamente las mismas cuotas que ya aparecerían hoy en Ruta — antes
+ * usaba un corte distinto (sin próximas) y una cuota que Ruta ya mostraba
+ * como "vence en 2 días" no salía marcable al renovar.
+ */
+export const DIAS_ANTICIPACION_COBRO = 2;
 
 /** Determina el estado de una contrata según sus pagos. */
 export function estadoContrata(
@@ -168,23 +179,28 @@ export function saldoPendiente(pagos: PagoLike[], abono: number): number {
 
 /**
  * Cuotas "vencidas o vigentes": no pagadas y cuya fecha programada ya llegó
- * (hoy o antes) — la de la semana/quincena en curso más las atrasadas, sin
- * incluir cuotas futuras.
+ * o llega dentro de `DIAS_ANTICIPACION_COBRO` días — atrasadas, la de la
+ * semana/quincena en curso, y la próxima a vencer. El límite hacia adelante
+ * es a propósito el mismo que usa Ruta para decidir a quién visitar hoy:
+ * este cálculo alimenta el checkbox "incluir otras contratas" al renovar, y
+ * lo que ahí se ofrece marcar debe ser lo mismo que Ruta ya te mostraría.
  */
 export function cuotasVencidasOVigentes<T extends PagoLike>(
   pagos: T[],
   hoy: Date = new Date()
 ): T[] {
   const base = startOfDay(hoy);
+  const limite = addDays(base, DIAS_ANTICIPACION_COBRO);
   return pagos.filter(
-    (p) => !p.pagado && anclarFechaCliente(p.fechaProgramada) <= base
+    (p) => !p.pagado && anclarFechaCliente(p.fechaProgramada) <= limite
   );
 }
 
 /**
  * Monto vencido/vigente = suma de (abono - montoAbonado) de las cuotas no
- * pagadas cuya fecha ya llegó (hoy o antes). A diferencia de
- * `saldoPendiente`, no incluye cuotas futuras.
+ * pagadas cuya fecha ya llegó o está próxima (ver `cuotasVencidasOVigentes`).
+ * A diferencia de `saldoPendiente`, no incluye cuotas más allá de esa
+ * ventana.
  */
 export function montoVencidoOVigente(
   pagos: PagoLike[],

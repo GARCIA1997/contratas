@@ -365,11 +365,11 @@ export async function contratasConSaldo(
 }
 
 /**
- * Contratas del cliente con cuotas vencidas o vigentes (semana/quincena en
- * curso más atrasadas). A diferencia de `contratasConSaldo`, `saldo` aquí
- * solo cubre esas cuotas, no el total restante de la contrata — se usa para
- * la opción "incluir otras" al renovar, que no debe liquidar contratas al
- * corriente por adelantado.
+ * Contratas del cliente con cuotas vencidas, vigentes o próximas a vencer
+ * (mismo `DIAS_ANTICIPACION_COBRO` que usa Ruta). A diferencia de
+ * `contratasConSaldo`, `saldo` aquí solo cubre esas cuotas, no el total
+ * restante de la contrata — se usa para la opción "incluir otras" al
+ * renovar, que no debe liquidar contratas al corriente por adelantado.
  */
 export async function contratasConVencido(
   ownerId: string,
@@ -446,9 +446,10 @@ async function liquidarContrataTx(
 }
 
 /**
- * Marca como pagadas únicamente las cuotas vencidas o vigentes (semana/
- * quincena en curso más atrasadas) de una contrata; las cuotas futuras
- * quedan intactas y la contrata sigue activa.
+ * Marca como pagadas únicamente las cuotas vencidas, vigentes o próximas a
+ * vencer (mismo criterio que `contratasConVencido`, para liquidar
+ * exactamente lo que el checkbox mostró) de una contrata; las cuotas más
+ * allá de esa ventana quedan intactas y la contrata sigue activa.
  */
 async function liquidarVencidasTx(
   tx: Prisma.TransactionClient,
@@ -479,9 +480,9 @@ export type ResultadoRenovacion = {
 /**
  * Renueva una contrata antes de tiempo: crea una contrata nueva y marca como
  * pagada (liquidada) la contrata original. Si `incluirOtras` es true, también
- * cubre las cuotas vencidas o vigentes (semana/quincena en curso más
- * atrasadas) del resto de las contratas activas del mismo cliente — no su
- * saldo completo, que sigue corriendo con normalidad.
+ * cubre las cuotas vencidas, vigentes o próximas a vencer del resto de las
+ * contratas activas del mismo cliente — no su saldo completo, que sigue
+ * corriendo con normalidad.
  */
 export async function renovarContrata(
   ownerId: string,

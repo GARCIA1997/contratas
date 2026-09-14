@@ -202,7 +202,7 @@ export async function getContratasConSaldo(
     .filter((c) => c.saldo > 0);
 }
 
-/** Espejo offline de `contratasConVencido` (usado por "renovar"): solo lo vencido/vigente. */
+/** Espejo offline de `contratasConVencido` (usado por "renovar"): vencido, vigente y próximo a vencer. */
 export async function getContratasConVencido(
   ownerId: string,
   clienteId: string,

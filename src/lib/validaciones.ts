@@ -53,7 +53,13 @@ export const unificarContratasSchema = nuevaContrataBaseSchema.extend({
 export const citaSchema = z.object({
   clienteId: z.string().min(1, "Elige un cliente"),
   contrataOrigenId: z.string().min(1).optional().nullable(),
-  tipo: z.enum(["NUEVA", "RENOVACION", "SIN_DEFINIR"]).default("SIN_DEFINIR"),
+  tipo: z
+    .enum(["NUEVA", "RENOVACION", "UNIFICACION", "SIN_DEFINIR"])
+    .default("SIN_DEFINIR"),
+  /** Solo con tipo UNIFICACION: qué contratas se planea juntar. Igual que
+   *  `contrataOrigenId`, opcional — se puede agendar sin haber decidido
+   *  todavía cuáles, y se revalida en vivo al convertir la cita. */
+  contratasUnificarIds: z.array(z.string().min(1)).optional(),
   /** Cada cuánto pagará la contrata que salga de la cita. Nullable: puede
    *  no saberse al agendar y se decide al entregar. */
   periodicidad: z.enum(["SEMANAL", "QUINCENAL", "MENSUAL"]).optional().nullable(),

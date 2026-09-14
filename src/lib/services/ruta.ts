@@ -1,6 +1,7 @@
 import { startOfDay, addDays, differenceInCalendarDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { anclarFechaCliente } from "@/lib/fechas";
+import { DIAS_ANTICIPACION_COBRO } from "@/lib/contrata";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -51,20 +52,21 @@ export type ParadaRuta = {
 // Un cobrador sale con 2-3 días de anticipación a visitar zonas alejadas, así
 // que un pago programado para el domingo debe aparecer en la ruta desde el
 // viernes (pedido explícito en campo) — no hasta el mismo día.
-const DIAS_ANTICIPACION_RUTA = 2;
-
 /**
  * Clientes con cuotas vencidas, que vencen hoy, o que vencen dentro de
- * `DIAS_ANTICIPACION_RUTA` días, pendientes de cobro — la lista de a quién
+ * `DIAS_ANTICIPACION_COBRO` días, pendientes de cobro — la lista de a quién
  * visitar hoy, ordenada por más atrasado primero (y las próximas a vencer al
- * final).
+ * final). La misma ventana la reutiliza el checkbox "incluir otras
+ * contratas" al renovar (ver `cuotasVencidasOVigentes` en `lib/contrata.ts`),
+ * a propósito: lo que Ruta ya muestra como "por cobrar" es lo mismo que
+ * renovar debe ofrecer marcar.
  */
 export function aggregarRutaDelDia(
   clientes: ClienteParaRuta[],
   hoy: Date = new Date()
 ): ParadaRuta[] {
   const base = startOfDay(hoy);
-  const limite = addDays(base, DIAS_ANTICIPACION_RUTA);
+  const limite = addDays(base, DIAS_ANTICIPACION_COBRO);
   const paradas: ParadaRuta[] = [];
 
   for (const cliente of clientes) {

@@ -45,6 +45,7 @@ export default function EditarCitaPage() {
         id: cita.id,
         clienteId: cita.clienteId,
         contrataOrigenId: cita.contrataOrigenId,
+        contratasUnificarIds: cita.contratasUnificarIds ?? [],
         tipo: cita.tipo,
         periodicidad: cita.periodicidad ?? null,
         montoEstimado: cita.montoEstimado,

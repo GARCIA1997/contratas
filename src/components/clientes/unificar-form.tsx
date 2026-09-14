@@ -42,6 +42,7 @@ export function UnificarForm({
   ownerId,
   clienteNombre,
   contratas,
+  preseleccion,
   cuotasPorDefecto,
   maxCuotas,
   nombreApp,
@@ -52,16 +53,28 @@ export function UnificarForm({
   ownerId?: string | null;
   clienteNombre: string;
   contratas: ContrataElegible[];
+  /** Ids marcadas al agendar una unificación futura (ver `CitaAgendada.
+   *  contratasUnificarIds`). Se filtran contra `contratas` a propósito: una
+   *  contrata elegida entonces pudo liquidarse mientras tanto y ya no
+   *  aparece marcable. */
+  preseleccion?: string[];
   cuotasPorDefecto: number;
   maxCuotas: number;
   nombreApp: string;
   /** La página la usa para no redirigir de vuelta apenas las contratas
-   * seleccionadas dejen de ser "elegibles" — ver comentario en el page.tsx. */
-  onUnificada?: () => void;
+   * seleccionadas dejen de ser "elegibles" — ver comentario en el page.tsx.
+   * Trae `info` (mismo shape que `onRenovada` en renovar-form) para poder
+   * cerrar el círculo con la cita agendada, si la hubo. */
+  onUnificada?: (info?: { contrataId: string | null; offline: boolean }) => void;
 }) {
   const claims = useAuthClaims();
   const idem = useIdempotencia();
-  const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
+  const [seleccionadas, setSeleccionadas] = useState<Set<string>>(
+    () =>
+      new Set(
+        (preseleccion ?? []).filter((id) => contratas.some((c) => c.id === id))
+      )
+  );
   const [pendienteSync, setPendienteSync] = useState(false);
   const [unificada, setUnificada] = useState<ContrataEntregada & { id: string } | null>(
     null
@@ -172,6 +185,7 @@ export function UnificarForm({
       await enqueue(ownerId, "cliente.unificar", { clienteId, contrataIds, input });
       setGuardando(false);
       setPendienteSync(true);
+      onUnificada?.({ contrataId: null, offline: true });
       return;
     }
 
@@ -203,7 +217,7 @@ export function UnificarForm({
     // ver comentario largo en renovar-form.tsx: sin este orden, el
     // useLiveQuery de la página puede reaccionar al cambio en Dexie y
     // redirigir antes de que React procese el setState de "completado".
-    onUnificada?.();
+    onUnificada?.({ contrataId: data.nuevaContrata.id, offline: false });
     if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
     // Igual que "nueva contrata"/renovar: se muestra la confirmación con la
     // opción de mandarle los detalles al cliente por WhatsApp en vez de
