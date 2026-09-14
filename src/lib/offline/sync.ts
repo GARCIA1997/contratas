@@ -323,8 +323,9 @@ type CitaApi = {
   ownerId: string;
   clienteId: string;
   contrataOrigenId: string | null;
+  contratasUnificarIds: string[];
   contrataCreadaId: string | null;
-  tipo: "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+  tipo: "NUEVA" | "RENOVACION" | "UNIFICACION" | "SIN_DEFINIR";
   periodicidad: "SEMANAL" | "QUINCENAL" | "MENSUAL" | null;
   montoEstimado: number;
   fechaEntrega: string;
@@ -361,6 +362,7 @@ export async function syncCitas(ownerId: string): Promise<void> {
         clienteNombre: c.cliente.nombre,
         clienteTelefono: c.cliente.telefono,
         contrataOrigenId: c.contrataOrigenId,
+        contratasUnificarIds: c.contratasUnificarIds ?? [],
         contrataCreadaId: c.contrataCreadaId,
         tipo: c.tipo,
         periodicidad: c.periodicidad ?? null,

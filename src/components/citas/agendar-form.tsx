@@ -28,6 +28,7 @@ export type CitaInicial = {
   id: string;
   clienteId: string;
   contrataOrigenId: string | null;
+  contratasUnificarIds?: string[];
   tipo: TipoCitaContrata;
   periodicidad?: "SEMANAL" | "QUINCENAL" | "MENSUAL" | null;
   montoEstimado: number;
@@ -38,6 +39,7 @@ export type CitaInicial = {
 const TIPO_LABEL: Record<TipoCitaContrata, string> = {
   NUEVA: "Nueva",
   RENOVACION: "Renovación",
+  UNIFICACION: "Unificación",
   SIN_DEFINIR: "Sin definir",
 };
 
@@ -82,6 +84,9 @@ export function AgendarForm({
   const [contrataOrigenId, setContrataOrigenId] = useState<string | null>(
     inicial?.contrataOrigenId ?? null
   );
+  const [contratasUnificarIds, setContratasUnificarIds] = useState<Set<string>>(
+    () => new Set(inicial?.contratasUnificarIds ?? [])
+  );
   const [periodicidad, setPeriodicidad] = useState<
     "SEMANAL" | "QUINCENAL" | "MENSUAL" | null
   >(inicial?.periodicidad ?? null);
@@ -112,27 +117,50 @@ export function AgendarForm({
   );
 
   // Al cambiar de cliente, la contrata origen elegida (si venía de otro
-  // cliente) deja de ser válida.
+  // cliente) deja de ser válida — igual para la selección de unificar.
   useEffect(() => {
-    setContrataOrigenId(inicial?.clienteId === clienteId ? inicial?.contrataOrigenId ?? null : null);
+    const mismoCliente = inicial?.clienteId === clienteId;
+    setContrataOrigenId(mismoCliente ? inicial?.contrataOrigenId ?? null : null);
+    setContratasUnificarIds(
+      new Set(mismoCliente ? inicial?.contratasUnificarIds ?? [] : [])
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId]);
 
-  // "Nueva" nunca lleva contrata origen — si se auto-seleccionó una bajo
-  // otro tipo (ver efecto de abajo) y luego se cambia a "Nueva", hay que
-  // soltarla explícitamente: nada más la limpia al cambiar de tipo.
+  // "Contrata origen" solo aplica a Renovación (y a "Sin definir", que
+  // puede llevar un candidato tentativo); "Unificación" usa su propia
+  // selección de varias contratas, y "Nueva" no lleva ninguna de las dos.
   useEffect(() => {
-    if (tipo === "NUEVA" && contrataOrigenId) setContrataOrigenId(null);
+    if (tipo !== "RENOVACION" && tipo !== "SIN_DEFINIR" && contrataOrigenId) {
+      setContrataOrigenId(null);
+    }
+    if (tipo !== "UNIFICACION" && contratasUnificarIds.size > 0) {
+      setContratasUnificarIds(new Set());
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tipo]);
 
   // Si solo hay una contrata activa elegible, se asume esa sin pedirle al
-  // usuario que elija entre una sola opción.
+  // usuario que elija entre una sola opción (no aplica a Unificación: ahí
+  // hacen falta 2+, así que no hay "una sola opción" que asumir).
   useEffect(() => {
-    if (tipo !== "NUEVA" && contratasActivas?.length === 1 && !contrataOrigenId) {
+    if (
+      (tipo === "RENOVACION" || tipo === "SIN_DEFINIR") &&
+      contratasActivas?.length === 1 &&
+      !contrataOrigenId
+    ) {
       setContrataOrigenId(contratasActivas[0].id);
     }
   }, [tipo, contratasActivas, contrataOrigenId]);
+
+  function toggleUnificar(id: string) {
+    setContratasUnificarIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function elegirCliente(c: ClienteOpcion) {
     setClienteId(c.id);
@@ -152,6 +180,8 @@ export function AgendarForm({
     const input = {
       clienteId,
       contrataOrigenId,
+      contratasUnificarIds:
+        tipo === "UNIFICACION" ? Array.from(contratasUnificarIds) : [],
       tipo,
       periodicidad,
       montoEstimado: montoNum,
@@ -338,8 +368,8 @@ export function AgendarForm({
 
         <div className="space-y-2">
           <Label>Tipo</Label>
-          <div className="grid grid-cols-3 gap-2">
-            {(["NUEVA", "RENOVACION", "SIN_DEFINIR"] as const).map((t) => (
+          <div className="grid grid-cols-2 gap-2">
+            {(["NUEVA", "RENOVACION", "UNIFICACION", "SIN_DEFINIR"] as const).map((t) => (
               <button
                 key={t}
                 type="button"
@@ -391,39 +421,93 @@ export function AgendarForm({
           </div>
         </div>
 
-        {tipo !== "NUEVA" && clienteId && contratasActivas && contratasActivas.length >= 2 && (
-          <div className="space-y-2">
-            <Label>¿Cuál contrata se renueva?</Label>
-            <ul className="space-y-1.5">
-              {contratasActivas.map((c) => (
-                <li key={c.id}>
-                  <label className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-secondary/30 px-3 py-2.5">
-                    <span className="text-sm">
-                      {c.tipo === "SEMANAL"
-                        ? "Semanal"
-                        : c.tipo === "QUINCENAL"
-                          ? "Quincenal"
-                          : "Mensual"}{" "}
-                      · cuota {c.cuotaPagadaMax}/{c.numCuotas} · saldo{" "}
-                      {formatMoneda(c.saldo)}
-                    </span>
-                    <input
-                      type="radio"
-                      name="contrataOrigen"
-                      className="size-5 shrink-0 accent-primary"
-                      checked={contrataOrigenId === c.id}
-                      onChange={() => setContrataOrigenId(c.id)}
-                    />
-                  </label>
-                </li>
-              ))}
-            </ul>
+        {(tipo === "RENOVACION" || tipo === "SIN_DEFINIR") &&
+          clienteId &&
+          contratasActivas &&
+          contratasActivas.length >= 2 && (
+            <div className="space-y-2">
+              <Label>¿Cuál contrata se renueva?</Label>
+              <ul className="space-y-1.5">
+                {contratasActivas.map((c) => (
+                  <li key={c.id}>
+                    <label className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-secondary/30 px-3 py-2.5">
+                      <span className="text-sm">
+                        {c.tipo === "SEMANAL"
+                          ? "Semanal"
+                          : c.tipo === "QUINCENAL"
+                            ? "Quincenal"
+                            : "Mensual"}{" "}
+                        · cuota {c.cuotaPagadaMax}/{c.numCuotas} · saldo{" "}
+                        {formatMoneda(c.saldo)}
+                      </span>
+                      <input
+                        type="radio"
+                        name="contrataOrigen"
+                        className="size-5 shrink-0 accent-primary"
+                        checked={contrataOrigenId === c.id}
+                        onChange={() => setContrataOrigenId(c.id)}
+                      />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                Si todavía no se sabe, se puede dejar sin elegir y decidirse
+                después.
+              </p>
+            </div>
+          )}
+
+        {/* Mismo checklist que "Unificar" en el perfil del cliente, pero
+            aquí solo se guarda la intención (qué contratas se piensa
+            juntar) — la unificación real, con su validación de saldo
+            en vivo, pasa hasta que se convierta la cita. */}
+        {tipo === "UNIFICACION" &&
+          clienteId &&
+          contratasActivas &&
+          contratasActivas.length >= 2 && (
+            <div className="space-y-2">
+              <Label>¿Cuáles contratas se unifican?</Label>
+              <ul className="space-y-1.5">
+                {contratasActivas.map((c) => (
+                  <li key={c.id}>
+                    <label className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-secondary/30 px-3 py-2.5">
+                      <span className="text-sm">
+                        {c.tipo === "SEMANAL"
+                          ? "Semanal"
+                          : c.tipo === "QUINCENAL"
+                            ? "Quincenal"
+                            : "Mensual"}{" "}
+                        · cuota {c.cuotaPagadaMax}/{c.numCuotas} · saldo{" "}
+                        {formatMoneda(c.saldo)}
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="size-5 shrink-0 accent-primary"
+                        checked={contratasUnificarIds.has(c.id)}
+                        onChange={() => toggleUnificar(c.id)}
+                      />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                {contratasUnificarIds.size === 1
+                  ? "Falta elegir al menos una más — se pueden marcar después, al convertir la cita."
+                  : "Si todavía no se sabe cuáles, se puede dejar sin marcar y decidirse después."}
+              </p>
+            </div>
+          )}
+
+        {tipo === "UNIFICACION" &&
+          clienteId &&
+          contratasActivas &&
+          contratasActivas.length < 2 && (
             <p className="text-xs text-muted-foreground">
-              Si todavía no se sabe, se puede dejar sin elegir y decidirse
-              después.
+              Este cliente no tiene 2 o más contratas activas para unificar
+              todavía.
             </p>
-          </div>
-        )}
+          )}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">

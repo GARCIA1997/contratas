@@ -171,6 +171,10 @@ model Pago {
 enum TipoCitaContrata {
   NUEVA
   RENOVACION
+  /// Se agenda para juntar 2+ contratas activas del cliente en una sola al
+  /// entregarse (ver `contratasUnificarIds` abajo) — el mismo movimiento
+  /// que "Unificar" desde el perfil del cliente, solo que agendado.
+  UNIFICACION
   SIN_DEFINIR
 }
 
@@ -196,6 +200,13 @@ model CitaAgendada {
   /// después, antes de convertir la cita en contrata real.
   contrataOrigen   Contrata?        @relation("CitaContrataOrigen", fields: [contrataOrigenId], references: [id], onDelete: SetNull)
   contrataOrigenId String?
+  /// Solo con tipo UNIFICACION: qué contratas activas del cliente se
+  /// planea juntar al entregar. No es una relación formal (a propósito,
+  /// igual que `contrataOrigenId` es opcional) — al convertir la cita se
+  /// vuelven a validar en vivo contra la base, así que una contrata que
+  /// mientras tanto se liquidó o se le agregó otra cuota simplemente ya no
+  /// aparece marcable, sin que la cita quede en un estado inconsistente.
+  contratasUnificarIds String[]      @default([])
   /// La contrata real generada al confirmar esta cita (si se llegó a dar).
   contrataCreada   Contrata?        @relation("CitaContrataCreada", fields: [contrataCreadaId], references: [id], onDelete: SetNull)
   contrataCreadaId String?          @unique

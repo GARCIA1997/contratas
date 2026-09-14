@@ -3,7 +3,11 @@ import { es } from "date-fns/locale";
 import { anclarFechaCliente } from "./fechas";
 
 export type EstadoCita = "PENDIENTE" | "ENTREGADA" | "CANCELADA";
-export type TipoCitaContrata = "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+export type TipoCitaContrata =
+  | "NUEVA"
+  | "RENOVACION"
+  | "UNIFICACION"
+  | "SIN_DEFINIR";
 
 /**
  * Estado visible en la UI: igual al `estado` persistido, salvo que una cita

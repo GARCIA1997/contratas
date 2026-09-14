@@ -98,7 +98,11 @@ export type MetaLocal = {
 };
 
 export type EstadoCitaLocal = "PENDIENTE" | "ENTREGADA" | "CANCELADA";
-export type TipoCitaLocal = "NUEVA" | "RENOVACION" | "SIN_DEFINIR";
+export type TipoCitaLocal =
+  | "NUEVA"
+  | "RENOVACION"
+  | "UNIFICACION"
+  | "SIN_DEFINIR";
 
 export type CitaLocal = {
   id: string;
@@ -107,6 +111,8 @@ export type CitaLocal = {
   clienteNombre: string;
   clienteTelefono: string | null;
   contrataOrigenId: string | null;
+  /** Solo con tipo UNIFICACION: qué contratas se planea juntar. */
+  contratasUnificarIds: string[];
   contrataCreadaId: string | null;
   tipo: TipoCitaLocal;
   /** Cada cuánto pagará la contrata que salga de la cita. `null` cuando no

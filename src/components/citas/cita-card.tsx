@@ -22,6 +22,7 @@ import {
 const TIPO_LABEL: Record<CitaLocal["tipo"], string> = {
   NUEVA: "Nueva contrata",
   RENOVACION: "Renovación",
+  UNIFICACION: "Unificación",
   SIN_DEFINIR: "Sin definir",
 };
 
@@ -35,12 +36,20 @@ export function CitaCard({
   const [descartando, setDescartando] = useState(false);
   const estado = estadoCitaVista(cita);
   const necesitaOrigen = cita.tipo === "RENOVACION" && !cita.contrataOrigenId;
-  const contrataOrigenUtil = cita.tipo !== "NUEVA" ? cita.contrataOrigenId : null;
-  const convertirHref = necesitaOrigen
+  const necesitaUnificar =
+    cita.tipo === "UNIFICACION" && (cita.contratasUnificarIds?.length ?? 0) < 2;
+  const necesitaElegir = necesitaOrigen || necesitaUnificar;
+  const contrataOrigenUtil =
+    cita.tipo !== "NUEVA" && cita.tipo !== "UNIFICACION"
+      ? cita.contrataOrigenId
+      : null;
+  const convertirHref = necesitaElegir
     ? `/citas/${cita.id}/editar`
-    : contrataOrigenUtil
-      ? `/contratas/${contrataOrigenUtil}/renovar?citaId=${cita.id}`
-      : `/contratas/nueva?clienteId=${cita.clienteId}&citaId=${cita.id}`;
+    : cita.tipo === "UNIFICACION"
+      ? `/clientes/${cita.clienteId}/unificar?citaId=${cita.id}`
+      : contrataOrigenUtil
+        ? `/contratas/${contrataOrigenUtil}/renovar?citaId=${cita.id}`
+        : `/contratas/nueva?clienteId=${cita.clienteId}&citaId=${cita.id}`;
 
   async function descartar() {
     if (!confirm(`¿Descartar la cita de ${cita.clienteNombre}?`)) return;
@@ -116,7 +125,11 @@ export function CitaCard({
             <Button size="sm" asChild>
               <Link href={convertirHref}>
                 <ArrowRight className="size-4" />{" "}
-                {necesitaOrigen ? "Elegir contrata" : "Convertir"}
+                {necesitaElegir
+                  ? necesitaUnificar
+                    ? "Elegir contratas"
+                    : "Elegir contrata"
+                  : "Convertir"}
               </Link>
             </Button>
           </div>
