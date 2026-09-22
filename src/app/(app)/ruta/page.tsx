@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Phone, MessageCircle, MapPin, Check, CalendarPlus } from "lucide-react";
+import { Phone, MessageCircle, MapPin, Check, CalendarPlus, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -199,6 +200,7 @@ export default function RutaDelDiaPage() {
     [ownerId]
   );
   const [vista, setVista] = useState<"COBRAR" | "ENTREGAR">("COBRAR");
+  const [busqueda, setBusqueda] = useState("");
   const [filtroEntrega, setFiltroEntrega] = useState<FiltroPeriodicidad>("TODAS");
   const citas = useLiveQuery(
     () => (ownerId ? getCitasPendientes(ownerId) : undefined),
@@ -252,7 +254,15 @@ export default function RutaDelDiaPage() {
     }
   }, [paradas, router]);
 
-  const totalDia = paradas?.reduce((s, p) => s + p.total, 0) ?? 0;
+  // Solo filtra "Cobrar" — Entregar tiene su propio segmentado por
+  // periodicidad y mezclar los dos controles en una sola pantalla confunde
+  // más de lo que ayuda. El total de arriba (paradas pendientes / dinero
+  // del día) también refleja el filtro: si buscas a alguien, quieres ver
+  // SU total, no el de toda la ruta.
+  const paradasFiltradas = (paradas ?? []).filter((p) =>
+    p.nombre.toLowerCase().includes(busqueda.trim().toLowerCase())
+  );
+  const totalDia = paradasFiltradas.reduce((s, p) => s + p.total, 0);
   // Las secciones por semana de la pestaña "Entregar". Se calcula siempre
   // (es barato y puro) para no meter un hook condicional.
   const semanas = agruparCitasPorSemana(citas ?? [], filtroEntrega);
@@ -291,12 +301,35 @@ export default function RutaDelDiaPage() {
       {vista === "COBRAR" ? (
         <>
           {paradas && paradas.length > 0 && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                placeholder="Buscar cliente en la ruta de hoy…"
+                className="pl-9 pr-9"
+              />
+              {busqueda && (
+                <button
+                  type="button"
+                  onClick={() => setBusqueda("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-4" />
+                  <span className="sr-only">Limpiar búsqueda</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {paradasFiltradas.length > 0 && (
             <Card>
               <CardContent className="flex items-center justify-between p-4">
                 <div>
                   <p className="text-xs text-muted-foreground">
-                    {paradas.length}{" "}
-                    {paradas.length === 1 ? "parada" : "paradas"} pendientes
+                    {paradasFiltradas.length}{" "}
+                    {paradasFiltradas.length === 1 ? "parada" : "paradas"}{" "}
+                    {busqueda ? "encontradas" : "pendientes"}
                   </p>
                   <p className="text-lg font-bold">{formatMoneda(totalDia)}</p>
                 </div>
@@ -305,7 +338,7 @@ export default function RutaDelDiaPage() {
           )}
 
           <div className="space-y-3 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
-            {paradas?.map((p) => (
+            {paradasFiltradas.map((p) => (
               <Parada
                 key={p.clienteId}
                 parada={p}
@@ -320,6 +353,12 @@ export default function RutaDelDiaPage() {
           {paradas && paradas.length === 0 && (
             <p className="py-10 text-center text-xs text-muted-foreground">
               No hay cobros pendientes para hoy.
+            </p>
+          )}
+
+          {paradas && paradas.length > 0 && paradasFiltradas.length === 0 && (
+            <p className="py-10 text-center text-xs text-muted-foreground">
+              Nadie en la ruta de hoy coincide con «{busqueda}».
             </p>
           )}
         </>

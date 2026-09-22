@@ -6,6 +6,7 @@ import { HttpError } from "@/lib/session";
 import { getConfig } from "@/lib/config";
 import { calcularFechasPago } from "@/lib/fechas";
 import { saldoPendiente, montoVencidoOVigente, cuotasVencidasOVigentes } from "@/lib/contrata";
+import type { ContrataResumenCobro } from "@/lib/services/cobros";
 
 export type ContrataConDatos = Prisma.ContrataGetPayload<{
   include: { cliente: true; pagos: true };
@@ -83,11 +84,19 @@ async function resolverClienteId(
  * mano o volver otro día. Un cliente nuevo (`clienteNombre`) nunca tiene
  * historial, así que `incluirOtras` no aplica y se ignora en silencio.
  */
+export type ContrataCreadaConDatos = ContrataConDatos & {
+  /** Cuota por cuota de lo cobrado en las "otras contratas" cuando
+   *  `incluirOtras` era true — vacío en cualquier otro caso. Mismo
+   *  propósito que `ResultadoRenovacion.otrasLiquidadas`: poder mandar un
+   *  recibo de ESE cobro, separado del comprobante de la contrata nueva. */
+  otrasLiquidadas: ContrataResumenCobro[];
+};
+
 export async function crearContrata(
   ownerId: string,
   input: CrearInput,
   incluirOtras: boolean = false
-): Promise<ContrataConDatos> {
+): Promise<ContrataCreadaConDatos> {
   const config = await getConfig(ownerId);
   const fechaInicio = new Date(input.fechaInicio);
   const fechas = calcularFechasPago(
@@ -103,9 +112,10 @@ export async function crearContrata(
   // solo lectura (contratasConVencido ya scopea por ownerId+clienteId, no
   // hay nada que filtrar de más) y así el monto se valida contra el saldo
   // real antes de tocar la base.
+  const hoy = new Date();
   const otras =
     incluirOtras && input.clienteId
-      ? await contratasConVencido(ownerId, input.clienteId)
+      ? await contratasConVencido(ownerId, input.clienteId, undefined, hoy)
       : [];
   const saldoOtras = round2(otras.reduce((s, c) => s + c.saldo, 0));
   if (saldoOtras > 0 && input.monto < saldoOtras) {
@@ -115,9 +125,9 @@ export async function crearContrata(
     );
   }
 
-  return prisma.$transaction(async (tx) => {
+  const nueva = await prisma.$transaction(async (tx) => {
     const clienteId = await resolverClienteId(ownerId, input, tx);
-    const nueva = await tx.contrata.create({
+    const creada = await tx.contrata.create({
       data: {
         ownerId,
         clienteId,
@@ -140,8 +150,10 @@ export async function crearContrata(
     for (const c of otras) {
       await liquidarVencidasTx(tx, c);
     }
-    return nueva;
+    return creada;
   });
+
+  return { ...nueva, otrasLiquidadas: desgloseOtrasLiquidadas(otras, hoy) };
 }
 
 type ActualizarInput = Partial<CrearInput>;
@@ -422,6 +434,31 @@ export async function contratasConVencido(
     .filter((c) => c.saldo > 0);
 }
 
+/**
+ * Traduce el resultado de `contratasConVencido` al mismo formato que arma
+ * `mensajeCobro` (ver `services/cobros.ts`) — cuota por cuota, no solo el
+ * total. Sin esto, lo que se cobra de las "otras contratas" al renovar o al
+ * crear una contrata con `incluirOtras` no tenía ningún recibo: el cliente
+ * se quedaba sin comprobante de que esas cuotas específicas quedaron
+ * cubiertas, aunque el dinero sí se haya descontado.
+ */
+function desgloseOtrasLiquidadas(
+  otras: Awaited<ReturnType<typeof contratasConVencido>>,
+  hoy: Date
+): ContrataResumenCobro[] {
+  return otras.map((c) => ({
+    contrataId: c.id,
+    tipo: c.tipo,
+    numCuotas: c.numCuotas,
+    montoContrata: c.monto,
+    cuotas: cuotasVencidasOVigentes(c.pagos, hoy).map((p) => ({
+      numeroCuota: p.numeroCuota,
+      monto: round2(c.abono - p.montoAbonado),
+    })),
+    subtotal: c.saldo,
+  }));
+}
+
 /** Crea la contrata nueva (misma mecánica que crearContrata) dentro de una transacción. */
 async function crearContrataTx(
   tx: Prisma.TransactionClient,
@@ -506,6 +543,11 @@ export type ResultadoRenovacion = {
   montoEntregado: number;
   saldoLiquidado: number;
   contratasLiquidadas: number;
+  /** Cuota por cuota de lo cobrado en las "otras contratas" (vacío si
+   *  `incluirOtras` era false o no había nada que cubrir) — para poder
+   *  mandarle al cliente un recibo de ESE cobro, aparte del comprobante de
+   *  la contrata nueva. */
+  otrasLiquidadas: ContrataResumenCobro[];
 };
 
 /**
@@ -530,8 +572,9 @@ export async function renovarContrata(
     throw new HttpError(400, "Esta contrata no tiene saldo pendiente");
   }
 
+  const hoy = new Date();
   const otras = incluirOtras
-    ? await contratasConVencido(ownerId, original.clienteId, contrataId)
+    ? await contratasConVencido(ownerId, original.clienteId, contrataId, hoy)
     : [];
   const saldoTotal =
     round2(saldoOriginal) + round2(otras.reduce((s, c) => s + c.saldo, 0));
@@ -565,6 +608,7 @@ export async function renovarContrata(
     montoEntregado: round2(input.monto - saldoTotal),
     saldoLiquidado: saldoTotal,
     contratasLiquidadas: 1 + otras.length,
+    otrasLiquidadas: desgloseOtrasLiquidadas(otras, hoy),
   };
 }
 
@@ -625,6 +669,10 @@ export async function unificarContratas(
     montoEntregado: round2(input.monto - saldoTotal),
     saldoLiquidado: saldoTotal,
     contratasLiquidadas: conSaldo.length,
+    // Unificar no tiene concepto de "otras contratas": las que se liquidan
+    // aquí SON el propósito de la acción (ya representadas en
+    // `nuevaContrata`), no un cobro colateral que necesite su propio recibo.
+    otrasLiquidadas: [],
   };
 }
 

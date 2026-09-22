@@ -25,6 +25,8 @@ import {
   ReciboEntregaPanel,
   type ContrataEntregada,
 } from "@/components/contratas/recibo-entrega";
+import { ReciboOtrasLiquidadasPanel } from "@/components/contratas/recibo-otras-liquidadas";
+import type { ContrataResumenCobro } from "@/lib/services/cobros";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -70,6 +72,9 @@ export function RenovarForm({
   const [pendienteSync, setPendienteSync] = useState(false);
   const [renovada, setRenovada] = useState<ContrataEntregada & { id: string } | null>(
     null
+  );
+  const [otrasLiquidadas, setOtrasLiquidadas] = useState<ContrataResumenCobro[]>(
+    []
   );
   const [tipo, setTipo] = useState<TipoContrata>(tipoOriginal);
   const [monto, setMonto] = useState("");
@@ -199,6 +204,7 @@ export function RenovarForm({
     // Igual que "nueva contrata": se muestra la confirmación con la opción
     // de mandarle los detalles al cliente por WhatsApp (mismo detalle
     // completo, calendario incluido) en vez de navegar de inmediato.
+    setOtrasLiquidadas(data.otrasLiquidadas ?? []);
     setRenovada(data.nuevaContrata);
   }
 
@@ -210,6 +216,12 @@ export function RenovarForm({
           contrata={renovada}
           tituloPanel="Contrata renovada"
           tituloMensaje="Detalles de tu renovación"
+        />
+        <ReciboOtrasLiquidadasPanel
+          nombreApp={nombreApp}
+          clienteNombre={renovada.cliente.nombre}
+          clienteTelefono={renovada.cliente.telefono}
+          otrasLiquidadas={otrasLiquidadas}
         />
         <Button variant="outline" className="w-full" asChild>
           <Link href={`/contratas/${renovada.id}`}>Ver la contrata nueva</Link>
