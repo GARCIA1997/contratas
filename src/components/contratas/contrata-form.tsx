@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLiveQuery } from "dexie-react-hooks";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { ArrowLeft, Check } from "lucide-react";
@@ -16,6 +17,7 @@ import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { enqueue } from "@/lib/offline/queue";
+import { getContratasConVencido } from "@/lib/offline/repo";
 import {
   fetchConTimeout,
   mensajeDeError,
@@ -28,6 +30,12 @@ import {
 } from "@/components/contratas/contrata-creada";
 
 export type ClienteOpcion = { id: string; nombre: string };
+
+const TIPO_LABEL: Record<TipoContrata, string> = {
+  SEMANAL: "Semanal",
+  QUINCENAL: "Quincenal",
+  MENSUAL: "Mensual",
+};
 
 export type ContrataInicial = {
   id: string;
@@ -111,6 +119,7 @@ export function ContrataForm({
 
   const abonoTocado = useRef(editando);
   const [fechas, setFechas] = useState<string[]>([]);
+  const [incluirOtras, setIncluirOtras] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   /** Contrata recién creada: cambia el formulario por el panel de entrega. */
@@ -125,6 +134,27 @@ export function ContrataForm({
       .filter((c) => c.nombre.toLowerCase().includes(q))
       .slice(0, 6);
   }, [clientes, clienteQuery]);
+
+  const ownerId = claims.ready ? claims.ownerId : null;
+
+  // Solo aplica al crear con un cliente existente: un cliente nuevo no
+  // tiene historial, y al editar no se está "entregando" nada de nuevo.
+  const otras = useLiveQuery(
+    () =>
+      !editando && ownerId && clienteMode === "existente" && clienteId
+        ? getContratasConVencido(ownerId, clienteId)
+        : Promise.resolve([]),
+    [editando, ownerId, clienteMode, clienteId]
+  );
+  const saldoOtras = Math.round(
+    (otras ?? []).reduce((s, c) => s + c.saldo, 0) * 100
+  ) / 100;
+
+  // Si el cliente elegido cambia, la selección de "incluir otras" del
+  // cliente anterior ya no aplica.
+  useEffect(() => {
+    setIncluirOtras(false);
+  }, [clienteId]);
 
   // Preview de abono sugerido + fechas cuando cambian los parámetros.
   useEffect(() => {
@@ -178,6 +208,10 @@ export function ContrataForm({
       return setError("Elige un cliente de la lista");
     if (clienteMode === "nuevo" && !clienteNombre.trim())
       return setError("Escribe el nombre del cliente");
+    if (incluirOtras && montoNum < saldoOtras)
+      return setError(
+        `El monto debe cubrir el saldo pendiente de sus otras contratas (${formatMoneda(saldoOtras)})`
+      );
 
     const payload = {
       tipo,
@@ -187,7 +221,7 @@ export function ContrataForm({
       numCuotas,
       notas: notas.trim() || null,
       ...(clienteMode === "existente"
-        ? { clienteId }
+        ? { clienteId, incluirOtras }
         : { clienteNombre: clienteNombre.trim() }),
     };
 
@@ -270,6 +304,11 @@ export function ContrataForm({
   }
 
   const volverHref = volverHrefProp ?? "/contratas";
+  const montoNumPreview = parseFloat(monto) || 0;
+  const entregar = incluirOtras
+    ? Math.round((montoNumPreview - saldoOtras) * 100) / 100
+    : montoNumPreview;
+  const cubreOtras = !incluirOtras || montoNumPreview >= saldoOtras;
 
   if (creada) {
     return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} />;
@@ -391,6 +430,44 @@ export function ContrataForm({
           )}
         </div>
 
+        {/* Igual que el checkbox de renovar: el cliente puede llegar con
+            atrasos en OTRA contrata y liquidarlos en el mismo viaje en el
+            que se le entrega esta, sin que el cobrador tenga que hacer la
+            resta a mano. Solo aplica al crear con un cliente existente. */}
+        {!editando && clienteMode === "existente" && otras && otras.length > 0 && (
+          <Card>
+            <CardContent className="space-y-2 p-4">
+              <label className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-border p-3">
+                <span className="text-sm">
+                  Incluir también lo vencido, vigente o próximo a vencer de
+                  {" "}
+                  {otras.length === 1
+                    ? "su otra contrata activa"
+                    : `sus otras ${otras.length} contratas activas`}{" "}
+                  ({formatMoneda(saldoOtras)}) — solo se cubren esas cuotas,
+                  el resto sigue activo
+                </span>
+                <input
+                  type="checkbox"
+                  className="size-5 shrink-0 accent-primary"
+                  checked={incluirOtras}
+                  onChange={(e) => setIncluirOtras(e.target.checked)}
+                />
+              </label>
+              {incluirOtras && (
+                <ul className="space-y-1 pl-1 text-xs text-muted-foreground">
+                  {otras.map((c) => (
+                    <li key={c.id} className="flex justify-between">
+                      <span>{TIPO_LABEL[c.tipo]}</span>
+                      <span>{formatMoneda(c.saldo)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {/* Tipo */}
         <div className="space-y-2">
           <Label>Tipo</Label>
@@ -482,6 +559,24 @@ export function ContrataForm({
             placeholder="Opcional"
           />
         </div>
+
+        {/* Solo tiene sentido mostrar el neto cuando hay algo que restar —
+            si no se marcó "incluir otras" (o no hay otras), el monto en sí
+            YA es lo que se entrega, sin un cálculo aparte que mostrar. */}
+        {otras && otras.length > 0 && incluirOtras && (
+          <Card className={cubreOtras ? "border-pagado/30" : "border-vencido/30"}>
+            <CardContent className="p-4 text-center">
+              <p className="text-xs text-muted-foreground">
+                {cubreOtras ? "Se entregará al cliente" : "Falta cubrir"}
+              </p>
+              <p
+                className={`text-2xl font-bold ${cubreOtras ? "text-pagado" : "text-vencido"}`}
+              >
+                {formatMoneda(cubreOtras ? entregar : saldoOtras - montoNumPreview)}
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Preview de fechas */}
         {fechas.length > 0 && (
