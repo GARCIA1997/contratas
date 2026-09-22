@@ -73,9 +73,20 @@ async function resolverClienteId(
   throw new HttpError(400, "Debes indicar un cliente");
 }
 
+/**
+ * Crea una contrata nueva. Si `incluirOtras` es true y el cliente ya existe
+ * (`input.clienteId`), también cubre —dentro de la misma transacción— lo
+ * vencido, vigente o próximo a vencer del resto de sus contratas activas,
+ * igual que la opción homónima de renovar: el cliente puede llegar con
+ * atrasos en otra contrata y liquidar eso en el mismo viaje en el que se le
+ * entrega la nueva, en vez de que el cobrador tenga que hacer la resta a
+ * mano o volver otro día. Un cliente nuevo (`clienteNombre`) nunca tiene
+ * historial, así que `incluirOtras` no aplica y se ignora en silencio.
+ */
 export async function crearContrata(
   ownerId: string,
-  input: CrearInput
+  input: CrearInput,
+  incluirOtras: boolean = false
 ): Promise<ContrataConDatos> {
   const config = await getConfig(ownerId);
   const fechaInicio = new Date(input.fechaInicio);
@@ -88,9 +99,25 @@ export async function crearContrata(
   );
   const mes = format(fechaInicio, "LLLL yyyy", { locale: es });
 
+  // Se resuelve ANTES de la transacción, igual que en `renovarContrata`: es
+  // solo lectura (contratasConVencido ya scopea por ownerId+clienteId, no
+  // hay nada que filtrar de más) y así el monto se valida contra el saldo
+  // real antes de tocar la base.
+  const otras =
+    incluirOtras && input.clienteId
+      ? await contratasConVencido(ownerId, input.clienteId)
+      : [];
+  const saldoOtras = round2(otras.reduce((s, c) => s + c.saldo, 0));
+  if (saldoOtras > 0 && input.monto < saldoOtras) {
+    throw new HttpError(
+      400,
+      `El monto debe cubrir el saldo pendiente de sus otras contratas (${saldoOtras})`
+    );
+  }
+
   return prisma.$transaction(async (tx) => {
     const clienteId = await resolverClienteId(ownerId, input, tx);
-    return tx.contrata.create({
+    const nueva = await tx.contrata.create({
       data: {
         ownerId,
         clienteId,
@@ -110,6 +137,10 @@ export async function crearContrata(
       },
       include: includeDatos,
     });
+    for (const c of otras) {
+      await liquidarVencidasTx(tx, c);
+    }
+    return nueva;
   });
 }
 

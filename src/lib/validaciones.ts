@@ -29,6 +29,10 @@ export const contrataSchema = z.object({
   fechaInicio: z.string().datetime().or(z.string().min(1)),
   numCuotas: z.number().int().min(1).max(52),
   notas: z.string().trim().max(500).optional().nullable(),
+  /** Solo al crear, con un cliente existente: además de esta contrata,
+   *  liquida lo vencido/vigente/próximo del resto de sus contratas
+   *  activas. Se ignora al editar. */
+  incluirOtras: z.boolean().optional(),
 });
 
 export const contrataUpdateSchema = contrataSchema.partial();

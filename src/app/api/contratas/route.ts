@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       req,
       user.ownerId,
       "contratas/crear",
-      () => crearContrata(user.ownerId, input)
+      () => crearContrata(user.ownerId, input, input.incluirOtras ?? false)
     );
     return NextResponse.json(contrata, { status: 201 });
   } catch (error) {
