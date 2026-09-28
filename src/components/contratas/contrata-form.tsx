@@ -18,6 +18,7 @@ import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { enqueue } from "@/lib/offline/queue";
+import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
 import { getContratasConVencido } from "@/lib/offline/repo";
 import {
   fetchConTimeout,
@@ -133,8 +134,6 @@ export function ContrataForm({
   const [guardando, setGuardando] = useState(false);
   /** Contrata recién creada: cambia el formulario por el panel de entrega. */
   const [creada, setCreada] = useState<ContrataCreada | null>(null);
-  /** Se creó offline: sin id todavía, se sincroniza sola después. */
-  const [pendienteSync, setPendienteSync] = useState(false);
 
   const sugerencias = useMemo(() => {
     const q = clienteQuery.trim().toLowerCase();
@@ -178,13 +177,13 @@ export function ContrataForm({
     const timer = setTimeout(() => {
       (async () => {
         try {
-          const res = await fetchConTimeout("/api/contratas/preview", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          const data = await obtenerPreview(ownerId, {
+            tipo,
+            monto: montoNum,
+            fechaInicio,
+            numCuotas,
           });
-          if (!res.ok || cancelado) return;
-          const data = await res.json();
+          if (!data || cancelado) return;
           setFechas(data.fechas);
           if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
         } catch {
@@ -197,7 +196,7 @@ export function ContrataForm({
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [tipo, monto, fechaInicio, numCuotas]);
+  }, [tipo, monto, fechaInicio, numCuotas, ownerId]);
 
   function elegirCliente(c: ClienteOpcion) {
     setClienteId(c.id);
@@ -260,21 +259,63 @@ export function ContrataForm({
     }
 
     if (!editando && sinConexion && claims.ready && claims.ownerId) {
-      // A diferencia de editar, no hay id todavía (ni de la contrata ni,
-      // si aplica, de un cliente nuevo) — los asigna el servidor. No se
-      // puede mostrar el panel de entrega/WhatsApp de inmediato; en cuanto
-      // sincronice aparece sola en la lista, y desde ahí se puede compartir
-      // el recibo por WhatsApp manualmente (ver recibo-view.tsx).
+      // Modo local / sin señal: la contrata nace en el teléfono con su id
+      // definitivo (ver entrega-local.ts) — aparece de inmediato en el
+      // perfil del cliente y se muestra el mismo panel de entrega con el
+      // WhatsApp que con señal. Al sincronizar, el servidor la crea con
+      // ese mismo id.
+      const owner = claims.ownerId;
       try {
-        await enqueue(claims.ownerId, "contrata.crear", payload);
+        let clienteDestino = clienteId;
+        if (clienteMode === "nuevo") {
+          clienteDestino = crypto.randomUUID();
+          await enqueue(owner, "cliente.crear", {
+            id: clienteDestino,
+            ownerId: owner,
+            nombre: clienteNombre.trim(),
+            telefono: null,
+            direccion: null,
+            referencia: null,
+            notas: null,
+          });
+        }
+        const id = crypto.randomUUID();
+        const hoy = new Date();
+        const entrega = await prepararEntregaLocal(owner, {
+          id,
+          clienteId: clienteDestino,
+          input: {
+            tipo,
+            monto: montoNum,
+            abono: abonoNum,
+            fechaInicio,
+            numCuotas,
+            notas: notas.trim() || null,
+          },
+          hoy,
+          cubrirVencidasDe:
+            clienteMode === "existente" && incluirOtras ? (otras ?? []).map((o) => o.id) : [],
+        });
+        await enqueue(owner, "contrata.crear", {
+          tipo,
+          monto: montoNum,
+          abono: abonoNum,
+          fechaInicio,
+          numCuotas,
+          notas: notas.trim() || null,
+          clienteId: clienteDestino,
+          incluirOtras: clienteMode === "existente" && incluirOtras,
+          id,
+          fechaCaptura: hoy.toISOString(),
+          _local: entrega.filas,
+        });
+        setGuardando(false);
+        onGuardada?.({ contrataId: id, offline: true });
+        setCreada(entrega.recibo);
       } catch (e) {
         setGuardando(false);
         setError(e instanceof Error ? e.message : "No se pudo guardar");
-        return;
       }
-      setGuardando(false);
-      setPendienteSync(true);
-      onGuardada?.({ contrataId: null, offline: true });
       return;
     }
 
@@ -333,31 +374,6 @@ export function ContrataForm({
 
   if (creada) {
     return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} />;
-  }
-
-  if (pendienteSync) {
-    return (
-      <div className="space-y-4 md:max-w-xl">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Contrata pendiente
-          </h1>
-        </div>
-        <Card className="border-pendiente/30">
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p>
-              Se creará sola en cuanto el dispositivo tenga conexión — no
-              hace falta hacer nada más. Para enviarle los detalles al
-              cliente por WhatsApp, hazlo manualmente después, desde el
-              recibo de la contrata, en cuanto aparezca en la lista.
-            </p>
-          </CardContent>
-        </Card>
-        <Button className="w-full" asChild>
-          <Link href={volverHref}>Volver</Link>
-        </Button>
-      </div>
-    );
   }
 
   return (

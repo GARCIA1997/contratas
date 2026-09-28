@@ -52,7 +52,8 @@ const ENDPOINTS: Record<
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p),
+      // `_local` son las filas del efecto optimista, no van al servidor.
+      body: JSON.stringify({ ...p, _local: undefined }),
     },
   }),
   "contrata.editar": (p) => ({
@@ -316,8 +317,16 @@ export async function flushQueue(ownerId: string): Promise<void> {
               contexto: { opId: op.id, type: op.type, status, detalle, payload: op.payload },
             });
           }
-          // Un conflicto o fallo detiene el drenado de este owner para no
-          // aplicar operaciones posteriores fuera de orden.
+          // Un 4xx es un rechazo definitivo de ESTA operación (el servidor
+          // la validó y no aplica) — reintentar no cambia nada, así que se
+          // sigue con las demás en vez de dejar atorado todo lo capturado
+          // después (con el modo local puede ser un día entero de cobros).
+          // Un 5xx o fallo de red sí detiene el drenado: es transitorio y
+          // hay que respetar el orden.
+          if (esConflicto) {
+            await deshacerEntregaRechazada(ownerId, op.type, op.payload);
+            continue;
+          }
           break;
         }
         await database.writeQueue.delete(op.id);
@@ -355,6 +364,21 @@ async function reconciliarTrasExito(
 ) {
   if (type === "contrata.marcarDeuda") {
     await Promise.all([syncContratas(ownerId), syncDeudores(ownerId)]);
+    return;
+  }
+  if (payload._local) {
+    // Entrega hecha en modo local: la contrata nueva y las que se
+    // liquidaron quedaron con _dirty para que ningún sync las pisara antes
+    // de subir. Ya confirmadas, se liberan (salvo las que todavía tengan
+    // otra operación en cola) y se traen del servidor.
+    const filas = payload._local as { contrata: { id: string }; liquidar: { contrataId: string }[] };
+    const ids = [
+      filas.contrata.id,
+      ...filas.liquidar.map((l) => l.contrataId),
+      ...(payload.contrataId ? [payload.contrataId as string] : []),
+    ];
+    for (const id of ids) await limpiarDirtySiSinPendientes({ contrataId: id });
+    await Promise.all([syncContratas(ownerId), syncClientes(ownerId)]);
     return;
   }
   if (type === "contrata.crear") {
@@ -414,8 +438,13 @@ async function reconciliarTrasExito(
     return;
   }
   if (type === "cita.crear") {
-    // Igual que contrata.crear: no hay ninguna fila local que limpiar (la
-    // cita es enteramente nueva) — solo traerla del servidor.
+    // La creada en modo local quedó con _dirty para que ningún sync la
+    // borrara antes de subir; ya confirmada, se libera y se trae la real.
+    const database = db;
+    const citaId = payload.id as string | undefined;
+    if (database && citaId && (await database.citas.get(citaId))) {
+      await database.citas.update(citaId, { _dirty: false });
+    }
     await syncCitas(ownerId);
     return;
   }
@@ -471,6 +500,40 @@ async function reconciliarTrasExito(
     await syncCitas(ownerId);
     return;
   }
+}
+
+/**
+ * Si el servidor rechazó una entrega hecha en modo local, la contrata que se
+ * creó en el teléfono no existe en ningún lado: se quita, se liberan las
+ * contratas que se habían marcado como liquidadas y se vuelve a traer el
+ * estado real. La operación queda en "conflicto" para que se vea y se
+ * pueda revisar.
+ */
+async function deshacerEntregaRechazada(
+  ownerId: string,
+  type: QueueOpType,
+  payload: Record<string, unknown>
+) {
+  const database = db;
+  if (database && type === "cita.crear" && payload.id) {
+    await database.citas.delete(payload.id as string);
+    await syncCitas(ownerId).catch(() => undefined);
+    return;
+  }
+  const filas = payload._local as
+    | { contrata: { id: string }; liquidar: { contrataId: string }[] }
+    | undefined;
+  if (!database || !filas) return;
+  const nuevaId = filas.contrata.id;
+  const pagos = await database.pagos.where("contrataId").equals(nuevaId).primaryKeys();
+  await database.pagos.bulkDelete(pagos);
+  await database.contratas.delete(nuevaId);
+  const ids = [
+    ...filas.liquidar.map((l) => l.contrataId),
+    ...(payload.contrataId ? [payload.contrataId as string] : []),
+  ];
+  for (const id of ids) await limpiarDirtySiSinPendientes({ contrataId: id });
+  await syncContratas(ownerId).catch(() => undefined);
 }
 
 async function limpiarDirtySiSinPendientes(payload: Record<string, unknown>) {

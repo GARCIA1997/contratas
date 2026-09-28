@@ -116,25 +116,44 @@ describe("flushQueue", () => {
     expect((await db.contratas.get("c1"))?._dirty).toBe(false);
   });
 
-  it("en 4xx: marca 'conflict' y detiene el drenado (no procesa las operaciones siguientes)", async () => {
+  it("en 4xx: marca 'conflict' pero sigue con las demás (un rechazo no atora la cola)", async () => {
     await seedContrata("c1");
     await seedContrata("c2");
     Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
     await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
     await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c2", numeroCuota: 1 });
 
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 409 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 409 }))
+      .mockResolvedValue(new Response("[]", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
     await flushQueue(OWNER);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1); // se detuvo tras el primer conflicto
+    const restantes = await db.writeQueue.where("ownerId").equals(OWNER).toArray();
+    expect(restantes).toHaveLength(1);
+    expect(restantes[0].status).toBe("conflict");
+    expect((restantes[0].payload as { contrataId: string }).contrataId).toBe("c1");
+  });
+
+  it("en 5xx: detiene el drenado para respetar el orden", async () => {
+    await seedContrata("c1");
+    await seedContrata("c2");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c2", numeroCuota: 1 });
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const restantes = (
       await db.writeQueue.where("ownerId").equals(OWNER).toArray()
     ).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    expect(restantes).toHaveLength(2);
-    expect(restantes[0].status).toBe("conflict");
-    expect(restantes[1].status).toBe("pending"); // nunca se procesó
+    expect(restantes.map((r) => r.status)).toEqual(["failed", "pending"]);
   });
 
   it("en 5xx o error de red: marca 'failed' con attempts incrementado, y se puede reintentar", async () => {

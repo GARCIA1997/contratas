@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
 import { enqueue } from "@/lib/offline/queue";
 import {
   fetchConTimeout,
@@ -78,7 +79,6 @@ export function UnificarForm({
         (preseleccion ?? []).filter((id) => contratas.some((c) => c.id === id))
       )
   );
-  const [pendienteSync, setPendienteSync] = useState(false);
   const [unificada, setUnificada] = useState<ContrataEntregada & { id: string } | null>(
     null
   );
@@ -120,13 +120,13 @@ export function UnificarForm({
     const timer = setTimeout(() => {
       (async () => {
         try {
-          const res = await fetchConTimeout("/api/contratas/preview", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          const data = await obtenerPreview(ownerId, {
+            tipo,
+            monto: montoNum,
+            fechaInicio,
+            numCuotas,
           });
-          if (!res.ok || cancelado) return;
-          const data = await res.json();
+          if (!data || cancelado) return;
           setFechas(data.fechas);
           if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
         } catch {
@@ -139,7 +139,7 @@ export function UnificarForm({
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [tipo, montoNum, fechaInicio, numCuotas]);
+  }, [tipo, montoNum, fechaInicio, numCuotas, ownerId]);
 
   function toggle(id: string) {
     setSeleccionadas((prev) => {
@@ -183,16 +183,34 @@ export function UnificarForm({
     // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
     const sinConexion = debeTrabajarLocal();
     if (ownerId && sinConexion) {
+      // Modo local / sin señal: igual que renovar — la contrata nueva nace
+      // en el teléfono con su id definitivo, las elegidas quedan liquidadas
+      // localmente y se muestra el recibo con WhatsApp. Ver entrega-local.ts.
       try {
-        await enqueue(ownerId, "cliente.unificar", { clienteId, contrataIds, input });
+        const id = crypto.randomUUID();
+        const hoy = new Date();
+        const entrega = await prepararEntregaLocal(ownerId, {
+          id,
+          clienteId,
+          input,
+          hoy,
+          liquidarCompletas: contrataIds,
+        });
+        // Antes del efecto: la página redirige si deja de ver contratas
+        // elegibles y no sabe que esto fue una unificación.
+        onUnificada?.({ contrataId: id, offline: true });
+        await enqueue(ownerId, "cliente.unificar", {
+          clienteId,
+          contrataIds,
+          input: { ...input, id, fechaCaptura: hoy.toISOString() },
+          _local: entrega.filas,
+        });
+        setGuardando(false);
+        setUnificada(entrega.recibo);
       } catch (e) {
         setGuardando(false);
-        setError(e instanceof Error ? e.message : "No se pudo guardar");
-        return;
+        setError(e instanceof Error ? e.message : "No se pudo unificar");
       }
-      setGuardando(false);
-      setPendienteSync(true);
-      onUnificada?.({ contrataId: null, offline: true });
       return;
     }
 
@@ -245,31 +263,6 @@ export function UnificarForm({
           <Link href={`/contratas/${unificada.id}`}>Ver la contrata nueva</Link>
         </Button>
         <Button variant="ghost" className="w-full" asChild>
-          <Link href={`/clientes/${clienteId}`}>Volver al cliente</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  if (pendienteSync) {
-    return (
-      <div className="space-y-4 md:max-w-xl">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Unificación pendiente
-          </h1>
-          <p className="text-sm text-muted-foreground">{clienteNombre}</p>
-        </div>
-        <Card className="border-pendiente/30">
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p>
-              Sin conexión — la unificación se aplicará sola en cuanto el
-              dispositivo vuelva a tener señal. No hace falta hacer nada
-              más.
-            </p>
-          </CardContent>
-        </Card>
-        <Button className="w-full" asChild>
           <Link href={`/clientes/${clienteId}`}>Volver al cliente</Link>
         </Button>
       </div>

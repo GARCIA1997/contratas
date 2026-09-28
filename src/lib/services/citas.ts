@@ -74,6 +74,8 @@ export async function crearCita(ownerId: string, input: CitaInput) {
   await validarContratasUnificar(ownerId, input.clienteId, contratasUnificarIds);
   return prisma.citaAgendada.create({
     data: {
+      // Agendada en modo local: nace con el id que ya tiene en el teléfono.
+      ...(input.id ? { id: input.id } : {}),
       ownerId,
       clienteId: input.clienteId,
       contrataOrigenId,

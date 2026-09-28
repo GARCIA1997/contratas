@@ -33,9 +33,19 @@ export const contrataSchema = z.object({
    *  liquida lo vencido/vigente/próximo del resto de sus contratas
    *  activas. Se ignora al editar. */
   incluirOtras: z.boolean().optional(),
+  /** Id generado en el teléfono al entregar en modo local/sin señal: la
+   *  contrata nace con su id definitivo y se puede ver, cobrar y mandar
+   *  por WhatsApp antes de sincronizar. */
+  id: z.string().uuid().optional(),
+  /** Cuándo se capturó (modo local). El "hoy" para calcular qué cuotas de
+   *  las otras contratas se cubren — así se liquida exactamente lo que se
+   *  le mostró al cliente, no lo que venza para cuando se sincronice. */
+  fechaCaptura: z.string().datetime().optional(),
 });
 
-export const contrataUpdateSchema = contrataSchema.partial();
+export const contrataUpdateSchema = contrataSchema
+  .omit({ id: true, fechaCaptura: true })
+  .partial();
 
 const nuevaContrataBaseSchema = z.object({
   tipo: z.enum(["SEMANAL", "QUINCENAL", "MENSUAL"]),
@@ -44,6 +54,14 @@ const nuevaContrataBaseSchema = z.object({
   fechaInicio: z.string().datetime().or(z.string().min(1)),
   numCuotas: z.number().int().min(1).max(52),
   notas: z.string().trim().max(500).optional().nullable(),
+  /** Id generado en el teléfono al entregar en modo local/sin señal: la
+   *  contrata nace con su id definitivo y se puede ver, cobrar y mandar
+   *  por WhatsApp antes de sincronizar. */
+  id: z.string().uuid().optional(),
+  /** Cuándo se capturó (modo local). El "hoy" para calcular qué cuotas de
+   *  las otras contratas se cubren — así se liquida exactamente lo que se
+   *  le mostró al cliente, no lo que venza para cuando se sincronice. */
+  fechaCaptura: z.string().datetime().optional(),
 });
 
 export const renovarContrataSchema = nuevaContrataBaseSchema.extend({

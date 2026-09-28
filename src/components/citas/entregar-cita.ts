@@ -17,9 +17,12 @@ export async function entregarCita(
     // Si ya no cabe en la cola (límite de movimientos sin sincronizar), la
     // cita queda pendiente y se marca a mano después — la contrata ya se
     // guardó y no debe verse afectada.
+    // En modo local la contrata ya nace con su id definitivo (ver
+    // entrega-local.ts) y su alta va antes en la cola, así que el enlace
+    // cita → contrata se puede mandar desde ya.
     await enqueue(ownerId, "cita.entregar", {
       citaId,
-      contrataCreadaId: null,
+      contrataCreadaId: info.contrataId,
     }).catch(() => undefined);
     return;
   }

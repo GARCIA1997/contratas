@@ -169,14 +169,14 @@ export function AbonarModal({
               <div className="space-y-3">
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground">
-                    {offlinePendiente ? "Abono registrado sin conexión" : "Abono registrado"}
+                    {offlinePendiente ? "Abono guardado en el teléfono" : "Abono registrado"}
                   </p>
                   <p className="text-2xl font-bold text-pagado">
                     {formatMoneda(resultado.totalAplicado)}
                   </p>
                   {offlinePendiente && (
                     <p className="text-xs text-muted-foreground">
-                      Se sincroniza solo en cuanto haya señal. El recibo ya se puede
+                      Se sube al servidor al sincronizar. El recibo ya se puede
                       enviar.
                     </p>
                   )}

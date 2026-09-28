@@ -1,5 +1,6 @@
 "use client";
 
+import { modoLocalActivo } from "@/lib/offline/modo-local";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2, UserPlus } from "lucide-react";
@@ -38,6 +39,7 @@ export function UsuariosPanel({
   async function crear(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (modoLocalActivo()) return setError("Enciende la sincronización para hacer este cambio.");
     setGuardando(true);
     const res = await fetch("/api/usuarios", {
       method: "POST",
@@ -63,6 +65,7 @@ export function UsuariosPanel({
   }
 
   async function cambiarRol(id: string, nuevoRol: "ADMIN" | "VIEWER") {
+    if (modoLocalActivo()) return alert("Enciende la sincronización para hacer este cambio.");
     const res = await fetch(`/api/usuarios/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -74,6 +77,7 @@ export function UsuariosPanel({
 
   async function eliminar(id: string) {
     if (!confirm("¿Eliminar este usuario? Se borran también sus datos.")) return;
+    if (modoLocalActivo()) return alert("Enciende la sincronización para hacer este cambio.");
     const res = await fetch(`/api/usuarios/${id}`, { method: "DELETE" });
     if (res.ok) router.refresh();
     else {

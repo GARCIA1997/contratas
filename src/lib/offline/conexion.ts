@@ -104,6 +104,9 @@ export function mensajeDeError(e: unknown, porDefecto = "No se pudo guardar"): s
   if (e instanceof TimeoutDeRed) {
     return "La red tardó demasiado en responder. Vuelve a intentarlo: si ya se había guardado, no se duplicará.";
   }
+  if (e instanceof Error && e.name === "ModoLocalError") {
+    return "Estás en modo local: enciende la sincronización para hacer esto.";
+  }
   if (e instanceof TypeError) {
     return "No se pudo conectar. Revisa tu señal e intenta de nuevo.";
   }

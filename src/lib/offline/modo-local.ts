@@ -76,3 +76,48 @@ export function suscribirseAModoLocal(cb: () => void): () => void {
     window.removeEventListener("storage", onStorage);
   };
 }
+
+/**
+ * Garantía dura del modo local: con el switch apagado NINGUNA petición a la
+ * API sale del teléfono, aunque haya señal. Los formularios ya encolan por
+ * `debeTrabajarLocal()`, pero hay pantallas que consultan la API directo
+ * (búsqueda global, vistas previas, configuración…) — en vez de auditar cada
+ * una, aquí se corta en la raíz: `fetch` a `/api/*` falla como si no hubiera
+ * red (TypeError), que es exactamente el caso que todas ya manejan.
+ *
+ * `/api/auth` queda libre: es la sesión, no datos del negocio, y cortarla
+ * podría sacar al usuario de la app.
+ */
+export class ModoLocalError extends TypeError {
+  constructor() {
+    super("Modo local: la sincronización está apagada");
+    this.name = "ModoLocalError";
+  }
+}
+
+let guardiaInstalada = false;
+
+export function instalarGuardiaFetch(): void {
+  if (guardiaInstalada || typeof window === "undefined") return;
+  guardiaInstalada = true;
+  const original = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    if (modoLocalActivo()) {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      const ruta = new URL(url, window.location.href);
+      if (
+        ruta.origin === window.location.origin &&
+        ruta.pathname.startsWith("/api/") &&
+        !ruta.pathname.startsWith("/api/auth")
+      ) {
+        return Promise.reject(new ModoLocalError());
+      }
+    }
+    return original(input, init);
+  };
+}

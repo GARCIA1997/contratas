@@ -139,7 +139,7 @@ export function CobroVencido({
     return (
       <Card className={cn("border-pagado/30", enFila && "col-span-2")}>
         <CardContent className="space-y-2 p-4 text-sm">
-          <p className="font-medium text-pagado">Cobro registrado (sin conexión)</p>
+          <p className="font-medium text-pagado">Cobro guardado en el teléfono</p>
           <p className="text-xs text-muted-foreground">
             Se aplicó localmente y se sincronizará con el servidor en cuanto
             haya conexión. El recibo de WhatsApp se podrá enviar después,
@@ -159,14 +159,14 @@ export function CobroVencido({
         <CardContent className="space-y-3 p-4">
           <div>
             <p className="text-xs text-muted-foreground">
-              {offlinePendiente ? "Cobro registrado sin conexión" : "Cobro registrado"}
+              {offlinePendiente ? "Cobro guardado en el teléfono" : "Cobro registrado"}
             </p>
             <p className="text-2xl font-bold text-pagado">
               {formatMoneda(resultado.total)}
             </p>
             {offlinePendiente && (
               <p className="text-xs text-muted-foreground">
-                Se sincroniza solo en cuanto haya señal. El recibo ya se puede
+                Se sube al servidor al sincronizar. El recibo ya se puede
                 enviar.
               </p>
             )}

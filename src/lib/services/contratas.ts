@@ -48,7 +48,25 @@ type CrearInput = {
   fechaInicio: string;
   numCuotas: number;
   notas?: string | null;
+  id?: string;
+  fechaCaptura?: string;
 };
+
+/**
+ * El "hoy" de una operación capturada en modo local. Solo se acepta si cae
+ * en los últimos 7 días (y nunca en el futuro); fuera de eso se usa la hora
+ * del servidor para no dejar que un reloj mal puesto liquide de más o de
+ * menos.
+ */
+export function hoyDeCaptura(fechaCaptura?: string): Date {
+  const ahora = new Date();
+  if (!fechaCaptura) return ahora;
+  const f = new Date(fechaCaptura);
+  if (isNaN(f.getTime())) return ahora;
+  const semana = 7 * 24 * 60 * 60 * 1000;
+  if (f.getTime() > ahora.getTime() || ahora.getTime() - f.getTime() > semana) return ahora;
+  return f;
+}
 
 /** Resuelve el cliente destino garantizando que pertenece al usuario. */
 async function resolverClienteId(
@@ -112,7 +130,7 @@ export async function crearContrata(
   // solo lectura (contratasConVencido ya scopea por ownerId+clienteId, no
   // hay nada que filtrar de más) y así el monto se valida contra el saldo
   // real antes de tocar la base.
-  const hoy = new Date();
+  const hoy = hoyDeCaptura(input.fechaCaptura);
   const otras =
     incluirOtras && input.clienteId
       ? await contratasConVencido(ownerId, input.clienteId, undefined, hoy)
@@ -129,6 +147,7 @@ export async function crearContrata(
     const clienteId = await resolverClienteId(ownerId, input, tx);
     const creada = await tx.contrata.create({
       data: {
+        ...(input.id ? { id: input.id } : {}),
         ownerId,
         clienteId,
         tipo: input.tipo,
@@ -148,7 +167,7 @@ export async function crearContrata(
       include: includeDatos,
     });
     for (const c of otras) {
-      await liquidarVencidasTx(tx, c);
+      await liquidarVencidasTx(tx, c, hoy);
     }
     return creada;
   });
@@ -385,6 +404,8 @@ type NuevaContrataInput = {
   fechaInicio: string;
   numCuotas: number;
   notas?: string | null;
+  id?: string;
+  fechaCaptura?: string;
 };
 
 /** Todas las contratas del cliente con saldo pendiente > 0 y no liquidadas/convertidas. */
@@ -478,6 +499,7 @@ async function crearContrataTx(
   const mes = format(fechaInicio, "LLLL yyyy", { locale: es });
   return tx.contrata.create({
     data: {
+      ...(input.id ? { id: input.id } : {}),
       ownerId,
       clienteId,
       tipo: input.tipo,
@@ -572,7 +594,7 @@ export async function renovarContrata(
     throw new HttpError(400, "Esta contrata no tiene saldo pendiente");
   }
 
-  const hoy = new Date();
+  const hoy = hoyDeCaptura(input.fechaCaptura);
   const otras = incluirOtras
     ? await contratasConVencido(ownerId, original.clienteId, contrataId, hoy)
     : [];
@@ -598,7 +620,7 @@ export async function renovarContrata(
     );
     await liquidarContrataTx(tx, original);
     for (const c of otras) {
-      await liquidarVencidasTx(tx, c);
+      await liquidarVencidasTx(tx, c, hoy);
     }
     return nueva;
   });

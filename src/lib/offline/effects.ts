@@ -1,4 +1,5 @@
 import { startOfDay, addDays } from "date-fns";
+import { aplicarFilasEntrega, type FilasEntregaLocal } from "@/lib/offline/entrega-local";
 import { db } from "@/lib/offline/db";
 import type { QueueOpType } from "@/lib/offline/db";
 import { DIAS_PROXIMO_VENCIMIENTO } from "@/lib/contrata";
@@ -90,6 +91,20 @@ export async function applyLocalEffect(
       convertidaADeuda: true,
       _dirty: true,
     });
+    return;
+  }
+
+  // Entregas en modo local: el formulario ya calculó las filas (contrata
+  // nueva con su id definitivo, sus cuotas y lo que se liquida) — ver
+  // entrega-local.ts. Sin `_local` (operaciones encoladas por versiones
+  // anteriores) se conserva el comportamiento de antes.
+  if (
+    (type === "contrata.crear" ||
+      type === "contrata.renovar" ||
+      type === "cliente.unificar") &&
+    payload._local
+  ) {
+    await aplicarFilasEntrega(payload._local as FilasEntregaLocal);
     return;
   }
 
@@ -269,9 +284,42 @@ export async function applyLocalEffect(
   }
 
   if (type === "cita.crear") {
-    // Igual que "contrata.crear": no existe todavía el id real (lo asigna
-    // el servidor) — se espera al pull-sync tras confirmarse para que
-    // aparezca en Ruta/perfil del cliente.
+    // Con `id` (generado en el teléfono) la cita aparece de inmediato en
+    // Ruta y en el perfil del cliente. Sin él (operaciones encoladas por
+    // versiones anteriores) se espera al pull-sync, como antes.
+    const p = payload as {
+      id?: string;
+      clienteId: string;
+      contrataOrigenId?: string | null;
+      contratasUnificarIds?: string[];
+      tipo: "NUEVA" | "RENOVACION" | "UNIFICACION" | "SIN_DEFINIR";
+      periodicidad?: "SEMANAL" | "QUINCENAL" | "MENSUAL" | null;
+      montoEstimado: number;
+      fechaEntrega: string;
+      notas?: string | null;
+      ownerId?: string;
+    };
+    if (!p.id) return;
+    const cliente = await db.clientes.get(p.clienteId);
+    await db.citas.put({
+      id: p.id,
+      ownerId: cliente?.ownerId ?? p.ownerId ?? "",
+      clienteId: p.clienteId,
+      clienteNombre: cliente?.nombre ?? "Cliente",
+      clienteTelefono: cliente?.telefono ?? null,
+      contrataOrigenId:
+        p.tipo === "NUEVA" || p.tipo === "UNIFICACION" ? null : p.contrataOrigenId ?? null,
+      contratasUnificarIds: p.tipo === "UNIFICACION" ? p.contratasUnificarIds ?? [] : [],
+      contrataCreadaId: null,
+      tipo: p.tipo,
+      periodicidad: p.periodicidad ?? null,
+      montoEstimado: p.montoEstimado,
+      fechaEntrega: new Date(p.fechaEntrega).toISOString(),
+      notas: p.notas ?? null,
+      estado: "PENDIENTE",
+      creadoEn: new Date().toISOString(),
+      _dirty: true,
+    });
     return;
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { modoLocalActivo } from "@/lib/offline/modo-local";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -101,6 +102,7 @@ export function DeudorDetalle({
 
   async function eliminar() {
     if (!confirm("¿Eliminar este deudor y su historial?")) return;
+    if (modoLocalActivo()) return alert("Enciende la sincronización para hacer este cambio.");
     const res = await fetch(`/api/deudores/${deudor.id}`, { method: "DELETE" });
     if (res.ok) {
       // Igual que en cobro-vencido: el DELETE ya pasó en el servidor, pero

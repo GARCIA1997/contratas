@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { syncAll } from "@/lib/offline/sync";
 import { flushQueue } from "@/lib/offline/queue";
 import { suscribirseAConexion } from "@/lib/offline/conexion";
+import { instalarGuardiaFetch } from "@/lib/offline/modo-local";
 
 /**
  * Monta el ciclo de vida de la capa offline para el owner activo.
@@ -21,6 +22,7 @@ import { suscribirseAConexion } from "@/lib/offline/conexion";
  */
 export function OfflineBootstrap({ ownerId }: { ownerId: string }) {
   useEffect(() => {
+    instalarGuardiaFetch();
     function intentar() {
       void syncAll(ownerId);
       void flushQueue(ownerId);

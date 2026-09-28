@@ -1,5 +1,6 @@
 "use client";
 
+import { modoLocalActivo } from "@/lib/offline/modo-local";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ModoQuincenal } from "@prisma/client";
@@ -43,6 +44,7 @@ export function ConfigForm({
     e.preventDefault();
     setError(null);
     setOk(false);
+    if (modoLocalActivo()) return setError("Enciende la sincronización para hacer este cambio.");
     setGuardando(true);
     const res = await fetch("/api/configuracion", {
       method: "PUT",

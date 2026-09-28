@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { obtenerPreview } from "@/lib/offline/entrega-local";
 import { useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -32,6 +34,8 @@ export function CalculadoraPrestamo({
   cuotasPorDefecto: number;
   maxCuotas: number;
 }) {
+  const claims = useAuthClaims();
+  const ownerId = claims.ready ? claims.ownerId : null;
   const [tipo, setTipo] = useState<TipoContrata>("SEMANAL");
   const [monto, setMonto] = useState("");
   const [numCuotas, setNumCuotas] = useState(cuotasPorDefecto);
@@ -62,13 +66,14 @@ export function CalculadoraPrestamo({
     setCargando(true);
     setError(null);
     try {
-      const res = await fetch("/api/contratas/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+      // Mismo cálculo con o sin señal (en modo local se hace en el teléfono).
+      const data = await obtenerPreview(ownerId, {
+        tipo,
+        monto: montoNum,
+        fechaInicio,
+        numCuotas,
       });
-      if (!res.ok) throw new Error("No se pudo calcular");
-      const data = await res.json();
+      if (!data) throw new Error("No se pudo calcular");
       setAbonoSugerido(data.abonoSugerido);
       setFechas(data.fechas);
       setMontoCalculado(montoNum);

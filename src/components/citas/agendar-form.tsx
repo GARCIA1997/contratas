@@ -101,7 +101,6 @@ export function AgendarForm({
   const [notas, setNotas] = useState(inicial?.notas ?? "");
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [pendienteSync, setPendienteSync] = useState(false);
   const [guardada, setGuardada] = useState(false);
 
   const sugerencias = useMemo(() => {
@@ -203,8 +202,8 @@ export function AgendarForm({
           setError(e instanceof Error ? e.message : "No se pudo guardar");
           return;
         }
-        setGuardando(false);
-        setPendienteSync(true);
+        // El efecto ya la movió en el teléfono: igual que con señal.
+        router.push(`/clientes/${clienteId}`);
         return;
       }
       let res: Response;
@@ -237,14 +236,19 @@ export function AgendarForm({
 
     if (ownerId && sinConexion) {
       try {
-        await enqueue(ownerId, "cita.crear", input);
+        // Id generado aquí: la cita aparece de inmediato en Ruta y en el
+        // perfil del cliente, y el servidor la crea con este mismo id.
+        await enqueue(ownerId, "cita.crear", {
+          ...input,
+          id: crypto.randomUUID(),
+          ownerId,
+        });
       } catch (e) {
         setGuardando(false);
         setError(e instanceof Error ? e.message : "No se pudo guardar");
         return;
       }
-      setGuardando(false);
-      setPendienteSync(true);
+      router.push(`/clientes/${clienteId}`);
       return;
     }
 
@@ -286,27 +290,6 @@ export function AgendarForm({
             <p>
               Queda como recordatorio en Ruta — no afecta saldo ni cartera
               hasta que la conviertas en contrata real.
-            </p>
-          </CardContent>
-        </Card>
-        <Button className="w-full" asChild>
-          <Link href={volverHref}>Volver</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  if (pendienteSync) {
-    return (
-      <div className="space-y-4 md:max-w-xl">
-        <h1 className="text-2xl font-bold tracking-tight">
-          {reagendando ? "Cambios pendientes" : "Cita pendiente"}
-        </h1>
-        <Card className="border-pendiente/30">
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p>
-              Sin conexión — se guardará sola en cuanto el dispositivo tenga
-              señal. No hace falta hacer nada más.
             </p>
           </CardContent>
         </Card>

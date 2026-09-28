@@ -15,6 +15,7 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
 import { enqueue } from "@/lib/offline/queue";
 import {
   fetchConTimeout,
@@ -72,7 +73,6 @@ export function RenovarForm({
   const claims = useAuthClaims();
   const idem = useIdempotencia();
   const [incluirOtras, setIncluirOtras] = useState(false);
-  const [pendienteSync, setPendienteSync] = useState(false);
   const [renovada, setRenovada] = useState<ContrataEntregada & { id: string } | null>(
     null
   );
@@ -106,13 +106,13 @@ export function RenovarForm({
     const timer = setTimeout(() => {
       (async () => {
         try {
-          const res = await fetchConTimeout("/api/contratas/preview", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          const data = await obtenerPreview(ownerId, {
+            tipo,
+            monto: montoNum,
+            fechaInicio,
+            numCuotas,
           });
-          if (!res.ok || cancelado) return;
-          const data = await res.json();
+          if (!data || cancelado) return;
           setFechas(data.fechas);
           if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
         } catch {
@@ -125,7 +125,7 @@ export function RenovarForm({
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [tipo, montoNum, fechaInicio, numCuotas]);
+  }, [tipo, montoNum, fechaInicio, numCuotas, ownerId]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -158,20 +158,36 @@ export function RenovarForm({
     // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
     const sinConexion = debeTrabajarLocal();
     if (ownerId && sinConexion) {
+      // Modo local / sin señal: la contrata nueva nace en el teléfono con su
+      // id definitivo, la original (y lo vencido de las otras, si se marcó)
+      // queda liquidada localmente, y se muestra el mismo recibo con
+      // WhatsApp que con señal. Ver entrega-local.ts.
       try {
+        const id = crypto.randomUUID();
+        const hoy = new Date();
+        const entrega = await prepararEntregaLocal(ownerId, {
+          id,
+          input: { ...input, notas: input.notas },
+          hoy,
+          liquidarCompletas: [contrataId],
+          cubrirVencidasDe: incluirOtras ? otras.map((o) => o.id) : [],
+        });
+        // Antes de aplicar el efecto: la página redirige en cuanto ve la
+        // original liquidada si no sabe que esto fue una renovación.
+        onRenovada?.({ contrataId: id, offline: true });
         await enqueue(ownerId, "contrata.renovar", {
           contrataId,
           otrasIds: incluirOtras ? otras.map((o) => o.id) : [],
-          input,
+          input: { ...input, id, fechaCaptura: hoy.toISOString() },
+          _local: entrega.filas,
         });
+        setGuardando(false);
+        setOtrasLiquidadas(entrega.recibo.otrasLiquidadas ?? []);
+        setRenovada(entrega.recibo);
       } catch (e) {
         setGuardando(false);
-        setError(e instanceof Error ? e.message : "No se pudo guardar");
-        return;
+        setError(e instanceof Error ? e.message : "No se pudo renovar");
       }
-      setGuardando(false);
-      setPendienteSync(true);
-      onRenovada?.({ contrataId: null, offline: true });
       return;
     }
 
@@ -235,31 +251,6 @@ export function RenovarForm({
         </Button>
         <Button variant="ghost" className="w-full" asChild>
           <Link href={`/contratas/${contrataId}`}>Volver a la contrata original</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  if (pendienteSync) {
-    return (
-      <div className="space-y-4 md:max-w-xl">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Renovación pendiente
-          </h1>
-          <p className="text-sm text-muted-foreground">{clienteNombre}</p>
-        </div>
-        <Card className="border-pendiente/30">
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p>
-              Sin conexión — la renovación se aplicará sola en cuanto el
-              dispositivo vuelva a tener señal. No hace falta hacer nada
-              más.
-            </p>
-          </CardContent>
-        </Card>
-        <Button className="w-full" asChild>
-          <Link href={`/contratas/${contrataId}`}>Volver a la contrata</Link>
         </Button>
       </div>
     );

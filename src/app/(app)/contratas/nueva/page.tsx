@@ -39,6 +39,9 @@ export default function NuevaContrataPage() {
   );
 
   if (!claims.ready || !esAdmin || !clientes || !config) return null;
+  // Al convertir una cita se espera a leerla: el tipo inicial sale de su
+  // periodicidad y el formulario solo lo toma al montarse.
+  if (citaId && cita === undefined) return null;
 
   const tipoParam = searchParams.get("tipo");
   const tipoInicial: TipoContrata =
@@ -46,7 +49,9 @@ export default function NuevaContrataPage() {
       ? "QUINCENAL"
       : tipoParam === "MENSUAL"
         ? "MENSUAL"
-        : "SEMANAL";
+        : tipoParam === "SEMANAL"
+          ? "SEMANAL"
+          : cita?.periodicidad ?? "SEMANAL";
 
   const clienteIdParam = searchParams.get("clienteId");
   const opciones = clientes.map((c) => ({ id: c.id, nombre: c.nombre }));
