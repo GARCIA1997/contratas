@@ -187,7 +187,7 @@ export async function enqueue(
   // Techo de seguridad: ver LIMITE_OPERACIONES_LOCALES. Se revisa antes de
   // aplicar el efecto optimista para que la UI no muestre algo que nunca
   // se va a subir.
-  const acumuladas = await database.writeQueue.where("ownerId").equals(ownerId).count();
+  const acumuladas = await operacionesPorSubir(ownerId);
   if (acumuladas >= LIMITE_OPERACIONES_LOCALES) throw new LimiteOfflineError();
   const id = crypto.randomUUID();
   await database.transaction(
@@ -569,9 +569,24 @@ async function limpiarDirtySiSinPendientes(payload: Record<string, unknown>) {
   }
 }
 
+/**
+ * Operaciones que cuentan para el límite de seguridad. Las que están en
+ * "conflict" no: el servidor ya las rechazó y no van a subir, así que no
+ * deben comerse el cupo y bloquear la captura antes de llegar al límite.
+ */
+async function operacionesPorSubir(ownerId: string): Promise<number> {
+  const database = db;
+  if (!database) return 0;
+  return database.writeQueue
+    .where("ownerId")
+    .equals(ownerId)
+    .filter((op) => op.status !== "conflict")
+    .count();
+}
+
 /** Cuántas operaciones más caben antes del límite de seguridad. */
 export async function espacioEnCola(ownerId: string): Promise<number> {
-  return Math.max(0, LIMITE_OPERACIONES_LOCALES - (await pendingCount(ownerId)));
+  return Math.max(0, LIMITE_OPERACIONES_LOCALES - (await operacionesPorSubir(ownerId)));
 }
 
 export async function pendingCount(ownerId: string): Promise<number> {

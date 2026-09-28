@@ -175,4 +175,21 @@ describe("modo local", () => {
       enqueue(OWNER, "contrata.pago.toggle", { contrataId: "vieja", numeroCuota: 2 })
     ).rejects.toThrow(/límite/);
   });
+
+  it("las operaciones en conflicto no cuentan para el límite", async () => {
+    await db.writeQueue.bulkAdd(
+      Array.from({ length: LIMITE_OPERACIONES_LOCALES }, (_, i) => ({
+        id: `conf-${i}`,
+        ownerId: OWNER,
+        type: "contrata.pago.toggle" as const,
+        payload: { contrataId: "vieja", numeroCuota: 1 },
+        createdAt: new Date(2026, 8, 27, 0, 0, i).toISOString(),
+        status: "conflict" as const,
+        attempts: 1,
+      }))
+    );
+    await expect(
+      enqueue(OWNER, "contrata.pago.toggle", { contrataId: "vieja", numeroCuota: 2 })
+    ).resolves.toBeUndefined();
+  });
 });
