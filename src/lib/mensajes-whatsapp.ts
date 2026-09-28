@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { differenceInCalendarDays, format } from "date-fns";
 import { es } from "date-fns/locale";
 import type { TipoContrata } from "@prisma/client";
 import { formatMoneda } from "@/lib/utils";
@@ -480,6 +480,69 @@ export function mensajeEstadoCuentaDeudor(opts: {
       ...historial,
     ],
     cierre: [`🙏 ¡Gracias por tu preferencia!`, ``],
+  });
+}
+
+/* ── Recordatorio de abono para deudores ────────────────────────────────── */
+
+/**
+ * Recordatorio a un deudor para que siga abonando.
+ *
+ * Una deuda no tiene calendario (a diferencia de una contrata), así que el
+ * mensaje no habla de "atraso" ni de fechas de vencimiento: recuerda el
+ * saldo, reconoce lo que ya abonó y lo invita a dar el siguiente abono, del
+ * monto que pueda. El tono es cordial a propósito — nada de amenazas ni
+ * lenguaje de cobranza agresiva: el objetivo es que responda, y un
+ * mensaje que se siente como regaño se ignora (y en México la cobranza
+ * intimidatoria además está regulada).
+ */
+export function mensajeRecordatorioAbono(opts: {
+  nombreApp: string;
+  nombre: string;
+  deudaInicial: number;
+  saldoActual: number;
+  ultimoAbono?: { fecha: Date; monto: number } | null;
+  hoy?: Date;
+}): string {
+  const hoy = opts.hoy ?? new Date();
+  const abonado = Math.round((opts.deudaInicial - opts.saldoActual) * 100) / 100;
+  const ultimo = opts.ultimoAbono;
+  const dias = ultimo ? differenceInCalendarDays(hoy, ultimo.fecha) : null;
+  const haceCuanto =
+    dias === null
+      ? ""
+      : dias <= 0
+        ? " _(hoy)_"
+        : ` _(hace ${dias} día${dias === 1 ? "" : "s"})_`;
+
+  return envolver({
+    nombreApp: opts.nombreApp,
+    icono: "🤝",
+    titulo: "Recordatorio de abono",
+    cuerpo: [
+      `👋 Hola *${opts.nombre}*`,
+      ``,
+      `Te escribimos para recordarte el saldo que tienes pendiente con nosotros.`,
+      ``,
+      `💵 *SALDO PENDIENTE: ${formatMoneda(opts.saldoActual)}*`,
+      ``,
+      ...(abonado > 0
+        ? [`✅ Llevas abonado: ${formatMoneda(abonado)} de ${formatMoneda(opts.deudaInicial)}`]
+        : []),
+      ultimo
+        ? `📅 Tu último abono: *${formatMoneda(ultimo.monto)}* el ${fechaCorta(ultimo.fecha)}${haceCuanto}`
+        : `📭 Aún no tenemos abonos registrados.`,
+      ``,
+      LINEA,
+      `💡 Cualquier abono, por pequeño que sea, te acerca a liquidar.`,
+      `📲 Responde este mensaje para acordar tu próximo abono.`,
+      ``,
+    ],
+    cierre: [
+      `💬 Si ya realizaste un abono, ignora este mensaje.`,
+      `🙏 ¡Gracias por tu confianza!`,
+      ``,
+    ],
   });
 }
 

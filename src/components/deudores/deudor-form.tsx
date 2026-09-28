@@ -17,6 +17,7 @@ import { rutas } from "@/lib/rutas";
 export type DeudorInicial = {
   id: string;
   nombre: string;
+  telefono: string | null;
   deudaInicial: number;
   notas: string | null;
 };
@@ -28,6 +29,7 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
   const editando = !!inicial;
 
   const [nombre, setNombre] = useState(inicial?.nombre ?? "");
+  const [telefono, setTelefono] = useState(inicial?.telefono ?? "");
   const [deudaInicial, setDeudaInicial] = useState(
     inicial ? String(inicial.deudaInicial) : ""
   );
@@ -46,6 +48,7 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
 
     const datos = {
       nombre: nombre.trim(),
+      telefono: telefono.trim() || null,
       deudaInicial: deuda,
       notas: notas.trim() || null,
     };
@@ -95,6 +98,17 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
             value={nombre}
             onChange={(e) => setNombre(e.target.value)}
             required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="telefono">Teléfono</Label>
+          <Input
+            id="telefono"
+            type="tel"
+            inputMode="tel"
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            placeholder="Para enviarle recordatorios por WhatsApp"
           />
         </div>
         <div className="space-y-2">

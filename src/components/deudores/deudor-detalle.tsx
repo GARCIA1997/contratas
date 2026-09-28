@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, BellRing, FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { getConfiguracion } from "@/lib/offline/repo";
+import { linkWhatsApp } from "@/lib/whatsapp";
+import { mensajeRecordatorioAbono } from "@/lib/mensajes-whatsapp";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,6 +32,7 @@ type AbonoUI = {
 type DeudorUI = {
   id: string;
   nombre: string;
+  telefono?: string | null;
   deudaInicial: number;
   notas: string | null;
   saldoActual: number;
@@ -51,6 +56,21 @@ export function DeudorDetalle({
   const router = useRouter();
   const abonos = deudor.abonos;
   const saldo = deudor.saldoActual;
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
+  const ultimo = abonos.length > 0 ? abonos[abonos.length - 1] : null;
+  const recordatorio = linkWhatsApp(
+    deudor.telefono ?? null,
+    mensajeRecordatorioAbono({
+      nombreApp: config?.nombreApp ?? "Kredired",
+      nombre: deudor.nombre,
+      deudaInicial: deudor.deudaInicial,
+      saldoActual: saldo,
+      ultimoAbono: ultimo ? { fecha: new Date(ultimo.fecha), monto: ultimo.monto } : null,
+    })
+  );
 
   const [monto, setMonto] = useState("");
   const [fechaAbono, setFechaAbono] = useState(
@@ -164,6 +184,21 @@ export function DeudorDetalle({
           </div>
         </CardContent>
       </Card>
+
+      {saldo > 0 && (
+        <div className="space-y-1">
+          <Button className="w-full" asChild>
+            <a href={recordatorio} target="_blank" rel="noopener noreferrer">
+              <BellRing className="size-4" /> Recordatorio de abono
+            </a>
+          </Button>
+          {!deudor.telefono && (
+            <p className="text-center text-xs text-muted-foreground">
+              Sin teléfono: elige el contacto al abrir WhatsApp, o agrégalo en Editar.
+            </p>
+          )}
+        </div>
+      )}
 
       <Button className="w-full" variant="outline" asChild>
         <Link href={rutas.deudorEstadoCuenta(deudor.id)}>

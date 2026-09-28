@@ -57,6 +57,9 @@ export type DeudorLocal = {
   id: string;
   ownerId: string;
   nombre: string;
+  /** Para recordatorios de abono por WhatsApp. Ausente en registros
+   *  guardados por versiones anteriores hasta el siguiente sync. */
+  telefono?: string | null;
   deudaInicial: number;
   notas: string | null;
   creadoEn: string;

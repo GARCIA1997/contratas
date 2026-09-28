@@ -208,8 +208,18 @@ export async function marcarEntregada(
 ) {
   const cita = await requireCita(ownerId, id);
   if (cita.estado !== "PENDIENTE") return cita;
+  // El id llega del teléfono: solo se enlaza si la contrata es de este
+  // mismo espacio de trabajo. Sin esto se podía apuntar la cita a una
+  // contrata ajena conociendo su id. Si no es válida, la cita se marca
+  // entregada sin enlace (igual que antes de existir el enlace).
+  const enlace = contrataCreadaId
+    ? await prisma.contrata.findFirst({
+        where: { id: contrataCreadaId, ownerId },
+        select: { id: true },
+      })
+    : null;
   return prisma.citaAgendada.update({
     where: { id },
-    data: { estado: "ENTREGADA", contrataCreadaId },
+    data: { estado: "ENTREGADA", contrataCreadaId: enlace?.id ?? null },
   });
 }

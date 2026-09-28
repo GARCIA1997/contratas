@@ -384,17 +384,24 @@ export async function convertirADeuda(
   const nombre = contrata.cliente.nombre.trim().toUpperCase();
 
   const resultado = await prisma.$transaction(async (tx) => {
+    // El teléfono del cliente pasa al deudor (si no tenía uno): es a quien
+    // se le mandan los recordatorios de abono.
+    const telefono = contrata.cliente.telefono?.trim() || null;
     let deudor = await tx.deudor.findFirst({ where: { ownerId, nombre } });
     if (deudor) {
       deudor = await tx.deudor.update({
         where: { id: deudor.id },
-        data: { deudaInicial: { increment: saldo } },
+        data: {
+          deudaInicial: { increment: saldo },
+          ...(!deudor.telefono && telefono ? { telefono } : {}),
+        },
       });
     } else {
       deudor = await tx.deudor.create({
         data: {
           ownerId,
           nombre,
+          telefono,
           deudaInicial: saldo,
           notas: `Generada desde contrata ${contrata.tipo.toLowerCase()} de ${contrata.mes}`,
         },

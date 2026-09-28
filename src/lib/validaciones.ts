@@ -101,6 +101,7 @@ export const citaUpdateSchema = citaSchema.omit({ id: true }).partial();
 export const deudorSchema = z.object({
   id: idGeneradoEnCliente,
   nombre: z.string().trim().min(1, "El nombre es obligatorio").max(120),
+  telefono: z.string().trim().max(30).optional().nullable(),
   deudaInicial: z.number().min(0, "La deuda no puede ser negativa"),
   notas: z.string().trim().max(500).optional().nullable(),
 });

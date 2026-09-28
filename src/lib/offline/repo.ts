@@ -629,6 +629,7 @@ export async function getDeudores(ownerId: string) {
 export type DeudorDetalleLocal = {
   id: string;
   nombre: string;
+  telefono: string | null;
   deudaInicial: number;
   notas: string | null;
   saldoActual: number;
@@ -654,6 +655,7 @@ export async function getDeudor(
   return {
     id: d.id,
     nombre: d.nombre,
+    telefono: d.telefono ?? null,
     deudaInicial: d.deudaInicial,
     notas: d.notas,
     saldoActual: d.saldoActual,

@@ -436,10 +436,11 @@ export async function applyLocalEffect(
   }
 
   if (type === "deudor.crear") {
-    const { id, ownerId, nombre, deudaInicial, notas } = payload as {
+    const { id, ownerId, nombre, telefono, deudaInicial, notas } = payload as {
       id: string;
       ownerId: string;
       nombre: string;
+      telefono?: string | null;
       deudaInicial: number;
       notas: string | null;
     };
@@ -447,6 +448,7 @@ export async function applyLocalEffect(
       id,
       ownerId,
       nombre,
+      telefono: telefono ?? null,
       deudaInicial,
       notas,
       creadoEn: new Date().toISOString(),
@@ -460,7 +462,12 @@ export async function applyLocalEffect(
   if (type === "deudor.editar") {
     const { deudorId, input } = payload as {
       deudorId: string;
-      input: Partial<{ nombre: string; deudaInicial: number; notas: string | null }>;
+      input: Partial<{
+        nombre: string;
+        telefono: string | null;
+        deudaInicial: number;
+        notas: string | null;
+      }>;
     };
     const deudor = await db.deudores.get(deudorId);
     if (!deudor) return;

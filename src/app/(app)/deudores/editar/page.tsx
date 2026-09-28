@@ -46,6 +46,7 @@ export default function EditarDeudorPage() {
       inicial={{
         id: deudor.id,
         nombre: deudor.nombre,
+        telefono: deudor.telefono ?? null,
         deudaInicial: deudor.deudaInicial,
         notas: deudor.notas,
       }}

@@ -194,6 +194,7 @@ type DeudorResumenApi = {
   totalAbonado: number;
   saldoActual: number;
   numAbonos: number;
+  telefono?: string | null;
 };
 
 export async function syncDeudores(ownerId: string): Promise<boolean> {
@@ -217,6 +218,7 @@ export async function syncDeudores(ownerId: string): Promise<boolean> {
         id: d.id,
         ownerId,
         nombre: d.nombre,
+        telefono: d.telefono ?? null,
         deudaInicial: d.deudaInicial,
         notas: local?.notas ?? null,
         creadoEn: local?.creadoEn ?? new Date().toISOString(),
@@ -235,6 +237,7 @@ type DeudorDetalleApi = {
   id: string;
   ownerId: string;
   nombre: string;
+  telefono?: string | null;
   deudaInicial: number;
   notas: string | null;
   creadoEn: string;
@@ -269,6 +272,7 @@ export async function syncDeudorDetalle(
         id: d.id,
         ownerId,
         nombre: d.nombre,
+        telefono: d.telefono ?? null,
         deudaInicial: d.deudaInicial,
         notas: d.notas,
         creadoEn: d.creadoEn,

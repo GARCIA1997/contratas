@@ -14,6 +14,7 @@ export type DeudorConAbonos = Prisma.DeudorGetPayload<{
 export type DeudorResumen = {
   id: string;
   nombre: string;
+  telefono: string | null;
   deudaInicial: number;
   totalAbonado: number;
   saldoActual: number;
@@ -37,6 +38,7 @@ export async function listDeudores(ownerId: string): Promise<DeudorResumen[]> {
     return {
       id: d.id,
       nombre: d.nombre,
+      telefono: d.telefono,
       deudaInicial: d.deudaInicial,
       totalAbonado,
       saldoActual: round(d.deudaInicial - totalAbonado),
@@ -74,6 +76,7 @@ export async function crearDeudor(ownerId: string, input: DeudorInput) {
       ...(input.id ? { id: input.id } : {}),
       ownerId,
       nombre: input.nombre,
+      telefono: input.telefono || null,
       deudaInicial: input.deudaInicial,
       notas: input.notas ?? null,
     },
@@ -90,6 +93,7 @@ export async function actualizarDeudor(
     where: { id },
     data: {
       ...(input.nombre !== undefined ? { nombre: input.nombre } : {}),
+      ...(input.telefono !== undefined ? { telefono: input.telefono || null } : {}),
       ...(input.deudaInicial !== undefined
         ? { deudaInicial: input.deudaInicial }
         : {}),
