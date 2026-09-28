@@ -19,7 +19,8 @@ import {
   getConfiguracion,
   getCitasPendientes,
 } from "@/lib/offline/repo";
-import { enqueue } from "@/lib/offline/queue";
+import { enqueue, espacioEnCola } from "@/lib/offline/queue";
+import { LimiteOfflineError } from "@/lib/offline/modo-local";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import {
   mensajeCobro,
@@ -230,6 +231,12 @@ export default function RutaDelDiaPage() {
     setConfirmando(null);
     setCobrandoId(parada.clienteId);
     try {
+      // Todas las cuotas del cliente o ninguna: si el límite de movimientos
+      // sin sincronizar cortara a la mitad, quedaría medio cobrado.
+      if ((await espacioEnCola(ownerId as string)) < parada.cuotas.length) {
+        alert(new LimiteOfflineError().message);
+        return;
+      }
       for (const cuota of parada.cuotas) {
         await enqueue(ownerId as string, "contrata.pago.abonar", {
           contrataId: cuota.contrataId,

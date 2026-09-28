@@ -20,6 +20,7 @@ import {
   fetchConTimeout,
   mensajeDeError,
   TIMEOUT_ESCRITURA_MS,
+  debeTrabajarLocal,
 } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 
@@ -191,11 +192,17 @@ export function AgendarForm({
     };
 
     setGuardando(true);
-    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
+    const sinConexion = debeTrabajarLocal();
 
     if (reagendando) {
       if (ownerId && sinConexion) {
-        await enqueue(ownerId, "cita.editar", { citaId: inicial!.id, input });
+        try {
+          await enqueue(ownerId, "cita.editar", { citaId: inicial!.id, input });
+        } catch (e) {
+          setGuardando(false);
+          setError(e instanceof Error ? e.message : "No se pudo guardar");
+          return;
+        }
         setGuardando(false);
         setPendienteSync(true);
         return;
@@ -229,7 +236,13 @@ export function AgendarForm({
     }
 
     if (ownerId && sinConexion) {
-      await enqueue(ownerId, "cita.crear", input);
+      try {
+        await enqueue(ownerId, "cita.crear", input);
+      } catch (e) {
+        setGuardando(false);
+        setError(e instanceof Error ? e.message : "No se pudo guardar");
+        return;
+      }
       setGuardando(false);
       setPendienteSync(true);
       return;

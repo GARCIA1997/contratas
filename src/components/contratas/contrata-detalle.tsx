@@ -261,7 +261,13 @@ export function ContrataDetalle({
     if (!confirm("¿Eliminar esta contrata? No se puede deshacer.")) return;
     setBorrando(true);
     if (ownerId) {
-      await enqueue(ownerId, "contrata.eliminar", { contrataId: contrata.id });
+      try {
+        await enqueue(ownerId, "contrata.eliminar", { contrataId: contrata.id });
+      } catch (e) {
+        setBorrando(false);
+        alert(e instanceof Error ? e.message : "No se pudo eliminar");
+        return;
+      }
       router.push("/contratas");
       return;
     }

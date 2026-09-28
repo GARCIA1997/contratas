@@ -19,6 +19,7 @@ import {
   fetchConTimeout,
   mensajeDeError,
   TIMEOUT_ESCRITURA_MS,
+  debeTrabajarLocal,
 } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import {
@@ -180,9 +181,15 @@ export function UnificarForm({
     // se conoce su id todavía, así que se encola y se avisa "pendiente". Si
     // hay señal real se guarda directo (antes se encolaba siempre, con o sin
     // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
-    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
+    const sinConexion = debeTrabajarLocal();
     if (ownerId && sinConexion) {
-      await enqueue(ownerId, "cliente.unificar", { clienteId, contrataIds, input });
+      try {
+        await enqueue(ownerId, "cliente.unificar", { clienteId, contrataIds, input });
+      } catch (e) {
+        setGuardando(false);
+        setError(e instanceof Error ? e.message : "No se pudo guardar");
+        return;
+      }
       setGuardando(false);
       setPendienteSync(true);
       onUnificada?.({ contrataId: null, offline: true });

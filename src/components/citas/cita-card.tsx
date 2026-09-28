@@ -17,6 +17,7 @@ import type { CitaLocal } from "@/lib/offline/db";
 import {
   fetchConTimeout,
   TIMEOUT_ESCRITURA_MS,
+  debeTrabajarLocal,
 } from "@/lib/offline/conexion";
 
 const TIPO_LABEL: Record<CitaLocal["tipo"], string> = {
@@ -54,9 +55,13 @@ export function CitaCard({
   async function descartar() {
     if (!confirm(`¿Descartar la cita de ${cita.clienteNombre}?`)) return;
     setDescartando(true);
-    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
+    const sinConexion = debeTrabajarLocal();
     if (sinConexion) {
-      await enqueue(ownerId, "cita.cancelar", { citaId: cita.id });
+      try {
+        await enqueue(ownerId, "cita.cancelar", { citaId: cita.id });
+      } catch (e) {
+        alert(e instanceof Error ? e.message : "No se pudo descartar");
+      }
     } else {
       try {
         await fetchConTimeout(
@@ -69,7 +74,9 @@ export function CitaCard({
         // Si la red falló, se encola para que no se pierda la intención.
         // Cancelar dos veces deja el mismo estado, así que reintentar es
         // seguro aunque la petición sí hubiera llegado.
-        await enqueue(ownerId, "cita.cancelar", { citaId: cita.id });
+        await enqueue(ownerId, "cita.cancelar", { citaId: cita.id }).catch((e) =>
+          alert(e instanceof Error ? e.message : "No se pudo descartar")
+        );
       }
     }
     setDescartando(false);

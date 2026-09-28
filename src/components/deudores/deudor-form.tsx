@@ -14,6 +14,7 @@ import {
   fetchConTimeout,
   mensajeDeError,
   TIMEOUT_ESCRITURA_MS,
+  debeTrabajarLocal,
 } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 
@@ -54,8 +55,7 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
     };
 
     if (
-      typeof navigator !== "undefined" &&
-      !navigator.onLine &&
+      debeTrabajarLocal() &&
       claims.ready &&
       claims.ownerId
     ) {

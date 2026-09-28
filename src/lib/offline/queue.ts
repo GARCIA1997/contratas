@@ -14,6 +14,10 @@ import {
   syncDeudorDetalle,
   syncCitas,
 } from "@/lib/offline/sync";
+import {
+  LIMITE_OPERACIONES_LOCALES,
+  LimiteOfflineError,
+} from "@/lib/offline/modo-local";
 
 const ENDPOINTS: Record<
   QueueOpType,
@@ -179,6 +183,11 @@ export async function enqueue(
 ): Promise<void> {
   const database = db;
   if (!database) return;
+  // Techo de seguridad: ver LIMITE_OPERACIONES_LOCALES. Se revisa antes de
+  // aplicar el efecto optimista para que la UI no muestre algo que nunca
+  // se va a subir.
+  const acumuladas = await database.writeQueue.where("ownerId").equals(ownerId).count();
+  if (acumuladas >= LIMITE_OPERACIONES_LOCALES) throw new LimiteOfflineError();
   const id = crypto.randomUUID();
   await database.transaction(
     "rw",
@@ -495,6 +504,11 @@ async function limpiarDirtySiSinPendientes(payload: Record<string, unknown>) {
       if (existe) await database.deudores.update(deudorId, { _dirty: false });
     }
   }
+}
+
+/** Cuántas operaciones más caben antes del límite de seguridad. */
+export async function espacioEnCola(ownerId: string): Promise<number> {
+  return Math.max(0, LIMITE_OPERACIONES_LOCALES - (await pendingCount(ownerId)));
 }
 
 export async function pendingCount(ownerId: string): Promise<number> {

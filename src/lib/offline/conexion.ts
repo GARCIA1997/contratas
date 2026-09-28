@@ -11,6 +11,8 @@
  * Aquí se distinguen tres estados y se le pone techo a toda espera de red.
  */
 
+import { modoLocalActivo, suscribirseAModoLocal } from "@/lib/offline/modo-local";
+
 export type CalidadConexion = "rapida" | "lenta" | "sin-red";
 
 
@@ -31,6 +33,8 @@ const TIPOS_LENTOS = new Set(["slow-2g", "2g", "3g"]);
 
 export function calidadConexion(): CalidadConexion {
   if (typeof navigator === "undefined") return "rapida"; // SSR
+  // Modo local (switch del encabezado): se comporta igual que sin señal.
+  if (modoLocalActivo()) return "sin-red";
   if (!navigator.onLine) return "sin-red";
 
   const c = conexionDelNavegador();
@@ -52,11 +56,22 @@ export function suscribirseAConexion(cb: () => void): () => void {
   window.addEventListener("online", cb);
   window.addEventListener("offline", cb);
   c?.addEventListener?.("change", cb);
+  const quitarModoLocal = suscribirseAModoLocal(cb);
   return () => {
+    quitarModoLocal();
     window.removeEventListener("online", cb);
     window.removeEventListener("offline", cb);
     c?.removeEventListener?.("change", cb);
   };
+}
+
+/**
+ * ¿Hay que encolar en vez de llamar a la API? Sin señal o en modo local.
+ * Los formularios usan esto en lugar de `navigator.onLine` para respetar
+ * el switch de sincronización.
+ */
+export function debeTrabajarLocal(): boolean {
+  return calidadConexion() === "sin-red";
 }
 
 /* ── Fetch con techo de espera ─────────────────────────────────────────── */

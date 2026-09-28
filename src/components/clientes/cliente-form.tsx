@@ -14,6 +14,7 @@ import {
   fetchConTimeout,
   mensajeDeError,
   TIMEOUT_ESCRITURA_MS,
+  debeTrabajarLocal,
 } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 
@@ -59,8 +60,7 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
     // alta a alguien en la puerta de su casa es justo lo que se hace en
     // campo, y hasta ahora era de lo poco que exigía internet.
     if (
-      typeof navigator !== "undefined" &&
-      !navigator.onLine &&
+      debeTrabajarLocal() &&
       claims.ready &&
       claims.ownerId
     ) {

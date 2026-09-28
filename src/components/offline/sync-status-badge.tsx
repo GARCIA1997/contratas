@@ -9,6 +9,7 @@ import {
   suscribirseAConexion,
   type CalidadConexion,
 } from "@/lib/offline/conexion";
+import { modoLocalActivo } from "@/lib/offline/modo-local";
 
 /** Indicador mínimo de conectividad + operaciones pendientes de sincronizar. */
 export function SyncStatusBadge({ ownerId }: { ownerId: string }) {
@@ -80,6 +81,10 @@ export function SyncStatusBadge({ ownerId }: { ownerId: string }) {
       </button>
     );
   }
+
+  // En modo local el switch ya muestra el contador contra el límite; aquí
+  // no hay nada que añadir (y el encabezado no tiene espacio de sobra).
+  if (modoLocalActivo()) return null;
 
   return (
     <div className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">

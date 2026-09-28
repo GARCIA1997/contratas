@@ -14,10 +14,13 @@ export async function entregarCita(
   info: { contrataId: string | null; offline: boolean }
 ): Promise<void> {
   if (info.offline) {
+    // Si ya no cabe en la cola (límite de movimientos sin sincronizar), la
+    // cita queda pendiente y se marca a mano después — la contrata ya se
+    // guardó y no debe verse afectada.
     await enqueue(ownerId, "cita.entregar", {
       citaId,
       contrataCreadaId: null,
-    });
+    }).catch(() => undefined);
     return;
   }
   try {

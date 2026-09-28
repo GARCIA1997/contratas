@@ -11,6 +11,7 @@ import {
   fetchConTimeout,
   mensajeDeError,
   TIMEOUT_ESCRITURA_MS,
+  debeTrabajarLocal,
 } from "@/lib/offline/conexion";
 
 export function EliminarCliente({
@@ -33,8 +34,7 @@ export function EliminarCliente({
     setBorrando(true);
 
     if (
-      typeof navigator !== "undefined" &&
-      !navigator.onLine &&
+      debeTrabajarLocal() &&
       claims.ready &&
       claims.ownerId
     ) {

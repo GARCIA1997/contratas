@@ -20,6 +20,7 @@ import {
   fetchConTimeout,
   mensajeDeError,
   TIMEOUT_ESCRITURA_MS,
+  debeTrabajarLocal,
 } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import {
@@ -155,13 +156,19 @@ export function RenovarForm({
     // una pantalla que no existe hasta que el servidor confirme. Si hay
     // señal real se guarda directo (antes se encolaba siempre, con o sin
     // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
-    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
+    const sinConexion = debeTrabajarLocal();
     if (ownerId && sinConexion) {
-      await enqueue(ownerId, "contrata.renovar", {
-        contrataId,
-        otrasIds: incluirOtras ? otras.map((o) => o.id) : [],
-        input,
-      });
+      try {
+        await enqueue(ownerId, "contrata.renovar", {
+          contrataId,
+          otrasIds: incluirOtras ? otras.map((o) => o.id) : [],
+          input,
+        });
+      } catch (e) {
+        setGuardando(false);
+        setError(e instanceof Error ? e.message : "No se pudo guardar");
+        return;
+      }
       setGuardando(false);
       setPendienteSync(true);
       onRenovada?.({ contrataId: null, offline: true });

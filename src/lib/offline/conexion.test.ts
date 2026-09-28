@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   calidadConexion,
+  debeTrabajarLocal,
   fetchConTimeout,
   TimeoutDeRed,
 } from "@/lib/offline/conexion";
+import { setModoLocal } from "@/lib/offline/modo-local";
 
 /** Simula lo que reporta el navegador sobre la red. */
 function fingirRed(opts: {
@@ -29,6 +31,15 @@ describe("calidadConexion", () => {
   beforeEach(() => {
     localStorage.clear();
     fingirRed({ onLine: true, effectiveType: "4g" });
+  });
+
+  it("el modo local se comporta como sin red aunque haya wifi", () => {
+    setModoLocal(true);
+    expect(calidadConexion()).toBe("sin-red");
+    expect(debeTrabajarLocal()).toBe(true);
+    setModoLocal(false);
+    expect(calidadConexion()).toBe("rapida");
+    expect(debeTrabajarLocal()).toBe(false);
   });
 
   it("sin red gana sobre cualquier otra señal", () => {

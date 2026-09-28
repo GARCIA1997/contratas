@@ -23,6 +23,7 @@ import {
   fetchConTimeout,
   mensajeDeError,
   TIMEOUT_ESCRITURA_MS,
+  debeTrabajarLocal,
 } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import {
@@ -240,13 +241,19 @@ export function ContrataForm({
     // real, se guardan directo (igual que siempre) para no mostrarle al
     // usuario un mensaje de "pendiente de conexión" cuando sí tiene internet
     // (bug reportado: se marcaba offline al entregar una contrata con señal).
-    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
+    const sinConexion = debeTrabajarLocal();
 
     if (editando && sinConexion && claims.ready && claims.ownerId) {
-      await enqueue(claims.ownerId, "contrata.editar", {
-        contrataId: inicial!.id,
-        input: payload,
-      });
+      try {
+        await enqueue(claims.ownerId, "contrata.editar", {
+          contrataId: inicial!.id,
+          input: payload,
+        });
+      } catch (e) {
+        setGuardando(false);
+        setError(e instanceof Error ? e.message : "No se pudo guardar");
+        return;
+      }
       setGuardando(false);
       router.push(`/contratas/${inicial!.id}`);
       return;
@@ -258,7 +265,13 @@ export function ContrataForm({
       // puede mostrar el panel de entrega/WhatsApp de inmediato; en cuanto
       // sincronice aparece sola en la lista, y desde ahí se puede compartir
       // el recibo por WhatsApp manualmente (ver recibo-view.tsx).
-      await enqueue(claims.ownerId, "contrata.crear", payload);
+      try {
+        await enqueue(claims.ownerId, "contrata.crear", payload);
+      } catch (e) {
+        setGuardando(false);
+        setError(e instanceof Error ? e.message : "No se pudo guardar");
+        return;
+      }
       setGuardando(false);
       setPendienteSync(true);
       onGuardada?.({ contrataId: null, offline: true });
