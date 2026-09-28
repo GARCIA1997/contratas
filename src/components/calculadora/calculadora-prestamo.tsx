@@ -8,6 +8,7 @@ import { Calculator } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda, cn } from "@/lib/utils";
@@ -137,12 +138,8 @@ export function CalculadoraPrestamo({
               </div>
               <div>
                 <Label htmlFor="calc-fecha">Fecha de inicio</Label>
-                <Input
-                  id="calc-fecha"
-                  type="date"
-                  value={fechaInicio}
-                  onChange={(e) => setFechaInicio(e.target.value)}
-                />
+                <FechaInput
+                  id="calc-fecha" value={fechaInicio} onChange={setFechaInicio} />
               </div>
             </div>
           </CardContent>

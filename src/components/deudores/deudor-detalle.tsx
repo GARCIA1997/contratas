@@ -9,6 +9,7 @@ import { ArrowLeft, FileText, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Label } from "@/components/ui/label";
 import { formatMoneda } from "@/lib/utils";
 import { enqueue } from "@/lib/offline/queue";
@@ -177,13 +178,8 @@ export function DeudorDetalle({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="fecha">Fecha</Label>
-                  <Input
-                    id="fecha"
-                    type="date"
-                    value={fechaAbono}
-                    onChange={(e) => setFechaAbono(e.target.value)}
-                    required
-                  />
+                  <FechaInput
+                    id="fecha" value={fechaAbono} onChange={setFechaAbono} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="monto">Monto</Label>

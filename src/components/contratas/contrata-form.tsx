@@ -10,6 +10,7 @@ import Link from "next/link";
 import type { TipoContrata } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
@@ -524,13 +525,8 @@ export function ContrataForm({
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label htmlFor="fecha">Fecha de inicio</Label>
-            <Input
-              id="fecha"
-              type="date"
-              value={fechaInicio}
-              onChange={(e) => setFechaInicio(e.target.value)}
-              required
-            />
+            <FechaInput
+              id="fecha" value={fechaInicio} onChange={setFechaInicio} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="abono">Abono (editable)</Label>
