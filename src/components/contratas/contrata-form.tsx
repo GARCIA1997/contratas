@@ -17,21 +17,28 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
-import { enqueue } from "@/lib/offline/queue";
+import { guardarOperacion } from "@/lib/offline/guardar";
+import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
 import { getContratasConVencido } from "@/lib/offline/repo";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-} from "@/lib/offline/conexion";
+import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import {
   ContrataCreadaPanel,
   type ContrataCreada,
 } from "@/components/contratas/contrata-creada";
 import { usePrimerPago } from "@/lib/offline/use-primer-pago";
+import { rutas } from "@/lib/rutas";
 
 export type ClienteOpcion = { id: string; nombre: string };
+
+type DatosContrata = {
+  tipo: TipoContrata;
+  monto: number;
+  abono: number;
+  fechaInicio: string;
+  numCuotas: number;
+  notas: string | null;
+};
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -61,7 +68,7 @@ export function ContrataForm({
   volverHref: volverHrefProp,
   montoInicial,
   fechaInicioInicial,
-  onGuardada,
+  citaId,
 }: {
   clientes: ClienteOpcion[];
   cuotasPorDefecto: number;
@@ -85,7 +92,9 @@ export function ContrataForm({
    * "pendiente", tanto online como offline — usado por la misma feature de
    * citas para cerrar el círculo (marcar la cita como entregada) sin que
    * este componente sepa nada de citas. */
-  onGuardada?: (info: { contrataId: string | null; offline: boolean }) => void;
+  /** Cita que se está entregando: su enlace con la contrata nueva va en la
+   *  misma operación de guardado (ver guardar.ts), nunca por separado. */
+  citaId?: string | null;
 }) {
   const router = useRouter();
   const claims = useAuthClaims();
@@ -132,8 +141,6 @@ export function ContrataForm({
   const [guardando, setGuardando] = useState(false);
   /** Contrata recién creada: cambia el formulario por el panel de entrega. */
   const [creada, setCreada] = useState<ContrataCreada | null>(null);
-  /** Se creó offline: sin id todavía, se sincroniza sola después. */
-  const [pendienteSync, setPendienteSync] = useState(false);
 
   const sugerencias = useMemo(() => {
     const q = clienteQuery.trim().toLowerCase();
@@ -177,13 +184,13 @@ export function ContrataForm({
     const timer = setTimeout(() => {
       (async () => {
         try {
-          const res = await fetchConTimeout("/api/contratas/preview", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          const data = await obtenerPreview(ownerId, {
+            tipo,
+            monto: montoNum,
+            fechaInicio,
+            numCuotas,
           });
-          if (!res.ok || cancelado) return;
-          const data = await res.json();
+          if (!data || cancelado) return;
           setFechas(data.fechas);
           if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
         } catch {
@@ -196,7 +203,7 @@ export function ContrataForm({
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [tipo, monto, fechaInicio, numCuotas]);
+  }, [tipo, monto, fechaInicio, numCuotas, ownerId]);
 
   function elegirCliente(c: ClienteOpcion) {
     setClienteId(c.id);
@@ -221,94 +228,105 @@ export function ContrataForm({
         `El monto debe cubrir el saldo pendiente de sus otras contratas (${formatMoneda(saldoOtras)})`
       );
 
-    const payload = {
+    const input = {
       tipo,
       monto: montoNum,
       abono: abonoNum,
       fechaInicio,
       numCuotas,
       notas: notas.trim() || null,
-      ...(clienteMode === "existente"
-        ? { clienteId, incluirOtras }
-        : { clienteNombre: clienteNombre.trim() }),
     };
-
+    const ownerId = claims.ready ? claims.ownerId : null;
     setGuardando(true);
-
-    // Tanto editar como crear se hacen en campo, con el cliente presente —
-    // pero SOLO se encolan cuando de verdad no hay conexión: si hay señal
-    // real, se guardan directo (igual que siempre) para no mostrarle al
-    // usuario un mensaje de "pendiente de conexión" cuando sí tiene internet
-    // (bug reportado: se marcaba offline al entregar una contrata con señal).
-    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
-
-    if (editando && sinConexion && claims.ready && claims.ownerId) {
-      await enqueue(claims.ownerId, "contrata.editar", {
-        contrataId: inicial!.id,
-        input: payload,
-      });
-      setGuardando(false);
-      router.push(`/contratas/${inicial!.id}`);
-      return;
-    }
-
-    if (!editando && sinConexion && claims.ready && claims.ownerId) {
-      // A diferencia de editar, no hay id todavía (ni de la contrata ni,
-      // si aplica, de un cliente nuevo) — los asigna el servidor. No se
-      // puede mostrar el panel de entrega/WhatsApp de inmediato; en cuanto
-      // sincronice aparece sola en la lista, y desde ahí se puede compartir
-      // el recibo por WhatsApp manualmente (ver recibo-view.tsx).
-      await enqueue(claims.ownerId, "contrata.crear", payload);
-      setGuardando(false);
-      setPendienteSync(true);
-      onGuardada?.({ contrataId: null, offline: true });
-      return;
-    }
-
-    let res: Response;
     try {
-      res = await fetchConTimeout(
-        editando ? `/api/contratas/${inicial!.id}` : "/api/contratas",
-        {
-          method: editando ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-            // Sin esta clave, un reintento tras un timeout crearía una
-            // contrata duplicada: el servidor pudo haberla aplicado aunque
-            // la respuesta nunca llegara.
-            ...idem.header(),
-          },
-          body: JSON.stringify(payload),
-        },
-        TIMEOUT_ESCRITURA_MS
-      );
+      if (editando) await guardarEdicion(ownerId, input);
+      else await guardarEntrega(ownerId, input);
     } catch (e) {
-      setGuardando(false);
       setError(mensajeDeError(e));
-      return;
+    } finally {
+      setGuardando(false);
     }
-    setGuardando(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo guardar");
-      return;
-    }
-    idem.confirmado();
-    const guardada = await res.json();
-    // La UI lee de IndexedDB (offline-first): sin este sync la contrata
-    // nueva no aparece en listas/dashboard hasta la próxima recarga completa.
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
+  }
 
-    // Al crear no se navega de inmediato: se muestra la confirmación con la
-    // opción de mandarle los detalles al cliente por WhatsApp, que es justo
-    // el momento de la entrega. Al editar sí se vuelve a la contrata.
-    if (!editando) {
-      onGuardada?.({ contrataId: guardada.id, offline: false });
-      setCreada(guardada as ContrataCreada);
-      return;
-    }
-    router.push(`/contratas/${guardada.id}`);
+  async function guardarEdicion(ownerId: string | null, input: DatosContrata) {
+    const contrataId = inicial!.id;
+    const r = await guardarOperacion<{ id: string }>({
+      ownerId,
+      clave: idem.clave(),
+      lote: [
+        {
+          type: "contrata.editar",
+          payload: {
+            contrataId,
+            input: {
+              ...input,
+              ...(clienteMode === "existente"
+                ? { clienteId }
+                : { clienteNombre: clienteNombre.trim() }),
+            },
+          },
+        },
+      ],
+    });
+    idem.confirmado();
+    if (r.enServidor && ownerId) await syncAll(ownerId, { forzar: true });
+    router.push(rutas.contrata(contrataId));
     router.refresh();
+  }
+
+  /**
+   * Alta de la contrata. La operación se arma completa aquí —ids generados
+   * en el teléfono y las filas del efecto local— para que sea idéntica si
+   * se manda directo o si termina en la cola (ver guardar.ts).
+   */
+  async function guardarEntrega(ownerId: string | null, input: DatosContrata) {
+    const id = crypto.randomUUID();
+    const hoy = new Date();
+    const clienteNuevo =
+      clienteMode === "nuevo" ? { id: crypto.randomUUID(), nombre: clienteNombre.trim() } : null;
+    const liquidaOtras = clienteMode === "existente" && incluirOtras;
+
+    const entrega = ownerId
+      ? await prepararEntregaLocal(ownerId, {
+          id,
+          clienteId: clienteNuevo ? undefined : clienteId,
+          clienteNuevo: clienteNuevo ?? undefined,
+          input,
+          hoy,
+          cubrirVencidasDe: liquidaOtras ? (otras ?? []).map((o) => o.id) : [],
+        })
+      : null;
+
+    const r = await guardarOperacion<ContrataCreada>({
+      ownerId,
+      clave: idem.clave(),
+      lote: [
+        {
+          type: "contrata.crear",
+          payload: {
+            ...input,
+            ...(clienteNuevo
+              ? { clienteNombre: clienteNuevo.nombre, clienteNuevoId: clienteNuevo.id }
+              : { clienteId, incluirOtras: liquidaOtras }),
+            id,
+            fechaCaptura: hoy.toISOString(),
+            ...(entrega ? { _local: entrega.filas } : {}),
+          },
+        },
+        ...(citaId
+          ? [{ type: "cita.entregar" as const, payload: { citaId, contrataCreadaId: id } }]
+          : []),
+      ],
+    });
+    idem.confirmado();
+    if (r.enServidor) {
+      // La UI lee de IndexedDB: sin este sync la contrata no aparece en
+      // listas hasta la próxima recarga.
+      if (ownerId) await syncAll(ownerId, { forzar: true });
+      setCreada(r.datos);
+    } else {
+      setCreada(entrega!.recibo);
+    }
   }
 
   const volverHref = volverHrefProp ?? "/contratas";
@@ -322,35 +340,10 @@ export function ContrataForm({
     return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} />;
   }
 
-  if (pendienteSync) {
-    return (
-      <div className="space-y-4 md:max-w-xl">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Contrata pendiente
-          </h1>
-        </div>
-        <Card className="border-pendiente/30">
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p>
-              Se creará sola en cuanto el dispositivo tenga conexión — no
-              hace falta hacer nada más. Para enviarle los detalles al
-              cliente por WhatsApp, hazlo manualmente después, desde el
-              recibo de la contrata, en cuanto aparezca en la lista.
-            </p>
-          </CardContent>
-        </Card>
-        <Button className="w-full" asChild>
-          <Link href={volverHref}>Volver</Link>
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={editando ? `/contratas/${inicial!.id}` : volverHref}>
+        <Link href={editando ? rutas.contrata(inicial!.id) : volverHref}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

@@ -15,13 +15,10 @@ import { formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getContratasConSaldo } from "@/lib/offline/repo";
 import { syncCitas } from "@/lib/offline/sync";
-import { enqueue } from "@/lib/offline/queue";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-} from "@/lib/offline/conexion";
+import { guardarOperacion } from "@/lib/offline/guardar";
+import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
+import { rutas } from "@/lib/rutas";
 
 export type ClienteOpcion = { id: string; nombre: string };
 
@@ -100,7 +97,6 @@ export function AgendarForm({
   const [notas, setNotas] = useState(inicial?.notas ?? "");
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [pendienteSync, setPendienteSync] = useState(false);
   const [guardada, setGuardada] = useState(false);
 
   const sugerencias = useMemo(() => {
@@ -191,78 +187,31 @@ export function AgendarForm({
     };
 
     setGuardando(true);
-    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
-
-    if (reagendando) {
-      if (ownerId && sinConexion) {
-        await enqueue(ownerId, "cita.editar", { citaId: inicial!.id, input });
-        setGuardando(false);
-        setPendienteSync(true);
-        return;
-      }
-      let res: Response;
-      try {
-        res = await fetchConTimeout(
-          `/api/citas/${inicial!.id}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", ...idem.header() },
-            body: JSON.stringify(input),
-          },
-          TIMEOUT_ESCRITURA_MS
-        );
-      } catch (e) {
-        setGuardando(false);
-        setError(mensajeDeError(e));
-        return;
-      }
-      setGuardando(false);
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "No se pudo guardar");
-        return;
-      }
-      idem.confirmado();
-      if (ownerId) await syncCitas(ownerId);
-      router.push(`/clientes/${clienteId}`);
-      return;
-    }
-
-    if (ownerId && sinConexion) {
-      await enqueue(ownerId, "cita.crear", input);
-      setGuardando(false);
-      setPendienteSync(true);
-      return;
-    }
-
-    let res: Response;
     try {
-      res = await fetchConTimeout(
-        "/api/citas",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...idem.header() },
-          body: JSON.stringify(input),
-        },
-        TIMEOUT_ESCRITURA_MS
-      );
+      const r = await guardarOperacion({
+        ownerId,
+        clave: idem.clave(),
+        lote: [
+          reagendando
+            ? { type: "cita.editar", payload: { citaId: inicial!.id, input } }
+            : // Id generado aquí: sin señal la cita aparece de inmediato en
+              // Ruta y en el perfil, y el servidor la crea con este mismo id.
+              { type: "cita.crear", payload: { ...input, id: crypto.randomUUID(), ownerId } },
+        ],
+      });
+      idem.confirmado();
+      if (r.enServidor && ownerId) await syncCitas(ownerId);
+      // Sin señal el efecto local ya la dejó visible: igual que con señal.
+      if (reagendando || !r.enServidor) router.push(rutas.cliente(clienteId));
+      else setGuardada(true);
     } catch (e) {
+      setError(mensajeDeError(e, reagendando ? "No se pudo guardar" : "No se pudo agendar"));
+    } finally {
       setGuardando(false);
-      setError(mensajeDeError(e, "No se pudo agendar"));
-      return;
     }
-    setGuardando(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo agendar");
-      return;
-    }
-    idem.confirmado();
-    if (ownerId) await syncCitas(ownerId);
-    setGuardada(true);
   }
 
-  const volverHref = volverHrefProp ?? (clienteId ? `/clientes/${clienteId}` : "/ruta");
+  const volverHref = volverHrefProp ?? (clienteId ? rutas.cliente(clienteId) : "/ruta");
 
   if (guardada) {
     return (
@@ -273,27 +222,6 @@ export function AgendarForm({
             <p>
               Queda como recordatorio en Ruta — no afecta saldo ni cartera
               hasta que la conviertas en contrata real.
-            </p>
-          </CardContent>
-        </Card>
-        <Button className="w-full" asChild>
-          <Link href={volverHref}>Volver</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  if (pendienteSync) {
-    return (
-      <div className="space-y-4 md:max-w-xl">
-        <h1 className="text-2xl font-bold tracking-tight">
-          {reagendando ? "Cambios pendientes" : "Cita pendiente"}
-        </h1>
-        <Card className="border-pendiente/30">
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p>
-              Sin conexión — se guardará sola en cuanto el dispositivo tenga
-              señal. No hace falta hacer nada más.
             </p>
           </CardContent>
         </Card>

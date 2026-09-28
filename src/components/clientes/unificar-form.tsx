@@ -12,20 +12,27 @@ import { FechaInput } from "@/components/ui/fecha-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
-import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
-import { enqueue } from "@/lib/offline/queue";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-} from "@/lib/offline/conexion";
+import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
+import { guardarOperacion } from "@/lib/offline/guardar";
+import { mensajeDeError } from "@/lib/offline/conexion";
+import type { ResultadoRenovacion } from "@/components/contratas/renovar-form";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import {
   ReciboEntregaPanel,
   type ContrataEntregada,
 } from "@/components/contratas/recibo-entrega";
 import { usePrimerPago } from "@/lib/offline/use-primer-pago";
+import { rutas } from "@/lib/rutas";
+
+type DatosUnificacion = {
+  tipo: TipoContrata;
+  monto: number;
+  abono: number;
+  fechaInicio: string;
+  numCuotas: number;
+  notas: string | null;
+};
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -49,6 +56,7 @@ export function UnificarForm({
   maxCuotas,
   nombreApp,
   onUnificada,
+  citaId,
 }: {
   clienteId: string;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
@@ -67,9 +75,12 @@ export function UnificarForm({
    * seleccionadas dejen de ser "elegibles" — ver comentario en el page.tsx.
    * Trae `info` (mismo shape que `onRenovada` en renovar-form) para poder
    * cerrar el círculo con la cita agendada, si la hubo. */
-  onUnificada?: (info?: { contrataId: string | null; offline: boolean }) => void;
+  /** Cita que se está entregando: su enlace con la contrata nueva va en la
+   *  misma operación de guardado (ver guardar.ts), nunca por separado. */
+  citaId?: string | null;
+  /** Se llama antes de guardar: la página no debe redirigir al ver las elegidas liquidadas. */
+  onUnificada?: () => void;
 }) {
-  const claims = useAuthClaims();
   const idem = useIdempotencia();
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(
     () =>
@@ -77,7 +88,6 @@ export function UnificarForm({
         (preseleccion ?? []).filter((id) => contratas.some((c) => c.id === id))
       )
   );
-  const [pendienteSync, setPendienteSync] = useState(false);
   const [unificada, setUnificada] = useState<ContrataEntregada & { id: string } | null>(
     null
   );
@@ -119,13 +129,13 @@ export function UnificarForm({
     const timer = setTimeout(() => {
       (async () => {
         try {
-          const res = await fetchConTimeout("/api/contratas/preview", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tipo, monto: montoNum, fechaInicio, numCuotas }),
+          const data = await obtenerPreview(ownerId, {
+            tipo,
+            monto: montoNum,
+            fechaInicio,
+            numCuotas,
           });
-          if (!res.ok || cancelado) return;
-          const data = await res.json();
+          if (!data || cancelado) return;
           setFechas(data.fechas);
           if (!abonoTocado.current) setAbono(String(data.abonoSugerido));
         } catch {
@@ -138,7 +148,7 @@ export function UnificarForm({
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [tipo, montoNum, fechaInicio, numCuotas]);
+  }, [tipo, montoNum, fechaInicio, numCuotas, ownerId]);
 
   function toggle(id: string) {
     setSeleccionadas((prev) => {
@@ -165,7 +175,7 @@ export function UnificarForm({
       );
 
     const contrataIds = Array.from(seleccionadas);
-    const input = {
+    const input: DatosUnificacion = {
       tipo,
       monto: montoNum,
       abono: abonoNum,
@@ -175,54 +185,58 @@ export function UnificarForm({
     };
 
     setGuardando(true);
-
-    // Unificar crea una contrata nueva — igual que renovar, sin conexión no
-    // se conoce su id todavía, así que se encola y se avisa "pendiente". Si
-    // hay señal real se guarda directo (antes se encolaba siempre, con o sin
-    // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
-    const sinConexion = typeof navigator !== "undefined" && !navigator.onLine;
-    if (ownerId && sinConexion) {
-      await enqueue(ownerId, "cliente.unificar", { clienteId, contrataIds, input });
-      setGuardando(false);
-      setPendienteSync(true);
-      onUnificada?.({ contrataId: null, offline: true });
-      return;
-    }
-
-    let res: Response;
     try {
-      res = await fetchConTimeout(
-        `/api/clientes/${clienteId}/unificar`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...idem.header() },
-          body: JSON.stringify({ contrataIds, ...input }),
-        },
-        TIMEOUT_ESCRITURA_MS
-      );
+      await guardarUnificacion(contrataIds, input);
     } catch (e) {
-      setGuardando(false);
       setError(mensajeDeError(e, "No se pudo unificar"));
-      return;
+    } finally {
+      setGuardando(false);
     }
-    setGuardando(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo unificar");
-      return;
-    }
+  }
+
+  /** Igual que renovar (ver renovar-form.tsx): una sola operación, idéntica por ambos caminos. */
+  async function guardarUnificacion(contrataIds: string[], input: DatosUnificacion) {
+    const id = crypto.randomUUID();
+    const hoy = new Date();
+    const entrega = ownerId
+      ? await prepararEntregaLocal(ownerId, {
+          id,
+          clienteId,
+          input,
+          hoy,
+          liquidarCompletas: contrataIds,
+        })
+      : null;
+
+    // Antes de guardar: la página redirige si deja de ver contratas
+    // elegibles y no sabe que esto fue una unificación.
+    onUnificada?.();
+
+    const r = await guardarOperacion<ResultadoRenovacion>({
+      ownerId,
+      clave: idem.clave(),
+      lote: [
+        {
+          type: "cliente.unificar",
+          payload: {
+            clienteId,
+            contrataIds,
+            input: { ...input, id, fechaCaptura: hoy.toISOString() },
+            ...(entrega ? { _local: entrega.filas } : {}),
+          },
+        },
+        ...(citaId
+          ? [{ type: "cita.entregar" as const, payload: { citaId, contrataCreadaId: id } }]
+          : []),
+      ],
+    });
     idem.confirmado();
-    const data = await res.json();
-    // onUnificada() (marca "completado" en la página) va ANTES de syncAll —
-    // ver comentario largo en renovar-form.tsx: sin este orden, el
-    // useLiveQuery de la página puede reaccionar al cambio en Dexie y
-    // redirigir antes de que React procese el setState de "completado".
-    onUnificada?.({ contrataId: data.nuevaContrata.id, offline: false });
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
-    // Igual que "nueva contrata"/renovar: se muestra la confirmación con la
-    // opción de mandarle los detalles al cliente por WhatsApp en vez de
-    // navegar de inmediato.
-    setUnificada(data.nuevaContrata);
+    if (r.enServidor) {
+      if (ownerId) await syncAll(ownerId, { forzar: true });
+      setUnificada(r.datos.nuevaContrata);
+    } else {
+      setUnificada(entrega!.recibo);
+    }
   }
 
   if (unificada) {
@@ -235,35 +249,10 @@ export function UnificarForm({
           tituloMensaje="Detalles de tu reestructuración"
         />
         <Button variant="outline" className="w-full" asChild>
-          <Link href={`/contratas/${unificada.id}`}>Ver la contrata nueva</Link>
+          <Link href={rutas.contrata(unificada.id)}>Ver la contrata nueva</Link>
         </Button>
         <Button variant="ghost" className="w-full" asChild>
-          <Link href={`/clientes/${clienteId}`}>Volver al cliente</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  if (pendienteSync) {
-    return (
-      <div className="space-y-4 md:max-w-xl">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Unificación pendiente
-          </h1>
-          <p className="text-sm text-muted-foreground">{clienteNombre}</p>
-        </div>
-        <Card className="border-pendiente/30">
-          <CardContent className="space-y-2 p-4 text-sm">
-            <p>
-              Sin conexión — la unificación se aplicará sola en cuanto el
-              dispositivo vuelva a tener señal. No hace falta hacer nada
-              más.
-            </p>
-          </CardContent>
-        </Card>
-        <Button className="w-full" asChild>
-          <Link href={`/clientes/${clienteId}`}>Volver al cliente</Link>
+          <Link href={rutas.cliente(clienteId)}>Volver al cliente</Link>
         </Button>
       </div>
     );
@@ -272,7 +261,7 @@ export function UnificarForm({
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={`/clientes/${clienteId}`}>
+        <Link href={rutas.cliente(clienteId)}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

@@ -12,16 +12,11 @@ import { Popup } from "@/components/ui/popup";
 import { cn, formatMoneda } from "@/lib/utils";
 import { distribuirAbono, type ResultadoAbono } from "@/lib/services/abono";
 import { getContratasParaAbono } from "@/lib/offline/repo";
-import { enqueue } from "@/lib/offline/queue";
+import { guardarOperacion } from "@/lib/offline/guardar";
 import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
-import {
-  calidadConexion,
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-} from "@/lib/offline/conexion";
+import { mensajeDeError } from "@/lib/offline/conexion";
 
 const TIPO_LABEL: Record<string, string> = {
   SEMANAL: "Semanal",
@@ -97,34 +92,25 @@ export function AbonarModal({
     setCargando(true);
     setError(null);
     try {
-      if (calidadConexion() === "sin-red") {
+      // Misma clave mientras este intento siga fallando: un reintento tras
+      // perder la respuesta no abona dos veces (ver guardar.ts).
+      const clave = idempotencyKey ?? crypto.randomUUID();
+      setIdempotencyKey(clave);
+      const r = await guardarOperacion<ResultadoAbono>({
+        ownerId,
+        clave,
+        lote: [{ type: "cliente.abonarParcial", payload: { clienteId, monto: montoNum } }],
+      });
+      if (r.enServidor) {
+        setResultado(r.datos);
+        await syncContratas(ownerId);
+        router.refresh();
+      } else {
         // El reparto ya se calculó arriba (preview) contra los mismos datos
-        // que aplicará el efecto optimista — se reusa tal cual como recibo,
-        // sin recalcular nada.
-        await enqueue(ownerId, "cliente.abonarParcial", { clienteId, monto: montoNum });
+        // que aplicó el efecto optimista: se usa tal cual como recibo.
         setOfflinePendiente(true);
         setResultado(preview);
-        return;
       }
-      const key = idempotencyKey ?? crypto.randomUUID();
-      setIdempotencyKey(key);
-      const res = await fetchConTimeout(
-        `/api/clientes/${clienteId}/abonar`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "Idempotency-Key": key },
-          body: JSON.stringify({ monto: montoNum }),
-        },
-        TIMEOUT_ESCRITURA_MS
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "No se pudo registrar el abono");
-      }
-      const data: ResultadoAbono = await res.json();
-      setResultado(data);
-      await syncContratas(ownerId);
-      router.refresh();
     } catch (e) {
       setError(mensajeDeError(e, "No se pudo registrar el abono"));
     } finally {
@@ -169,14 +155,14 @@ export function AbonarModal({
               <div className="space-y-3">
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground">
-                    {offlinePendiente ? "Abono registrado sin conexión" : "Abono registrado"}
+                    {offlinePendiente ? "Abono guardado en el teléfono" : "Abono registrado"}
                   </p>
                   <p className="text-2xl font-bold text-pagado">
                     {formatMoneda(resultado.totalAplicado)}
                   </p>
                   {offlinePendiente && (
                     <p className="text-xs text-muted-foreground">
-                      Se sincroniza solo en cuanto haya señal. El recibo ya se puede
+                      Se sube al servidor al sincronizar. El recibo ya se puede
                       enviar.
                     </p>
                   )}

@@ -57,6 +57,15 @@ async function requireCita(ownerId: string, id: string) {
 }
 
 export async function crearCita(ownerId: string, input: CitaInput) {
+  // Agendada en modo local y ya recibida antes (reintento): se devuelve la
+  // existente en vez de chocar con el id (P2002 → 500 → cola atorada).
+  if (input.id) {
+    const existente = await prisma.citaAgendada.findFirst({
+      where: { id: input.id, ownerId },
+      include: { cliente: { select: CLIENTE_SELECT } },
+    });
+    if (existente) return existente;
+  }
   await requireCliente(ownerId, input.clienteId);
   // "Nueva" nunca lleva contrata origen, y "Unificación" usa
   // `contratasUnificarIds` en su lugar — se ignora lo que no aplique al
@@ -74,6 +83,8 @@ export async function crearCita(ownerId: string, input: CitaInput) {
   await validarContratasUnificar(ownerId, input.clienteId, contratasUnificarIds);
   return prisma.citaAgendada.create({
     data: {
+      // Agendada en modo local: nace con el id que ya tiene en el teléfono.
+      ...(input.id ? { id: input.id } : {}),
       ownerId,
       clienteId: input.clienteId,
       contrataOrigenId,
@@ -197,8 +208,18 @@ export async function marcarEntregada(
 ) {
   const cita = await requireCita(ownerId, id);
   if (cita.estado !== "PENDIENTE") return cita;
+  // El id llega del teléfono: solo se enlaza si la contrata es de este
+  // mismo espacio de trabajo. Sin esto se podía apuntar la cita a una
+  // contrata ajena conociendo su id. Si no es válida, la cita se marca
+  // entregada sin enlace (igual que antes de existir el enlace).
+  const enlace = contrataCreadaId
+    ? await prisma.contrata.findFirst({
+        where: { id: contrataCreadaId, ownerId },
+        select: { id: true },
+      })
+    : null;
   return prisma.citaAgendada.update({
     where: { id },
-    data: { estado: "ENTREGADA", contrataCreadaId },
+    data: { estado: "ENTREGADA", contrataCreadaId: enlace?.id ?? null },
   });
 }

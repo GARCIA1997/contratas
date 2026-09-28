@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import type { EventoHistorial } from "@/lib/contrata";
+import { rutas } from "@/lib/rutas";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -40,7 +41,7 @@ export function HistorialView({
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={`/clientes/${clienteId}`}>
+        <Link href={rutas.cliente(clienteId)}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

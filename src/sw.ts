@@ -1,6 +1,35 @@
 import { defaultCache } from "@serwist/next/worker";
-import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
+import type { PrecacheEntry, SerwistGlobalConfig, SerwistPlugin } from "serwist";
 import { ExpirationPlugin, NetworkFirst, Serwist } from "serwist";
+
+/**
+ * Caché de pantallas. "Preparar para trabajar sin señal" precarga TODAS las
+ * pantallas (4+ por contrata, 3+ por cliente); con el tope anterior de 32
+ * entradas, las primeras se borraban antes de terminar y al salir a ruta
+ * no abrían. Las respuestas RSC de estas pantallas pesan pocos KB (la
+ * página es cliente y lee de IndexedDB), así que 2000 cabe holgado.
+ * 3 días: alcanza para preparar la noche anterior y trabajar el día
+ * siguiente aunque se alargue la ruta.
+ */
+/**
+ * Las pantallas de un registro llevan el id en la query (`/clientes/ver?id=…`)
+ * y la página es la misma para todos: se guarda UNA entrada por ruta, sin
+ * query (tampoco el `_rsc` que agrega Next). Así lo descargado para un
+ * cliente sirve para cualquier otro, incluidos los creados sin señal.
+ */
+const sinQuery: SerwistPlugin = {
+  cacheKeyWillBeUsed: async ({ request }) => {
+    const url = new URL(request.url);
+    url.search = "";
+    return url.href;
+  },
+};
+
+const EXPIRACION_PANTALLAS = {
+  maxEntries: 2000,
+  maxAgeSeconds: 3 * 24 * 60 * 60,
+  purgeOnQuotaError: true,
+};
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -57,9 +86,7 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "pages-rsc-prefetch",
         networkTimeoutSeconds: 4,
-        plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
-        ],
+        plugins: [sinQuery, new ExpirationPlugin(EXPIRACION_PANTALLAS)],
       }),
     },
     {
@@ -70,9 +97,7 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "pages-rsc",
         networkTimeoutSeconds: 4,
-        plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
-        ],
+        plugins: [sinQuery, new ExpirationPlugin(EXPIRACION_PANTALLAS)],
       }),
     },
     {
@@ -83,9 +108,7 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "pages",
         networkTimeoutSeconds: 4,
-        plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
-        ],
+        plugins: [sinQuery, new ExpirationPlugin(EXPIRACION_PANTALLAS)],
       }),
     },
     {
@@ -98,9 +121,7 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "others",
         networkTimeoutSeconds: 4,
-        plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
-        ],
+        plugins: [sinQuery, new ExpirationPlugin(EXPIRACION_PANTALLAS)],
       }),
     },
     ...defaultCache,

@@ -250,6 +250,12 @@ export async function getHistorialCliente(
 }
 
 export async function crearCliente(ownerId: string, input: ClienteInput) {
+  // Alta con id del teléfono que ya llegó antes (reintento): se devuelve la
+  // existente en vez de chocar con la llave primaria (500 → cola atorada).
+  if (input.id) {
+    const previo = await prisma.cliente.findFirst({ where: { id: input.id, ownerId } });
+    if (previo) return previo;
+  }
   return prisma.cliente.create({
     data: {
       // Ver `idGeneradoEnCliente` en validaciones.ts: la cola offline manda

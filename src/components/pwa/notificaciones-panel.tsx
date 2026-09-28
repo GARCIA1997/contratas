@@ -1,5 +1,6 @@
 "use client";
 
+import { modoLocalActivo } from "@/lib/offline/modo-local";
 import { useEffect, useState } from "react";
 import { Bell, BellOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -98,6 +99,7 @@ export function NotificacionesPanel() {
   }
 
   async function probar() {
+    if (modoLocalActivo()) return setMsg("Enciende la sincronización para hacer este cambio.");
     setOcupado(true);
     setMsg(null);
     const res = await fetch("/api/push/recordatorio", { method: "POST" });

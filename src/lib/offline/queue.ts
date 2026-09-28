@@ -1,191 +1,72 @@
 import * as Sentry from "@sentry/nextjs";
 import { reportarError } from "@/lib/report-error";
-import { db, type QueueOpType } from "@/lib/offline/db";
+import { db, type QueueOpType, type WriteQueueItem } from "@/lib/offline/db";
 import { applyLocalEffect } from "@/lib/offline/effects";
 import {
   calidadConexion,
   fetchConTimeout,
   TIMEOUT_ESCRITURA_MS,
 } from "@/lib/offline/conexion";
+import { LIMITE_OPERACIONES_LOCALES, LimiteOfflineError } from "@/lib/offline/modo-local";
+import { peticionDe, type OperacionCola } from "@/lib/offline/cola/peticiones";
+import { entidadesDe } from "@/lib/offline/cola/entidades";
 import {
-  syncContratas,
-  syncClientes,
-  syncDeudores,
-  syncDeudorDetalle,
-  syncCitas,
-} from "@/lib/offline/sync";
+  deshacerEfectoLocal,
+  reconciliarTrasExito,
+  refrescarTrasDeshacer,
+} from "@/lib/offline/cola/reconciliar";
+import {
+  marcarEnviando,
+  marcarTerminado,
+  programarReintento,
+  reiniciarEsperas,
+  type ResumenEnvio,
+} from "@/lib/offline/cola/estado";
 
-const ENDPOINTS: Record<
-  QueueOpType,
-  (payload: Record<string, unknown>) => { url: string; init: RequestInit }
-> = {
-  "contrata.pago.toggle": (p) => ({
-    url: `/api/contratas/${p.contrataId}/pagos/${p.numeroCuota}/toggle`,
-    init: { method: "POST" },
-  }),
-  "contrata.pago.abonar": (p) => ({
-    url: `/api/contratas/${p.contrataId}/pagos/${p.numeroCuota}/abonar`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ monto: p.monto }),
-    },
-  }),
-  "contrata.pago.revertir": (p) => ({
-    url: `/api/contratas/${p.contrataId}/pagos/${p.numeroCuota}/abonar`,
-    init: { method: "DELETE" },
-  }),
-  "contrata.marcarDeuda": (p) => ({
-    url: `/api/contratas/${p.contrataId}/marcar-deuda`,
-    init: { method: "POST" },
-  }),
-  "contrata.eliminar": (p) => ({
-    url: `/api/contratas/${p.contrataId}`,
-    init: { method: "DELETE" },
-  }),
-  "contrata.crear": (p) => ({
-    url: `/api/contratas`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p),
-    },
-  }),
-  "contrata.editar": (p) => ({
-    url: `/api/contratas/${p.contrataId}`,
-    init: {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p.input),
-    },
-  }),
-  "contrata.renovar": (p) => ({
-    url: `/api/contratas/${p.contrataId}/renovar`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p.input),
-    },
-  }),
-  "cliente.unificar": (p) => ({
-    url: `/api/clientes/${p.clienteId}/unificar`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contrataIds: p.contrataIds,
-        ...(p.input as Record<string, unknown>),
-      }),
-    },
-  }),
-  "deudor.abonar": (p) => ({
-    url: `/api/deudores/${p.deudorId}/abonos`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fecha: p.fecha, monto: p.monto, notas: p.notas }),
-    },
-  }),
-  "cliente.cobrarVencidas": (p) => ({
-    url: `/api/clientes/${p.clienteId}/cobrar-vencidas`,
-    init: { method: "POST" },
-  }),
-  "cliente.abonarParcial": (p) => ({
-    url: `/api/clientes/${p.clienteId}/abonar`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ monto: p.monto }),
-    },
-  }),
-  "cita.crear": (p) => ({
-    url: `/api/citas`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p),
-    },
-  }),
-  "cita.editar": (p) => ({
-    url: `/api/citas/${p.citaId}`,
-    init: {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p.input),
-    },
-  }),
-  "cita.cancelar": (p) => ({
-    url: `/api/citas/${p.citaId}/cancelar`,
-    init: { method: "POST" },
-  }),
-  "cita.entregar": (p) => ({
-    url: `/api/citas/${p.citaId}/entregar`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contrataCreadaId: p.contrataCreadaId ?? null }),
-    },
-  }),
-  // El `id` viaja en el cuerpo: el registro nace con su id definitivo, así
-  // una contrata creada offline puede referenciar a un cliente también
-  // creado offline sin tener que remapear ids al sincronizar.
-  "cliente.crear": (p) => ({
-    url: `/api/clientes`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p),
-    },
-  }),
-  "cliente.editar": (p) => ({
-    url: `/api/clientes/${p.clienteId}`,
-    init: {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p.input),
-    },
-  }),
-  "cliente.eliminar": (p) => ({
-    url: `/api/clientes/${p.clienteId}`,
-    init: { method: "DELETE" },
-  }),
-  "deudor.crear": (p) => ({
-    url: `/api/deudores`,
-    init: {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p),
-    },
-  }),
-  "deudor.editar": (p) => ({
-    url: `/api/deudores/${p.deudorId}`,
-    init: {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(p.input),
-    },
-  }),
-};
+export type { OperacionCola } from "@/lib/offline/cola/peticiones";
+export { entidadesDe } from "@/lib/offline/cola/entidades";
+
+/* ── Encolar ─────────────────────────────────────────────────────────── */
 
 /**
  * Aplica el efecto local de inmediato (UI optimista) y encola la mutación
- * real. La idempotency key (mismo `id`) viaja en el header al vaciar la
- * cola, así un reintento tras perder la respuesta no duplica el pago.
+ * real. La idempotency key viaja en el header al vaciar la cola, así un
+ * reintento tras perder la respuesta no duplica nada.
  */
 export async function enqueue(
   ownerId: string,
   type: QueueOpType,
   payload: Record<string, unknown>
 ): Promise<void> {
+  await enqueueLote(ownerId, [{ type, payload }]);
+}
+
+/**
+ * Encola varias operaciones como una sola unidad: o entran todas o ninguna
+ * (p. ej. una entrega y el enlace con su cita). Encolarlas sueltas dejaba
+ * registros a medias cuando la segunda chocaba con el límite.
+ *
+ * `clave`: Idempotency-Key de la PRIMERA operación. La pasa `guardar.ts`
+ * cuando la operación ya se intentó mandar directo y se cayó la red: el
+ * servidor pudo haberla aplicado, y solo reconociendo la misma clave evita
+ * aplicarla otra vez. Sin ella, la clave es el id del elemento de la cola.
+ *
+ * El conteo contra LIMITE_OPERACIONES_LOCALES va DENTRO de la transacción
+ * para que dos encolados simultáneos no se pasen del techo.
+ */
+export async function enqueueLote(
+  ownerId: string,
+  ops: OperacionCola[],
+  opciones: { clave?: string } = {}
+): Promise<void> {
   const database = db;
-  if (!database) return;
-  const id = crypto.randomUUID();
+  if (!database || ops.length === 0) return;
+  const base = Date.now();
   await database.transaction(
     "rw",
     // Toda tabla que `applyLocalEffect` pueda tocar tiene que estar en el
     // alcance de la transacción: Dexie lanza si el efecto escribe en una
-    // que no se declaró aquí, y el formulario se quedaba en «Guardando…»
-    // para siempre porque el enqueue no estaba protegido.
+    // que no se declaró aquí.
     [
       database.writeQueue,
       database.clientes,
@@ -196,306 +77,237 @@ export async function enqueue(
       database.citas,
     ],
     async () => {
-      await database.writeQueue.add({
-        id,
-        ownerId,
-        type,
-        payload,
-        createdAt: new Date().toISOString(),
-        status: "pending",
-        attempts: 0,
-      });
-      await applyLocalEffect(type, payload);
+      // Las rechazadas ("conflict") no cuentan: no van a subir y no deben
+      // comerse el cupo antes de llegar a 100 movimientos reales.
+      const acumuladas = await database.writeQueue
+        .where("ownerId")
+        .equals(ownerId)
+        .filter((op) => op.status !== "conflict")
+        .count();
+      if (acumuladas + ops.length > LIMITE_OPERACIONES_LOCALES) throw new LimiteOfflineError();
+      for (let i = 0; i < ops.length; i++) {
+        const { type, payload } = ops[i];
+        await database.writeQueue.add({
+          id: crypto.randomUUID(),
+          clave: i === 0 ? opciones.clave ?? null : null,
+          ownerId,
+          type,
+          payload,
+          // +i ms: la cola se ordena por createdAt y dentro del lote el
+          // orden importa (la contrata antes que el enlace de su cita).
+          createdAt: new Date(base + i).toISOString(),
+          status: "pending",
+          attempts: 0,
+        });
+        await applyLocalEffect(type, payload);
+      }
     }
   );
   void flushQueue(ownerId);
 }
 
-let flushing = false;
-// Si un flushQueue llega mientras otro ya está corriendo, antes se perdía en
-// silencio (con solo `if (flushing) return`) — bug reportado en campo: al
-// marcar "Cobrado" en Ruta con un cliente de 2 contratas, marcarCobrado hace
-// dos `await enqueue(...)` seguidos (uno por cuota); el primero dispara un
-// flush que sigue en vuelo (esperando el fetch) cuando el segundo `enqueue`
-// intenta el suyo, así que ese segundo flush no hacía nada — la cuota de la
-// otra contrata se quedaba "pending" sin que nada la volviera a intentar
-// hasta que algo más disparara un flush por casualidad (el recibo, armado
-// del lado del cliente con las dos cuotas, mostraba éxito para ambas de
-// todos modos). Ahora, en vez de perderlo, se anota qué owner lo pidió y se
-// vuelve a correr apenas termine el flush que está en curso.
+/* ── Vaciar ──────────────────────────────────────────────────────────── */
+
+/**
+ * Candado de envío. Guarda cuándo avanzó por última vez: si la app pasó a
+ * segundo plano a media petición, el navegador puede congelar ese flush
+ * para siempre (iOS) y el candado se quedaría tomado — pasado este tiempo
+ * sin avance se considera abandonado y el siguiente flush lo retoma. Es
+ * seguro: cada operación viaja con su Idempotency-Key.
+ */
+const CANDADO_ABANDONADO_MS = TIMEOUT_ESCRITURA_MS * 2 + 10_000;
+let candado: { owner: string; ultimoAvance: number } | null = null;
+
+// Un flush pedido mientras otro corre no se pierde: se repite al terminar.
+// (Bug de campo: el segundo cobro de "Cobrado" con 2 contratas se quedaba
+// "pending" porque su flush llegaba con el primero todavía en vuelo.)
 let reflushPendiente: string | null = null;
 
-/** Vacía la cola en orden de creación contra las rutas API reales. */
-export async function flushQueue(ownerId: string): Promise<void> {
-  const database = db;
-  // A diferencia del pull-sync, la cola SÍ se vacía en red lenta: son las
-  // escrituras del usuario (cobros, abonos) y dejarlas esperando a una red
-  // buena es peor que tardarse. Lo que las protege ahora es el techo de
-  // espera de `fetchConTimeout` — antes, un fetch colgado en 3G detenía la
-  // cola entera sin recuperarse.
-  if (!database || calidadConexion() === "sin-red") {
-    return;
-  }
-  if (flushing) {
-    reflushPendiente = ownerId;
-    return;
-  }
-  flushing = true;
-  try {
-    const pendientes = (
-      await database.writeQueue.where("ownerId").equals(ownerId).toArray()
-    )
-      // "syncing" incluido a propósito: si el fetch de un intento anterior
-      // nunca llegó a resolver (la app se cerró/perdió señal a media
-      // petición en iOS, por ejemplo — reportado en campo: un elemento se
-      // quedó en "syncing" con attempts:0 por más de una semana), el item
-      // quedaba EXCLUIDO PARA SIEMPRE de este filtro, igual que pasaba antes
-      // con "conflict". Es seguro reintentarlo: `flushing` ya impide que dos
-      // flushQueue corran a la vez en esta misma sesión (así que un "syncing"
-      // de una petición genuinamente en curso ahora mismo nunca llega aquí),
-      // y el header Idempotency-Key protege contra aplicar la mutación dos
-      // veces si la petición original sí había llegado al servidor.
-      .filter(
-        (op) =>
-          op.status === "pending" ||
-          op.status === "failed" ||
-          op.status === "syncing"
-      )
-      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+function tomarCandado(ownerId: string): boolean {
+  if (candado && Date.now() - candado.ultimoAvance < CANDADO_ABANDONADO_MS) return false;
+  candado = { owner: ownerId, ultimoAvance: Date.now() };
+  return true;
+}
 
+function avanzar() {
+  if (candado) candado.ultimoAvance = Date.now();
+}
+
+/** Vacía la cola en orden de creación contra las rutas API reales. */
+export async function flushQueue(ownerId: string): Promise<ResumenEnvio | null> {
+  // A diferencia del pull-sync, la cola SÍ se vacía en red lenta: son
+  // escrituras que el usuario ya dio por hechas. Las protege el techo de
+  // espera de `fetchConTimeout`.
+  if (!db || calidadConexion() === "sin-red") return null;
+  if (!tomarCandado(ownerId)) {
+    reflushPendiente = ownerId;
+    return null;
+  }
+  const miCandado = candado;
+  marcarEnviando();
+  const resumen: ResumenEnvio = { enviadas: 0, rechazadas: 0, interrumpida: false, terminadoEn: 0 };
+  try {
+    await vaciar(ownerId, resumen);
+  } finally {
+    resumen.terminadoEn = Date.now();
+    // Si otro flush retomó un candado abandonado, ese ya es el dueño.
+    if (candado === miCandado) candado = null;
+    marcarTerminado(resumen);
+    if (resumen.interrumpida) programarReintento(() => void flushQueue(ownerId));
+    else reiniciarEsperas();
+    if (reflushPendiente) {
+      const siguiente = reflushPendiente;
+      reflushPendiente = null;
+      void flushQueue(siguiente);
+    }
+  }
+  return resumen;
+}
+
+async function vaciar(ownerId: string, resumen: ResumenEnvio): Promise<void> {
+  const database = db!;
+  const pendientes = (await database.writeQueue.where("ownerId").equals(ownerId).toArray())
+    // "syncing" incluido a propósito: una petición que nunca resolvió (la
+    // app se cerró a media petición) quedaría excluida para siempre. Es
+    // seguro reintentarla gracias a la Idempotency-Key.
+    .filter((op) => op.status === "pending" || op.status === "failed" || op.status === "syncing")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  // Registros tocados por una operación rechazada en esta pasada. Lo que
+  // venga después y los toque se aparta también, en su orden: aplicarlo sin
+  // la anterior da resultados que el usuario nunca vio (un toggle rechazado
+  // seguido de otro invierte el pago; un `cita.entregar` apuntaría a una
+  // contrata que no existe). `reintentarConflictos` las regresa juntas.
+  const bloqueadas = new Set<string>();
+
+  try {
     for (const op of pendientes) {
-      await database.writeQueue.update(op.id, { status: "syncing" });
-      try {
-        const { url, init } = ENDPOINTS[op.type](op.payload);
-        const res = await fetchConTimeout(
-          url,
-          {
-            ...init,
-            headers: { ...(init.headers ?? {}), "Idempotency-Key": op.id },
-          },
-          TIMEOUT_ESCRITURA_MS
-        );
-        if (!res.ok) {
-          const status = res.status;
-          const esConflicto = status >= 400 && status < 500;
-          await database.writeQueue.update(op.id, {
-            status: esConflicto ? "conflict" : "failed",
-            attempts: op.attempts + 1,
-            lastError: `HTTP ${status}`,
-          });
-          // Un "conflict" (4xx) queda excluido para siempre de los
-          // reintentos automáticos (ver filtro de `pendientes` arriba) — sin
-          // este reporte, quedaba atorado en silencio ("N por sincronizar"
-          // permanente) sin ninguna pista de por qué (bug reportado en
-          // campo). Se necesita el detalle real para diagnosticar la causa;
-          // reintentarLoQueFalló() es la única vía para recuperarlo.
-          if (esConflicto) {
-            const detalle = await res.json().catch(() => null);
-            Sentry.captureMessage("Operación offline en conflicto (4xx)", {
-              level: "warning",
-              extra: {
-                opId: op.id,
-                type: op.type,
-                status,
-                detalle,
-                payload: op.payload,
-              },
-            });
-            reportarError({
-              origen: "queue",
-              mensaje: `Operación "${op.type}" en conflicto (HTTP ${status})`,
-              contexto: { opId: op.id, type: op.type, status, detalle, payload: op.payload },
-            });
-          }
-          // Un conflicto o fallo detiene el drenado de este owner para no
-          // aplicar operaciones posteriores fuera de orden.
-          break;
-        }
-        await database.writeQueue.delete(op.id);
-        await limpiarDirtySiSinPendientes(op.payload);
-        await reconciliarTrasExito(ownerId, op.type, op.payload);
-      } catch (err) {
-        await database.writeQueue.update(op.id, {
-          status: "failed",
-          attempts: op.attempts + 1,
-          lastError: err instanceof Error ? err.message : "Error de red",
-        });
-        break;
+      avanzar();
+      const entidades = entidadesDe(op.payload);
+
+      if (entidades.some((e) => bloqueadas.has(e))) {
+        entidades.forEach((e) => bloqueadas.add(e));
+        await apartar(op, "Depende de una operación rechazada");
+        resumen.rechazadas++;
+        continue;
       }
+
+      const resultado = await enviar(op);
+      if (resultado === "ok") {
+        await database.writeQueue.delete(op.id);
+        await reconciliarTrasExito(ownerId, op);
+        resumen.enviadas++;
+        continue;
+      }
+      if (resultado === "rechazada") {
+        entidades.forEach((e) => bloqueadas.add(e));
+        resumen.rechazadas++;
+        continue;
+      }
+      // Red o 5xx: transitorio. Se detiene para respetar el orden y se
+      // reintenta sola más tarde (ver `programarReintento`).
+      resumen.interrumpida = true;
+      break;
     }
   } finally {
-    flushing = false;
-    if (reflushPendiente) {
-      const siguienteOwner = reflushPendiente;
-      reflushPendiente = null;
-      void flushQueue(siguienteOwner);
-    }
+    if (resumen.rechazadas > 0) await refrescarTrasDeshacer(ownerId);
   }
+}
+
+/** Manda una operación. Deja su estado en la cola según lo que respondió el servidor. */
+async function enviar(op: WriteQueueItem): Promise<"ok" | "rechazada" | "reintentar"> {
+  const database = db!;
+  await database.writeQueue.update(op.id, { status: "syncing" });
+  let res: Response;
+  try {
+    const { url, init } = peticionDe(op);
+    res = await fetchConTimeout(
+      url,
+      { ...init, headers: { ...(init.headers ?? {}), "Idempotency-Key": op.clave ?? op.id } },
+      TIMEOUT_ESCRITURA_MS
+    );
+  } catch (err) {
+    await database.writeQueue.update(op.id, {
+      status: "failed",
+      attempts: op.attempts + 1,
+      lastError: err instanceof Error ? err.message : "Error de red",
+    });
+    return "reintentar";
+  }
+  if (res.ok) return "ok";
+
+  if (res.status >= 500) {
+    await database.writeQueue.update(op.id, {
+      status: "failed",
+      attempts: op.attempts + 1,
+      lastError: `HTTP ${res.status}`,
+    });
+    return "reintentar";
+  }
+
+  // 4xx: rechazo definitivo de ESTA operación (el servidor la validó y no
+  // aplica). Se aparta, se reporta con el detalle real para poder
+  // diagnosticar, y se deshace lo que su efecto mostraba en el teléfono.
+  const detalle = await res.json().catch(() => null);
+  const motivo =
+    (detalle && typeof detalle.error === "string" && detalle.error) || `HTTP ${res.status}`;
+  await apartar({ ...op, attempts: op.attempts + 1 }, motivo);
+  Sentry.captureMessage("Operación offline en conflicto (4xx)", {
+    level: "warning",
+    extra: { opId: op.id, type: op.type, status: res.status, detalle, payload: op.payload },
+  });
+  reportarError({
+    origen: "queue",
+    mensaje: `Operación "${op.type}" en conflicto (HTTP ${res.status})`,
+    contexto: { opId: op.id, type: op.type, status: res.status, detalle, payload: op.payload },
+  });
+  return "rechazada";
+}
+
+/** Deja la operación en "conflicto" (no se reintenta sola) y deshace su efecto local. */
+async function apartar(op: WriteQueueItem, motivo: string): Promise<void> {
+  await db!.writeQueue.update(op.id, {
+    status: "conflict",
+    attempts: op.attempts,
+    lastError: motivo,
+  });
+  await deshacerEfectoLocal(op);
+}
+
+/* ── Acciones manuales sobre lo atorado ──────────────────────────────── */
+
+/**
+ * Reintenta a mano lo apartado ("conflict") o atorado ("syncing"). Solo
+ * tiene sentido si la causa ya se resolvió; si persiste, vuelve a quedar
+ * apartada. Las operaciones se reenvían en su orden original.
+ */
+export async function reintentarConflictos(ownerId: string): Promise<ResumenEnvio | null> {
+  const database = db;
+  if (!database) return null;
+  await database.writeQueue
+    .where("ownerId")
+    .equals(ownerId)
+    .filter((op) => op.status === "conflict" || op.status === "syncing")
+    .modify({ status: "pending" });
+  return flushQueue(ownerId);
 }
 
 /**
- * Algunas operaciones tienen efectos del lado del servidor que el efecto
- * optimista simplificado no puede predecir por completo (p. ej. a qué
- * Deudor exacto se sumó el saldo al marcar una contrata como deuda). Tras
- * confirmarse, se refresca esa porción de la caché desde el servidor.
+ * Descarta una operación apartada: el usuario revisó el motivo y decidió
+ * que no va. Su efecto local ya se deshizo al apartarla; aquí solo se saca
+ * de la cola y se trae el estado real de lo que tocaba.
  */
-async function reconciliarTrasExito(
-  ownerId: string,
-  type: QueueOpType,
-  payload: Record<string, unknown>
-) {
-  if (type === "contrata.marcarDeuda") {
-    await Promise.all([syncContratas(ownerId), syncDeudores(ownerId)]);
-    return;
-  }
-  if (type === "contrata.crear") {
-    // No hay ninguna fila local que limpiar (la contrata y, si aplica, el
-    // cliente son enteramente nuevos) — solo traer ambos del servidor.
-    // syncClientes cubre el caso de "clienteNombre" (cliente nuevo creado
-    // junto con la contrata); si se usó un clienteId existente, no hace
-    // nada de más.
-    await Promise.all([syncContratas(ownerId), syncClientes(ownerId)]);
-    return;
-  }
-  if (type === "contrata.editar") {
-    // El efecto optimista es deliberadamente incompleto (no recalcula el
-    // calendario de cuotas) — el pull-sync trae el resultado real ya
-    // confirmado por el servidor. limpiarDirtySiSinPendientes ya limpia el
-    // _dirty de payload.contrataId, así que aquí no hace falta más.
-    await syncContratas(ownerId);
-    return;
-  }
-  if (type === "contrata.renovar" || type === "cliente.unificar") {
-    // Igual que arriba, pero estas dos además tocan un ARRAY de contratas
-    // (otrasIds / contrataIds) que limpiarDirtySiSinPendientes no conoce
-    // (solo limpia _dirty de payload.contrataId, el campo singular). Sin
-    // esto, esas contratas quedaban con _dirty:true para siempre y
-    // syncContratas se rehusaba a pisarlas — la cuota que el servidor sí
-    // liquidó (p. ej. al marcar "incluir otras" al renovar) nunca se veía
-    // reflejada en la app.
-    const database = db;
-    if (database) {
-      const ids =
-        type === "contrata.renovar"
-          ? [payload.contrataId as string, ...((payload.otrasIds as string[]) ?? [])]
-          : (payload.contrataIds as string[]);
-      await Promise.all(
-        ids.map((id) => database.contratas.update(id, { _dirty: false }))
-      );
-    }
-    await syncContratas(ownerId);
-    return;
-  }
-  if (type === "deudor.abonar") {
-    await syncDeudorDetalle(ownerId, payload.deudorId as string);
-    return;
-  }
-  if (type === "cliente.cobrarVencidas" || type === "cliente.abonarParcial") {
-    const database = db;
-    if (!database) return;
-    const clienteId = payload.clienteId as string;
-    const contratas = await database.contratas
-      .where("clienteId")
-      .equals(clienteId)
-      .toArray();
-    await Promise.all(
-      contratas.map((c) => database.contratas.update(c.id, { _dirty: false }))
-    );
-    await syncContratas(ownerId);
-    return;
-  }
-  if (type === "cita.crear") {
-    // Igual que contrata.crear: no hay ninguna fila local que limpiar (la
-    // cita es enteramente nueva) — solo traerla del servidor.
-    await syncCitas(ownerId);
-    return;
-  }
-  if (type === "cliente.crear" || type === "cliente.editar") {
-    // `limpiarDirtySiSinPendientes` solo conoce contrataId/deudorId, así que
-    // el _dirty del cliente se limpia aquí: si no, `syncClientes` se
-    // rehusaría a pisarlo y el registro quedaría congelado con los datos
-    // locales para siempre.
-    const database = db;
-    const clienteId = (payload.id ?? payload.clienteId) as string | undefined;
-    if (database && clienteId) {
-      const existe = await database.clientes.get(clienteId);
-      if (existe) await database.clientes.update(clienteId, { _dirty: false });
-    }
-    await syncClientes(ownerId);
-    return;
-  }
-
-  if (type === "cliente.eliminar") {
-    // Ya no existe en el servidor: se saca de la caché en vez de limpiar su
-    // _dirty, que lo dejaría reaparecer en las listas.
-    const database = db;
-    if (database) await database.clientes.delete(payload.clienteId as string);
-    await syncClientes(ownerId);
-    return;
-  }
-
-  if (type === "deudor.crear" || type === "deudor.editar") {
-    const database = db;
-    const deudorId = (payload.id ?? payload.deudorId) as string | undefined;
-    if (database && deudorId) {
-      const existe = await database.deudores.get(deudorId);
-      if (existe) await database.deudores.update(deudorId, { _dirty: false });
-    }
-    await syncDeudores(ownerId);
-    return;
-  }
-
-  if (
-    type === "cita.editar" ||
-    type === "cita.cancelar" ||
-    type === "cita.entregar"
-  ) {
-    // limpiarDirtySiSinPendientes no conoce el campo "citaId" (solo
-    // contrataId/deudorId) — se limpia aquí a mano antes del resync, igual
-    // que con renovar/unificar.
-    const database = db;
-    const citaId = payload.citaId as string;
-    if (database) {
-      const existe = await database.citas.get(citaId);
-      if (existe) await database.citas.update(citaId, { _dirty: false });
-    }
-    await syncCitas(ownerId);
-    return;
-  }
-}
-
-async function limpiarDirtySiSinPendientes(payload: Record<string, unknown>) {
+export async function descartarOperacion(ownerId: string, opId: string): Promise<void> {
   const database = db;
   if (!database) return;
-  const contrataId = payload.contrataId as string | undefined;
-  if (contrataId) {
-    const quedan = await database.writeQueue
-      .filter(
-        (op) =>
-          (op.payload as Record<string, unknown>).contrataId === contrataId &&
-          op.status !== "conflict"
-      )
-      .count();
-    if (quedan === 0) {
-      const existe = await database.contratas.get(contrataId);
-      if (existe) await database.contratas.update(contrataId, { _dirty: false });
-    }
-  }
-  const deudorId = payload.deudorId as string | undefined;
-  if (deudorId) {
-    const quedan = await database.writeQueue
-      .filter(
-        (op) =>
-          (op.payload as Record<string, unknown>).deudorId === deudorId &&
-          op.status !== "conflict"
-      )
-      .count();
-    if (quedan === 0) {
-      const existe = await database.deudores.get(deudorId);
-      if (existe) await database.deudores.update(deudorId, { _dirty: false });
-    }
-  }
+  const op = await database.writeQueue.get(opId);
+  if (!op || op.ownerId !== ownerId || op.status !== "conflict") return;
+  await database.writeQueue.delete(opId);
+  await deshacerEfectoLocal(op);
+  if (calidadConexion() !== "sin-red") await refrescarTrasDeshacer(ownerId);
 }
+
+/* ── Consultas ───────────────────────────────────────────────────────── */
 
 export async function pendingCount(ownerId: string): Promise<number> {
   const database = db;
@@ -503,12 +315,18 @@ export async function pendingCount(ownerId: string): Promise<number> {
   return database.writeQueue.where("ownerId").equals(ownerId).count();
 }
 
-/**
- * Operaciones "en conflicto" (4xx): flushQueue las excluye para siempre de
- * los reintentos automáticos, así que sin este contador quedan atoradas en
- * silencio, contando como "N por sincronizar" indefinidamente sin que nada
- * distinga que necesitan atención manual (bug reportado en campo).
- */
+/** Cuántas operaciones más caben antes del límite de seguridad. */
+export async function espacioEnCola(ownerId: string): Promise<number> {
+  const database = db;
+  if (!database) return LIMITE_OPERACIONES_LOCALES;
+  const porSubir = await database.writeQueue
+    .where("ownerId")
+    .equals(ownerId)
+    .filter((op) => op.status !== "conflict")
+    .count();
+  return Math.max(0, LIMITE_OPERACIONES_LOCALES - porSubir);
+}
+
 export async function conflictCount(ownerId: string): Promise<number> {
   const database = db;
   if (!database) return 0;
@@ -517,30 +335,6 @@ export async function conflictCount(ownerId: string): Promise<number> {
     .equals(ownerId)
     .filter((op) => op.status === "conflict")
     .count();
-}
-
-/**
- * Reintenta a mano lo que quedó atorado: operaciones en "conflict" (un 4xx
- * que se excluye para siempre de flushQueue) y en "syncing" (una petición
- * anterior que nunca llegó a resolver — mismo problema, sin este reset
- * manual seguían atoradas aunque flushQueue ya las reintenta solo en la
- * siguiente vez que corre). Regresa ambas a "pending" y dispara un flush.
- * Solo tiene sentido si la causa ya se resolvió (p. ej. la contrata
- * referenciada terminó de sincronizarse mientras tanto); si el problema
- * persiste, vuelve a quedar atorada tras el intento.
- */
-export async function reintentarConflictos(ownerId: string): Promise<void> {
-  const database = db;
-  if (!database) return;
-  const atoradas = await database.writeQueue
-    .where("ownerId")
-    .equals(ownerId)
-    .filter((op) => op.status === "conflict" || op.status === "syncing")
-    .toArray();
-  await Promise.all(
-    atoradas.map((op) => database.writeQueue.update(op.id, { status: "pending" }))
-  );
-  await flushQueue(ownerId);
 }
 
 export type DiagnosticoCola = {
@@ -557,10 +351,8 @@ export type DiagnosticoCola = {
 };
 
 /**
- * Snapshot de la cola local para el botón de "Revisar y reparar
- * sincronización" en Config — pensado para diagnosticar en campo el caso de
- * "sigue apareciendo 1 sin sincronizar" sin necesidad de inspeccionar
- * IndexedDB a mano desde devtools.
+ * Snapshot de la cola local para "Revisar y reparar sincronización" en
+ * Config — diagnosticar en campo sin inspeccionar IndexedDB a mano.
  */
 export async function diagnosticarCola(ownerId: string): Promise<DiagnosticoCola> {
   const database = db;

@@ -236,6 +236,8 @@ model Deudor {
   owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   ownerId      String
   nombre       String
+  /// Para mandarle recordatorios de abono por WhatsApp. Opcional.
+  telefono     String?
   deudaInicial Float         @default(0)
   notas        String?
   abonos       AbonoDeudor[]

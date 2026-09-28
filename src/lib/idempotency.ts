@@ -61,13 +61,9 @@ export async function withIdempotency<T>(
 
 /** Corre la mutación con la reserva ya tomada y guarda su resultado. */
 async function ejecutarYGuardar<T>(key: string, run: () => Promise<T>): Promise<T> {
+  let resultado: T;
   try {
-    const resultado = await run();
-    await prisma.processedOperation.update({
-      where: { id: key },
-      data: { resultado: resultado as object, completada: true },
-    });
-    return resultado;
+    resultado = await run();
   } catch (e) {
     // La mutación falló, así que no hay nada que memorizar: se libera la
     // reserva para que el reintento pueda volver a intentarlo (mismo
@@ -77,6 +73,19 @@ async function ejecutarYGuardar<T>(key: string, run: () => Promise<T>): Promise<
     await prisma.processedOperation.delete({ where: { id: key } }).catch(() => undefined);
     throw e;
   }
+  // La mutación YA se aplicó: si falla guardar el resultado no se debe
+  // liberar la reserva ni responder error — el reintento volvería a
+  // ejecutarla (duplicado) o chocaría con el id ya creado (500 eterno que
+  // atora la cola). La reserva queda "en curso" y, pasada la ventana, un
+  // reintento la retoma; las altas con id del teléfono se reconocen como
+  // ya hechas (ver `contrataYaCreada`) en vez de duplicarse.
+  await prisma.processedOperation
+    .update({
+      where: { id: key },
+      data: { resultado: resultado as object, completada: true },
+    })
+    .catch(() => undefined);
+  return resultado;
 }
 
 async function resolverExistente<T>(

@@ -7,6 +7,7 @@ import { EstadoBadge } from "@/components/estado-badge";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { formatMoneda } from "@/lib/utils";
 import type { ContrataDeCliente } from "@/lib/services/clientes";
+import { rutas } from "@/lib/rutas";
 
 type EstadoFiltro = "ACTIVAS" | "PAGADAS" | "TODAS";
 
@@ -69,7 +70,7 @@ export function HistorialContratas({
         <ul className="space-y-2">
           {visibles.map((c) => (
             <li key={c.id}>
-              <Link href={`/contratas/${c.id}`}>
+              <Link href={rutas.contrata(c.id)}>
                 <Card className="flex items-center justify-between gap-3 p-3 transition-colors hover:bg-accent">
                   <div className="min-w-0">
                     <p className="font-medium">

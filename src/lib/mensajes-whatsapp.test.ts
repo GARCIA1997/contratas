@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  mensajeRecordatorioAbono,
   mensajeCobro,
   mensajeDetalleContrata,
   mensajeEntrega,
@@ -608,5 +609,53 @@ describe("mensajeCobro sin datos de contrata (caso Ruta)", () => {
       ],
     });
     expect(texto).toContain("     ✅ Cuota 4 de 12");
+  });
+});
+
+describe("mensajeRecordatorioAbono", () => {
+  const hoy = new Date(2026, 8, 28, 12);
+
+  it("recuerda el saldo, lo abonado y cuándo fue el último abono", () => {
+    const m = mensajeRecordatorioAbono({
+      nombreApp: "Kredired",
+      nombre: "JUAN PÉREZ",
+      deudaInicial: 5000,
+      saldoActual: 3500,
+      ultimoAbono: { fecha: new Date(2026, 8, 18), monto: 500 },
+      hoy,
+    });
+    expect(m).toContain("*KREDIRED*");
+    expect(m).toContain("RECORDATORIO DE ABONO");
+    expect(m).toContain("Hola *JUAN PÉREZ*");
+    expect(m).toContain("SALDO PENDIENTE: $3,500.00");
+    expect(m).toContain("Llevas abonado: $1,500.00 de $5,000.00");
+    expect(m).toContain("*$500.00* el 18 sep 2026 _(hace 10 días)_");
+    expect(m).toContain("Si ya realizaste un abono, ignora este mensaje.");
+  });
+
+  it("sin abonos: no inventa un último abono ni un total abonado", () => {
+    const m = mensajeRecordatorioAbono({
+      nombreApp: "Kredired",
+      nombre: "Ana",
+      deudaInicial: 2000,
+      saldoActual: 2000,
+      ultimoAbono: null,
+      hoy,
+    });
+    expect(m).toContain("Aún no tenemos abonos registrados.");
+    expect(m).not.toContain("Llevas abonado");
+  });
+
+  it("no usa lenguaje intimidatorio", () => {
+    const m = mensajeRecordatorioAbono({
+      nombreApp: "Kredired",
+      nombre: "Ana",
+      deudaInicial: 2000,
+      saldoActual: 2000,
+      hoy,
+    }).toLowerCase();
+    for (const palabra of ["atraso", "vencid", "embargo", "demanda", "legal", "urgente"]) {
+      expect(m).not.toContain(palabra);
+    }
   });
 });

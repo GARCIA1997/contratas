@@ -8,16 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn, formatMoneda } from "@/lib/utils";
 import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
-import { enqueue } from "@/lib/offline/queue";
+import { guardarOperacion } from "@/lib/offline/guardar";
 import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
-import {
-  calidadConexion,
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-} from "@/lib/offline/conexion";
+import { mensajeDeError } from "@/lib/offline/conexion";
 import { getCobroVencidoDetalle } from "@/lib/offline/repo";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
@@ -91,43 +86,29 @@ export function CobroVencido({
     setCargando(true);
     setError(null);
     try {
-      if (calidadConexion() === "sin-red" && ownerId) {
-        // El desglose se calcula ANTES de encolar: el efecto optimista de
-        // la cola marca las cuotas como pagadas, y después ya no habría
-        // nada pendiente que desglosar. Con esto el cliente recibe su
-        // recibo en el momento, aunque el cobro viaje al servidor más
-        // tarde — el desglose sale de Dexie, que ya tiene todo lo que hace
-        // falta (ver getCobroVencidoDetalle).
-        const detalle = await getCobroVencidoDetalle(ownerId, clienteId);
-        await enqueue(ownerId, "cliente.cobrarVencidas", { clienteId });
-        setTotal(0);
-        setCuotas(0);
+      // El desglose se calcula ANTES de guardar: si termina en la cola, el
+      // efecto optimista marca las cuotas como pagadas y ya no habría nada
+      // que desglosar. Sale de Dexie (ver getCobroVencidoDetalle).
+      const detalle = ownerId ? await getCobroVencidoDetalle(ownerId, clienteId) : null;
+      const clave = idempotencyKey ?? crypto.randomUUID();
+      setIdempotencyKey(clave);
+      const r = await guardarOperacion<ResultadoCobroVencidas>({
+        ownerId,
+        clave,
+        lote: [{ type: "cliente.cobrarVencidas", payload: { clienteId } }],
+      });
+      setTotal(0);
+      setCuotas(0);
+      if (r.enServidor) {
+        setResultado(r.datos);
+        // La caché local no se entera sola del cobro hecho en el servidor.
+        if (ownerId) await syncContratas(ownerId);
+        router.refresh();
+      } else {
         setOfflinePendiente(true);
         if (detalle) setResultado(detalle);
         else setSinRecibo(true);
-        return;
       }
-      const key = idempotencyKey ?? crypto.randomUUID();
-      setIdempotencyKey(key);
-      const res = await fetchConTimeout(
-        `/api/clientes/${clienteId}/cobrar-vencidas`,
-        { method: "POST", headers: { "Idempotency-Key": key } },
-        TIMEOUT_ESCRITURA_MS
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "No se pudo registrar el cobro");
-      }
-      const data: ResultadoCobroVencidas = await res.json();
-      setResultado(data);
-      setTotal(0);
-      setCuotas(0);
-      // El POST ya cobró en el servidor, pero la caché local (Dexie) no se
-      // entera sola — sin esto, /ruta y el perfil del cliente (que leen de
-      // Dexie via useLiveQuery) seguían mostrando las cuotas como vencidas
-      // hasta un refresh manual.
-      if (ownerId) await syncContratas(ownerId);
-      router.refresh();
     } catch (e) {
       setError(mensajeDeError(e, "No se pudo registrar el cobro"));
     } finally {
@@ -139,7 +120,7 @@ export function CobroVencido({
     return (
       <Card className={cn("border-pagado/30", enFila && "col-span-2")}>
         <CardContent className="space-y-2 p-4 text-sm">
-          <p className="font-medium text-pagado">Cobro registrado (sin conexión)</p>
+          <p className="font-medium text-pagado">Cobro guardado en el teléfono</p>
           <p className="text-xs text-muted-foreground">
             Se aplicó localmente y se sincronizará con el servidor en cuanto
             haya conexión. El recibo de WhatsApp se podrá enviar después,
@@ -159,14 +140,14 @@ export function CobroVencido({
         <CardContent className="space-y-3 p-4">
           <div>
             <p className="text-xs text-muted-foreground">
-              {offlinePendiente ? "Cobro registrado sin conexión" : "Cobro registrado"}
+              {offlinePendiente ? "Cobro guardado en el teléfono" : "Cobro registrado"}
             </p>
             <p className="text-2xl font-bold text-pagado">
               {formatMoneda(resultado.total)}
             </p>
             {offlinePendiente && (
               <p className="text-xs text-muted-foreground">
-                Se sincroniza solo en cuanto haya señal. El recibo ya se puede
+                Se sube al servidor al sincronizar. El recibo ya se puede
                 enviar.
               </p>
             )}

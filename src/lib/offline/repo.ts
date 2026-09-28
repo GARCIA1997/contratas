@@ -629,6 +629,7 @@ export async function getDeudores(ownerId: string) {
 export type DeudorDetalleLocal = {
   id: string;
   nombre: string;
+  telefono: string | null;
   deudaInicial: number;
   notas: string | null;
   saldoActual: number;
@@ -654,6 +655,7 @@ export async function getDeudor(
   return {
     id: d.id,
     nombre: d.nombre,
+    telefono: d.telefono ?? null,
     deudaInicial: d.deudaInicial,
     notas: d.notas,
     saldoActual: d.saldoActual,
@@ -855,85 +857,4 @@ export async function getCita(
   const cita = await db.citas.get(id);
   if (!cita || cita._deletedAt || cita.ownerId !== ownerId) return null;
   return cita;
-}
-
-export type IdsParaPrecarga = {
-  contratas: string[];
-  clientes: string[];
-  deudores: string[];
-};
-
-/**
- * TODO lo del espacio de trabajo activo — para el botón «Preparar para
- * trabajar sin señal», que descarga la app completa a propósito.
- *
- * Scopeado por `ownerId` como todo el repo: nunca trae registros de otro
- * administrador, ni siquiera los que se hayan visto en «buscar en otras
- * carteras» (esos ni se guardan en Dexie).
- */
-export async function getTodosLosIds(ownerId: string): Promise<IdsParaPrecarga> {
-  if (!db) return { contratas: [], clientes: [], deudores: [] };
-  const [contratas, clientes, deudores] = await Promise.all([
-    db.contratas.where("ownerId").equals(ownerId).toArray(),
-    db.clientes.where("ownerId").equals(ownerId).toArray(),
-    db.deudores.where("ownerId").equals(ownerId).toArray(),
-  ]);
-  return {
-    contratas: contratas.filter((c) => !c._deletedAt).map((c) => c.id),
-    clientes: clientes.filter((c) => !c._deletedAt).map((c) => c.id),
-    deudores: deudores.filter((d) => !d._deletedAt).map((d) => d.id),
-  };
-}
-
-/**
- * Qué vale la pena precargar para trabajar sin señal.
- *
- * Antes esto devolvía TODO el espacio de trabajo, y el dashboard precargaba
- * cada subpantalla de cada registro: con la cartera real (303 contratas,
- * 189 clientes) eran ~2,235 peticiones seguidas. Con señal buena solo se
- * notaba como lentitud; en 3G saturaba la conexión durante minutos y volvía
- * la app inservible — peor que estar completamente sin red, porque sin red
- * la precarga ni siquiera arrancaba.
- *
- * Ahora se precarga solo lo que el cobrador va a abrir de verdad hoy: los
- * clientes de la ruta del día (con sus contratas) y los de las citas
- * agendadas. El resto se sigue abriendo normal con señal, y el service
- * worker lo guarda al visitarlo.
- */
-export async function getIdsParaPrecarga(
-  ownerId: string,
-  hoy: Date = new Date()
-): Promise<IdsParaPrecarga> {
-  if (!db) return { contratas: [], clientes: [], deudores: [] };
-
-  const [paradas, citas] = await Promise.all([
-    getRutaDelDia(ownerId, hoy),
-    getCitasPendientes(ownerId),
-  ]);
-
-  const clientes = new Set<string>();
-  const contratas = new Set<string>();
-
-  for (const p of paradas) {
-    clientes.add(p.clienteId);
-    for (const cuota of p.cuotas) contratas.add(cuota.contrataId);
-  }
-  for (const c of citas) {
-    clientes.add(c.clienteId);
-    if (c.contrataOrigenId) contratas.add(c.contrataOrigenId);
-  }
-
-  // Los deudores son pocos y su pantalla es de consulta pura; solo los que
-  // siguen debiendo algo.
-  const deudores = (
-    await db.deudores.where("ownerId").equals(ownerId).toArray()
-  )
-    .filter((d) => !d._deletedAt && d.saldoActual > 0)
-    .map((d) => d.id);
-
-  return {
-    contratas: Array.from(contratas),
-    clientes: Array.from(clientes),
-    deudores,
-  };
 }

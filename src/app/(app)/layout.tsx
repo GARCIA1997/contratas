@@ -6,9 +6,7 @@ import { AppHeader } from "@/components/app-header";
 import { BottomNav } from "@/components/bottom-nav";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { OfflineBootstrap } from "@/components/offline/offline-bootstrap";
-import { SyncStatusBadge } from "@/components/offline/sync-status-badge";
-import { RefreshButton } from "@/components/offline/refresh-button";
-import { PrepararOfflineButton } from "@/components/offline/preparar-offline-button";
+import { ControlSync } from "@/components/offline/control-sync";
 import { CalculadoraBasicaBoton } from "@/components/calculadora/calculadora-basica-boton";
 import { OfflineToast } from "@/components/offline/offline-toast";
 import { InstalarAndroidBanner } from "@/components/pwa/instalar-android-banner";
@@ -52,10 +50,8 @@ export default function AppLayout({
       <div className="min-w-0 flex-1">
         <AppHeader />
         <div className="mx-auto flex max-w-lg items-center justify-end gap-2 px-4 pt-2 md:max-w-3xl lg:max-w-5xl">
-          <SyncStatusBadge ownerId={ownerId} />
           <CalculadoraBasicaBoton />
-          <PrepararOfflineButton ownerId={ownerId} />
-          <RefreshButton ownerId={ownerId} />
+          <ControlSync ownerId={ownerId} />
           <VersionBadge />
         </div>
         <main className="mx-auto max-w-lg px-4 pb-32 pt-2 md:max-w-3xl md:pb-8 lg:max-w-5xl">

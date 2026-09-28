@@ -1,11 +1,16 @@
 "use client";
 
+import { modoLocalActivo } from "@/lib/offline/modo-local";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, BellRing, FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { getConfiguracion } from "@/lib/offline/repo";
+import { linkWhatsApp } from "@/lib/whatsapp";
+import { mensajeRecordatorioAbono } from "@/lib/mensajes-whatsapp";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { formatMoneda } from "@/lib/utils";
 import { enqueue } from "@/lib/offline/queue";
 import { syncDeudores } from "@/lib/offline/sync";
+import { rutas } from "@/lib/rutas";
 
 type AbonoUI = {
   id: string;
@@ -26,6 +32,7 @@ type AbonoUI = {
 type DeudorUI = {
   id: string;
   nombre: string;
+  telefono?: string | null;
   deudaInicial: number;
   notas: string | null;
   saldoActual: number;
@@ -49,6 +56,21 @@ export function DeudorDetalle({
   const router = useRouter();
   const abonos = deudor.abonos;
   const saldo = deudor.saldoActual;
+  const config = useLiveQuery(
+    () => (ownerId ? getConfiguracion(ownerId) : undefined),
+    [ownerId]
+  );
+  const ultimo = abonos.length > 0 ? abonos[abonos.length - 1] : null;
+  const recordatorio = linkWhatsApp(
+    deudor.telefono ?? null,
+    mensajeRecordatorioAbono({
+      nombreApp: config?.nombreApp ?? "Kredired",
+      nombre: deudor.nombre,
+      deudaInicial: deudor.deudaInicial,
+      saldoActual: saldo,
+      ultimoAbono: ultimo ? { fecha: new Date(ultimo.fecha), monto: ultimo.monto } : null,
+    })
+  );
 
   const [monto, setMonto] = useState("");
   const [fechaAbono, setFechaAbono] = useState(
@@ -101,6 +123,7 @@ export function DeudorDetalle({
 
   async function eliminar() {
     if (!confirm("¿Eliminar este deudor y su historial?")) return;
+    if (modoLocalActivo()) return alert("Enciende la sincronización para hacer este cambio.");
     const res = await fetch(`/api/deudores/${deudor.id}`, { method: "DELETE" });
     if (res.ok) {
       // Igual que en cobro-vencido: el DELETE ya pasó en el servidor, pero
@@ -125,7 +148,7 @@ export function DeudorDetalle({
         {esAdmin && (
           <div className="flex gap-1">
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/deudores/${deudor.id}/editar`}>
+              <Link href={rutas.deudorEditar(deudor.id)}>
                 <Pencil className="size-4" /> Editar
               </Link>
             </Button>
@@ -162,8 +185,23 @@ export function DeudorDetalle({
         </CardContent>
       </Card>
 
+      {saldo > 0 && (
+        <div className="space-y-1">
+          <Button className="w-full" asChild>
+            <a href={recordatorio} target="_blank" rel="noopener noreferrer">
+              <BellRing className="size-4" /> Recordatorio de abono
+            </a>
+          </Button>
+          {!deudor.telefono && (
+            <p className="text-center text-xs text-muted-foreground">
+              Sin teléfono: elige el contacto al abrir WhatsApp, o agrégalo en Editar.
+            </p>
+          )}
+        </div>
+      )}
+
       <Button className="w-full" variant="outline" asChild>
-        <Link href={`/deudores/${deudor.id}/estado-cuenta`}>
+        <Link href={rutas.deudorEstadoCuenta(deudor.id)}>
           <FileText className="size-4" /> Estado de cuenta
         </Link>
       </Button>

@@ -6,6 +6,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { AgendarForm } from "@/components/citas/agendar-form";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getClientes } from "@/lib/offline/repo";
+import { rutas } from "@/lib/rutas";
 
 export default function NuevaCitaPage() {
   const claims = useAuthClaims();
@@ -36,7 +37,7 @@ export default function NuevaCitaPage() {
       clientes={opciones}
       clientePreseleccionado={clientePreseleccionado}
       volverHref={
-        clientePreseleccionado ? `/clientes/${clientePreseleccionado.id}` : "/ruta"
+        clientePreseleccionado ? rutas.cliente(clientePreseleccionado.id) : "/ruta"
       }
     />
   );
