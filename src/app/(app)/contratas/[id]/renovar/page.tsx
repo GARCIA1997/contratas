@@ -6,7 +6,6 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { RenovarForm } from "@/components/contratas/renovar-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
-import { entregarCita } from "@/components/citas/entregar-cita";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getContrata,
@@ -132,10 +131,7 @@ export default function RenovarContrataPage() {
         maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
         nombreApp={config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp}
         citaId={citaId}
-        onRenovada={(info) => {
-          setCompletado(true);
-          if (citaId && ownerId && info) void entregarCita(ownerId, citaId, info);
-        }}
+        onRenovada={() => setCompletado(true)}
       />
     </div>
   );

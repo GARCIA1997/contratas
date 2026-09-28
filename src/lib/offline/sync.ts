@@ -40,11 +40,11 @@ type ContrataApi = {
  * (`_dirty`). El servidor sigue siendo la fuente de verdad final — esto
  * solo alimenta la caché de lectura offline.
  */
-export async function syncContratas(ownerId: string): Promise<void> {
+export async function syncContratas(ownerId: string): Promise<boolean> {
   const database = db;
-  if (!database) return;
+  if (!database) return false;
   const res = await fetchConTimeout("/api/contratas", { cache: "no-store" });
-  if (!res.ok) return;
+  if (!res.ok) return false;
   const contratas: ContrataApi[] = await res.json();
 
   await database.transaction(
@@ -131,6 +131,7 @@ export async function syncContratas(ownerId: string): Promise<void> {
       await database.contratas.bulkDelete(ids);
     }
   });
+  return true;
 }
 
 type ClienteApi = {
@@ -145,11 +146,11 @@ type ClienteApi = {
 };
 
 /** Trae el catálogo completo de clientes (incluye los que aún no tienen contrata). */
-export async function syncClientes(ownerId: string): Promise<void> {
+export async function syncClientes(ownerId: string): Promise<boolean> {
   const database = db;
-  if (!database) return;
+  if (!database) return false;
   const res = await fetchConTimeout("/api/clientes", { cache: "no-store" });
-  if (!res.ok) return;
+  if (!res.ok) return false;
   const clientes: ClienteApi[] = await res.json();
 
   await database.transaction("rw", [database.clientes], async () => {
@@ -183,6 +184,7 @@ export async function syncClientes(ownerId: string): Promise<void> {
       await database.clientes.bulkDelete(Array.from(eliminadosEnServidor));
     }
   });
+  return true;
 }
 
 type DeudorResumenApi = {
@@ -194,11 +196,11 @@ type DeudorResumenApi = {
   numAbonos: number;
 };
 
-export async function syncDeudores(ownerId: string): Promise<void> {
+export async function syncDeudores(ownerId: string): Promise<boolean> {
   const database = db;
-  if (!database) return;
+  if (!database) return false;
   const res = await fetchConTimeout("/api/deudores", { cache: "no-store" });
-  if (!res.ok) return;
+  if (!res.ok) return false;
   const data: { deudores: DeudorResumenApi[] } = await res.json();
 
   await database.transaction("rw", [database.deudores], async () => {
@@ -226,6 +228,7 @@ export async function syncDeudores(ownerId: string): Promise<void> {
       await database.deudores.bulkDelete(Array.from(existentesIds));
     }
   });
+  return true;
 }
 
 type DeudorDetalleApi = {
@@ -248,11 +251,11 @@ type DeudorDetalleApi = {
 export async function syncDeudorDetalle(
   ownerId: string,
   deudorId: string
-): Promise<void> {
+): Promise<boolean> {
   const database = db;
-  if (!database) return;
+  if (!database) return false;
   const res = await fetchConTimeout(`/api/deudores/${deudorId}`, { cache: "no-store" });
-  if (!res.ok) return;
+  if (!res.ok) return false;
   const d: DeudorDetalleApi = await res.json();
   const totalAbonado = Math.round(
     d.abonos.reduce((s, a) => s + a.monto, 0) * 100
@@ -294,6 +297,7 @@ export async function syncDeudorDetalle(
       }
     }
   );
+  return true;
 }
 
 type ConfiguracionApi = {
@@ -309,13 +313,14 @@ type ConfiguracionApi = {
   logoUrl: string | null;
 };
 
-export async function syncConfiguracion(ownerId: string): Promise<void> {
+export async function syncConfiguracion(ownerId: string): Promise<boolean> {
   const database = db;
-  if (!database) return;
+  if (!database) return false;
   const res = await fetchConTimeout("/api/configuracion", { cache: "no-store" });
-  if (!res.ok) return;
+  if (!res.ok) return false;
   const cfg: ConfiguracionApi = await res.json();
   await database.configuracion.put({ ownerId, ...cfg });
+  return true;
 }
 
 type CitaApi = {
@@ -336,11 +341,11 @@ type CitaApi = {
 };
 
 /** Trae las citas agendadas (todas, no solo las del día) y hace upsert en Dexie. */
-export async function syncCitas(ownerId: string): Promise<void> {
+export async function syncCitas(ownerId: string): Promise<boolean> {
   const database = db;
-  if (!database) return;
+  if (!database) return false;
   const res = await fetchConTimeout("/api/citas", { cache: "no-store" });
-  if (!res.ok) return;
+  if (!res.ok) return false;
   const citas: CitaApi[] = await res.json();
 
   await database.transaction("rw", [database.citas], async () => {
@@ -378,9 +383,21 @@ export async function syncCitas(ownerId: string): Promise<void> {
       await database.citas.bulkDelete(Array.from(eliminadasEnServidor));
     }
   });
+  return true;
 }
 
-async function ejecutarSync(ownerId: string, enSerie: boolean): Promise<void> {
+/** Clave en `meta` con el epoch (ms) del último sync completo exitoso. */
+export function claveUltimoSync(ownerId: string): string {
+  return `ultimoSync:${ownerId}`;
+}
+
+/**
+ * Corre el sync completo. Devuelve si TODO llegó bien: el control de
+ * sincronización lo usa para decir si el teléfono quedó listo antes de
+ * entrar a modo local, y la hora del último éxito para avisar cuando los
+ * datos ya están viejos.
+ */
+async function ejecutarSync(ownerId: string, enSerie: boolean): Promise<boolean> {
   const tareas = [
     () => syncContratas(ownerId),
     () => syncClientes(ownerId),
@@ -393,18 +410,24 @@ async function ejecutarSync(ownerId: string, enSerie: boolean): Promise<void> {
       // En red lenta, cinco peticiones a la vez solo se estorban entre sí:
       // compiten por un ancho de banda mínimo y todas tardan más. En serie
       // cada una avanza a su ritmo y la app puede usar lo que ya llegó.
-      for (const tarea of tareas) await tarea();
+      const resultados: boolean[] = [];
+      for (const tarea of tareas) resultados.push(await tarea());
+      if (resultados.includes(false)) return false;
     } else {
-      await Promise.all(tareas.map((t) => t()));
+      const resultados = await Promise.all(tareas.map((t) => t()));
+      if (resultados.includes(false)) return false;
     }
+    await db?.meta.put({ key: claveUltimoSync(ownerId), value: Date.now() });
+    return true;
   } catch {
     // Sin red, timeout o error del servidor: la app sigue funcionando desde
     // la caché local, que es justamente para lo que existe.
+    return false;
   }
 }
 
 /** Cola de sincronizaciones: nunca corren dos a la vez, pero tampoco se pierde ninguna. */
-let cadena: Promise<void> = Promise.resolve();
+let cadena: Promise<unknown> = Promise.resolve();
 
 /**
  * Cada sync completo son ~1 MB. El bootstrap reacciona a los cambios de
@@ -430,23 +453,24 @@ let ultimoSyncAutomatico = 0;
 export function syncAll(
   ownerId: string,
   opciones: { forzar?: boolean } = {}
-): Promise<void> {
+): Promise<boolean> {
   const calidad = calidadConexion();
-  if (calidad === "sin-red") return Promise.resolve();
+  if (calidad === "sin-red") return Promise.resolve(false);
   // En red lenta el sync automático no corre solo: son cinco peticiones y
   // cerca de 1 MB, suficiente para dejar la app inservible varios minutos
   // en 3G. El botón «Recargar datos» pasa `forzar` y sí lo ejecuta, porque
   // ahí el usuario decidió esperar a cambio de datos frescos.
-  if (calidad === "lenta" && !opciones.forzar) return Promise.resolve();
+  if (calidad === "lenta" && !opciones.forzar) return Promise.resolve(false);
 
   if (!opciones.forzar) {
     const desdeElUltimo = Date.now() - ultimoSyncAutomatico;
-    if (desdeElUltimo < MIN_MS_ENTRE_SYNCS_AUTOMATICOS) return Promise.resolve();
+    if (desdeElUltimo < MIN_MS_ENTRE_SYNCS_AUTOMATICOS) return Promise.resolve(false);
     ultimoSyncAutomatico = Date.now();
   }
 
-  cadena = cadena
+  const esta = cadena
     .catch(() => {})
     .then(() => ejecutarSync(ownerId, calidad === "lenta"));
-  return cadena;
+  cadena = esta;
+  return esta;
 }

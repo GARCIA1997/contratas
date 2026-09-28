@@ -64,6 +64,11 @@ export async function getDeudor(
 }
 
 export async function crearDeudor(ownerId: string, input: DeudorInput) {
+  // Ver crearCliente: un reintento con el mismo id devuelve el existente.
+  if (input.id) {
+    const previo = await prisma.deudor.findFirst({ where: { id: input.id, ownerId } });
+    if (previo) return previo;
+  }
   return prisma.deudor.create({
     data: {
       ...(input.id ? { id: input.id } : {}),

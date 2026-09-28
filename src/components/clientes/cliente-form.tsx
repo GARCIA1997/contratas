@@ -9,13 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
-import { enqueue } from "@/lib/offline/queue";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-  debeTrabajarLocal,
-} from "@/lib/offline/conexion";
+import { guardarOperacion } from "@/lib/offline/guardar";
+import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 
 export type ClienteInicial = {
@@ -59,57 +54,30 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
     // Sin señal se encola y se aplica de una vez en la caché local: dar de
     // alta a alguien en la puerta de su casa es justo lo que se hace en
     // campo, y hasta ahora era de lo poco que exigía internet.
-    if (
-      debeTrabajarLocal() &&
-      claims.ready &&
-      claims.ownerId
-    ) {
-      const id = editando ? inicial!.id : crypto.randomUUID();
-      try {
-        await enqueue(
-          claims.ownerId,
-          editando ? "cliente.editar" : "cliente.crear",
-          editando
-            ? { clienteId: id, input: datos }
-            : { id, ownerId: claims.ownerId, ...datos }
-        );
-      } catch (e) {
-        setGuardando(false);
-        setError(mensajeDeError(e, "No se pudo guardar sin conexión"));
-        return;
-      }
-      setGuardando(false);
-      router.push(`/clientes/${id}`);
-      return;
-    }
-
-    let res: Response;
+    const ownerId = claims.ready ? claims.ownerId : null;
+    // Id generado aquí también con señal: si la petición se cae a medio
+    // camino y pasa a la cola, el servidor reconoce el alta en vez de
+    // duplicarla (ver guardar.ts).
+    const id = editando ? inicial!.id : crypto.randomUUID();
     try {
-      res = await fetchConTimeout(
-        editando ? `/api/clientes/${inicial!.id}` : "/api/clientes",
-        {
-          method: editando ? "PUT" : "POST",
-          headers: { "Content-Type": "application/json", ...idem.header() },
-          body: JSON.stringify(datos),
-        },
-        TIMEOUT_ESCRITURA_MS
-      );
+      const r = await guardarOperacion({
+        ownerId,
+        clave: idem.clave(),
+        lote: [
+          editando
+            ? { type: "cliente.editar", payload: { clienteId: id, input: datos } }
+            : { type: "cliente.crear", payload: { id, ownerId, ...datos } },
+        ],
+      });
+      idem.confirmado();
+      if (r.enServidor && ownerId) await syncAll(ownerId, { forzar: true });
+      router.push(`/clientes/${id}`);
+      if (r.enServidor) router.refresh();
     } catch (e) {
-      setGuardando(false);
       setError(mensajeDeError(e));
-      return;
+    } finally {
+      setGuardando(false);
     }
-    setGuardando(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo guardar");
-      return;
-    }
-    idem.confirmado();
-    const guardado = await res.json();
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
-    router.push(`/clientes/${guardado.id}`);
-    router.refresh();
   }
 
   return (

@@ -8,7 +8,6 @@ import { ContrataForm } from "@/components/contratas/contrata-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
-import { entregarCita } from "@/components/citas/entregar-cita";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getClientes, getConfiguracion, getCita } from "@/lib/offline/repo";
 import { CONFIG_DEFAULTS } from "@/lib/config";
@@ -90,9 +89,6 @@ export default function NuevaContrataPage() {
           cita ? anclarFechaCliente(cita.fechaEntrega).toISOString().slice(0, 10) : undefined
         }
         citaId={citaId}
-        onGuardada={(info) => {
-          if (citaId && ownerId) void entregarCita(ownerId, citaId, info);
-        }}
       />
     </div>
   );

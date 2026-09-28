@@ -11,14 +11,10 @@ import { CitaBadge } from "@/components/citas/cita-badge";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { estadoCitaVista } from "@/lib/citas";
-import { enqueue } from "@/lib/offline/queue";
+import { guardarOperacion } from "@/lib/offline/guardar";
 import { syncCitas } from "@/lib/offline/sync";
 import type { CitaLocal } from "@/lib/offline/db";
-import {
-  fetchConTimeout,
-  TIMEOUT_ESCRITURA_MS,
-  debeTrabajarLocal,
-} from "@/lib/offline/conexion";
+import { mensajeDeError } from "@/lib/offline/conexion";
 
 const TIPO_LABEL: Record<CitaLocal["tipo"], string> = {
   NUEVA: "Nueva contrata",
@@ -55,29 +51,15 @@ export function CitaCard({
   async function descartar() {
     if (!confirm(`¿Descartar la cita de ${cita.clienteNombre}?`)) return;
     setDescartando(true);
-    const sinConexion = debeTrabajarLocal();
-    if (sinConexion) {
-      try {
-        await enqueue(ownerId, "cita.cancelar", { citaId: cita.id });
-      } catch (e) {
-        alert(e instanceof Error ? e.message : "No se pudo descartar");
-      }
-    } else {
-      try {
-        await fetchConTimeout(
-          `/api/citas/${cita.id}/cancelar`,
-          { method: "POST" },
-          TIMEOUT_ESCRITURA_MS
-        );
-        await syncCitas(ownerId);
-      } catch {
-        // Si la red falló, se encola para que no se pierda la intención.
-        // Cancelar dos veces deja el mismo estado, así que reintentar es
-        // seguro aunque la petición sí hubiera llegado.
-        await enqueue(ownerId, "cita.cancelar", { citaId: cita.id }).catch((e) =>
-          alert(e instanceof Error ? e.message : "No se pudo descartar")
-        );
-      }
+    try {
+      const r = await guardarOperacion({
+        ownerId,
+        clave: crypto.randomUUID(),
+        lote: [{ type: "cita.cancelar", payload: { citaId: cita.id } }],
+      });
+      if (r.enServidor) await syncCitas(ownerId);
+    } catch (e) {
+      alert(mensajeDeError(e, "No se pudo descartar"));
     }
     setDescartando(false);
   }

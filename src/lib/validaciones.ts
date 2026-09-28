@@ -23,6 +23,9 @@ export const contrataSchema = z.object({
   clienteId: z.string().min(1).optional(),
   // Alternativa: crear cliente nuevo inline
   clienteNombre: z.string().trim().min(1).max(120).optional(),
+  /** Id del cliente nuevo generado en el teléfono: nace con él, igual que
+   *  la contrata, para que un reintento lo reconozca en vez de duplicarlo. */
+  clienteNuevoId: z.string().uuid().optional(),
   tipo: z.enum(["SEMANAL", "QUINCENAL", "MENSUAL"]),
   monto: z.number().positive("El monto debe ser mayor a 0"),
   abono: z.number().positive("El abono debe ser mayor a 0"),
@@ -44,7 +47,7 @@ export const contrataSchema = z.object({
 });
 
 export const contrataUpdateSchema = contrataSchema
-  .omit({ id: true, fechaCaptura: true })
+  .omit({ id: true, fechaCaptura: true, clienteNuevoId: true })
   .partial();
 
 const nuevaContrataBaseSchema = z.object({

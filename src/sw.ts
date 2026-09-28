@@ -2,6 +2,21 @@ import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { ExpirationPlugin, NetworkFirst, Serwist } from "serwist";
 
+/**
+ * Caché de pantallas. "Preparar para trabajar sin señal" precarga TODAS las
+ * pantallas (4+ por contrata, 3+ por cliente); con el tope anterior de 32
+ * entradas, las primeras se borraban antes de terminar y al salir a ruta
+ * no abrían. Las respuestas RSC de estas pantallas pesan pocos KB (la
+ * página es cliente y lee de IndexedDB), así que 2000 cabe holgado.
+ * 3 días: alcanza para preparar la noche anterior y trabajar el día
+ * siguiente aunque se alargue la ruta.
+ */
+const EXPIRACION_PANTALLAS = {
+  maxEntries: 2000,
+  maxAgeSeconds: 3 * 24 * 60 * 60,
+  purgeOnQuotaError: true,
+};
+
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
     __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
@@ -58,7 +73,7 @@ const serwist = new Serwist({
         cacheName: "pages-rsc-prefetch",
         networkTimeoutSeconds: 4,
         plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
+          new ExpirationPlugin(EXPIRACION_PANTALLAS),
         ],
       }),
     },
@@ -71,7 +86,7 @@ const serwist = new Serwist({
         cacheName: "pages-rsc",
         networkTimeoutSeconds: 4,
         plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
+          new ExpirationPlugin(EXPIRACION_PANTALLAS),
         ],
       }),
     },
@@ -84,7 +99,7 @@ const serwist = new Serwist({
         cacheName: "pages",
         networkTimeoutSeconds: 4,
         plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
+          new ExpirationPlugin(EXPIRACION_PANTALLAS),
         ],
       }),
     },
@@ -99,7 +114,7 @@ const serwist = new Serwist({
         cacheName: "others",
         networkTimeoutSeconds: 4,
         plugins: [
-          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 1440 * 60 }),
+          new ExpirationPlugin(EXPIRACION_PANTALLAS),
         ],
       }),
     },

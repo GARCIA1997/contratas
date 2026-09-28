@@ -6,13 +6,8 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
-import { enqueue } from "@/lib/offline/queue";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-  debeTrabajarLocal,
-} from "@/lib/offline/conexion";
+import { guardarOperacion } from "@/lib/offline/guardar";
+import { mensajeDeError } from "@/lib/offline/conexion";
 
 export function EliminarCliente({
   id,
@@ -33,42 +28,19 @@ export function EliminarCliente({
     if (!confirm("¿Eliminar este cliente?")) return;
     setBorrando(true);
 
-    if (
-      debeTrabajarLocal() &&
-      claims.ready &&
-      claims.ownerId
-    ) {
-      try {
-        await enqueue(claims.ownerId, "cliente.eliminar", { clienteId: id });
-      } catch (e) {
-        setBorrando(false);
-        alert(mensajeDeError(e, "No se pudo eliminar sin conexión."));
-        return;
-      }
-      router.push("/clientes");
-      return;
-    }
-
-    let res: Response;
+    const ownerId = claims.ready ? claims.ownerId : null;
     try {
-      res = await fetchConTimeout(
-        `/api/clientes/${id}`,
-        { method: "DELETE" },
-        TIMEOUT_ESCRITURA_MS
-      );
+      const r = await guardarOperacion({
+        ownerId,
+        clave: crypto.randomUUID(),
+        lote: [{ type: "cliente.eliminar", payload: { clienteId: id } }],
+      });
+      if (r.enServidor && ownerId) await syncAll(ownerId, { forzar: true });
+      router.push("/clientes");
+      if (r.enServidor) router.refresh();
     } catch (e) {
       setBorrando(false);
       alert(mensajeDeError(e, "No se pudo eliminar."));
-      return;
-    }
-    if (res.ok) {
-      if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
-      router.push("/clientes");
-      router.refresh();
-    } else {
-      setBorrando(false);
-      const data = await res.json().catch(() => ({}));
-      alert(data.error ?? "No se pudo eliminar.");
     }
   }
 

@@ -6,6 +6,7 @@ const syncMocks = vi.hoisted(() => ({
   syncClientes: vi.fn().mockResolvedValue(undefined),
   syncDeudores: vi.fn().mockResolvedValue(undefined),
   syncDeudorDetalle: vi.fn().mockResolvedValue(undefined),
+  syncCitas: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/lib/offline/sync", () => syncMocks);
 vi.mock("@sentry/nextjs", () => ({ captureMessage: vi.fn() }));
@@ -21,6 +22,7 @@ import {
 } from "@/lib/offline/queue";
 
 import { LIMITE_OPERACIONES_LOCALES } from "@/lib/offline/modo-local";
+import { cancelarReintento, reiniciarEsperas } from "@/lib/offline/cola/estado";
 
 if (!maybeDb) throw new Error("db no inicializada — ¿falta jsdom/fake-indexeddb?");
 const db = maybeDb;
@@ -58,6 +60,9 @@ async function seedContrata(id = "c1") {
 }
 
 beforeEach(async () => {
+  // Los reintentos programados son estado de módulo: que no se crucen entre tests.
+  cancelarReintento();
+  reiniciarEsperas();
   await Promise.all([
     db.contratas.clear(),
     db.pagos.clear(),
@@ -112,7 +117,80 @@ describe("enqueueLote", () => {
   });
 });
 
+describe("clave heredada (guardar.ts)", () => {
+  it("la primera operación del lote viaja con la Idempotency-Key del intento directo; las ligadas con la suya", async () => {
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueueLote(
+      OWNER,
+      [
+        { type: "contrata.crear", payload: { id: "nueva", clienteId: "cli-1" } },
+        { type: "cita.entregar", payload: { citaId: "cita-1", contrataCreadaId: "nueva" } },
+      ],
+      { clave: "clave-del-intento-directo" }
+    );
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+
+    const claves = fetchMock.mock.calls.map(
+      (c) => (c[1].headers as Record<string, string>)["Idempotency-Key"]
+    );
+    expect(claves[0]).toBe("clave-del-intento-directo");
+    expect(claves[1]).not.toBe("clave-del-intento-directo");
+  });
+});
+
+describe("liberación de _dirty", () => {
+  it("una contrata liquidada por una entrega pendiente NO se libera al confirmarse otro cobro suyo", async () => {
+    await seedContrata("y");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "y", numeroCuota: 1 });
+    await enqueue(OWNER, "contrata.crear", {
+      id: "nueva",
+      clienteId: "cli-1",
+      _local: {
+        contrata: { id: "nueva", clienteId: "cli-1" },
+        pagos: [],
+        liquidar: [{ contrataId: "y", abono: 600, pagoIds: [] }],
+      },
+    });
+    // Solo el primero llega; el segundo se corta por red.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockRejectedValue(new TypeError("sin red"));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+
+    expect((await db.contratas.get("y"))?._dirty).toBe(true);
+  });
+});
+
 describe("flushQueue", () => {
+  it("si se corta por red, programa un reintento automático (señal intermitente no dispara eventos)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await seedContrata("c1");
+      Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+      await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
+      const fetchMock = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError("sin red"))
+        .mockResolvedValue(new Response("{}", { status: 200 }));
+      vi.stubGlobal("fetch", fetchMock);
+      Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+      await flushQueue(OWNER);
+      expect(await pendingCount(OWNER)).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.waitFor(async () => expect(await pendingCount(OWNER)).toBe(0));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("no hace nada si no hay conexión", async () => {
     await seedContrata();
     Object.defineProperty(navigator, "onLine", { value: false, configurable: true });

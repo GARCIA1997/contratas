@@ -42,6 +42,7 @@ export async function getContrata(
 type CrearInput = {
   clienteId?: string;
   clienteNombre?: string;
+  clienteNuevoId?: string;
   tipo: TipoContrata;
   monto: number;
   abono: number;
@@ -82,7 +83,7 @@ async function contrataYaCreada(ownerId: string, id?: string) {
 /** Resuelve el cliente destino garantizando que pertenece al usuario. */
 async function resolverClienteId(
   ownerId: string,
-  input: { clienteId?: string; clienteNombre?: string },
+  input: { clienteId?: string; clienteNombre?: string; clienteNuevoId?: string },
   tx: Prisma.TransactionClient
 ): Promise<string> {
   if (input.clienteId) {
@@ -94,8 +95,20 @@ async function resolverClienteId(
     return cliente.id;
   }
   if (input.clienteNombre) {
+    if (input.clienteNuevoId) {
+      // Reintento de un alta que ya creó al cliente: se reutiliza.
+      const previo = await tx.cliente.findFirst({
+        where: { id: input.clienteNuevoId, ownerId },
+        select: { id: true },
+      });
+      if (previo) return previo.id;
+    }
     const nuevo = await tx.cliente.create({
-      data: { ownerId, nombre: input.clienteNombre },
+      data: {
+        ...(input.clienteNuevoId ? { id: input.clienteNuevoId } : {}),
+        ownerId,
+        nombre: input.clienteNombre,
+      },
       select: { id: true },
     });
     return nuevo.id;

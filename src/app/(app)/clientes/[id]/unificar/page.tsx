@@ -6,7 +6,6 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { UnificarForm } from "@/components/clientes/unificar-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
-import { entregarCita } from "@/components/citas/entregar-cita";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getClientePerfil,
@@ -102,10 +101,7 @@ export default function UnificarContratasPage() {
         maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
         nombreApp={config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp}
         citaId={citaId}
-        onUnificada={(info) => {
-          setCompletado(true);
-          if (citaId && ownerId && info) void entregarCita(ownerId, citaId, info);
-        }}
+        onUnificada={() => setCompletado(true)}
       />
     </div>
   );

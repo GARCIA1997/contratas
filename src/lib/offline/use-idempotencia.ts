@@ -22,10 +22,14 @@ export function useIdempotencia() {
   const clave = useRef<string | null>(null);
 
   return {
+    /** Clave estable entre reintentos del mismo intento. */
+    clave(): string {
+      clave.current ??= crypto.randomUUID();
+      return clave.current;
+    },
     /** Header listo para el fetch; estable entre reintentos del mismo intento. */
     header(): Record<string, string> {
-      clave.current ??= crypto.randomUUID();
-      return { "Idempotency-Key": clave.current };
+      return { "Idempotency-Key": this.clave() };
     },
     /** Llamar al confirmarse: el siguiente guardado será una operación nueva. */
     confirmado(): void {

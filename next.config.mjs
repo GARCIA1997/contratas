@@ -12,7 +12,11 @@ const withSerwist = withSerwistInit({
   swDest: "public/sw.js",
   // El service worker solo se genera en producción para no interferir en dev.
   disable: process.env.NODE_ENV === "development",
-  reloadOnOnline: true,
+  // NO recargar al volver la señal: con señal intermitente recargaba la app
+  // a cada rato, borrando lo que se estaba capturando y cerrando el recibo
+  // de WhatsApp de una entrega hecha sin señal. La reconexión (subir la
+  // cola, bajar datos) la maneja OfflineBootstrap sin tocar la pantalla.
+  reloadOnOnline: false,
 });
 
 /** @type {import('next').NextConfig} */

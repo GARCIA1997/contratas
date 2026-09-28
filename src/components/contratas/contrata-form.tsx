@@ -17,16 +17,10 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
-import { enqueue, enqueueLote } from "@/lib/offline/queue";
-import type { QueueOpType } from "@/lib/offline/db";
+import { guardarOperacion } from "@/lib/offline/guardar";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
 import { getContratasConVencido } from "@/lib/offline/repo";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-  debeTrabajarLocal,
-} from "@/lib/offline/conexion";
+import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import {
   ContrataCreadaPanel,
@@ -35,6 +29,15 @@ import {
 import { usePrimerPago } from "@/lib/offline/use-primer-pago";
 
 export type ClienteOpcion = { id: string; nombre: string };
+
+type DatosContrata = {
+  tipo: TipoContrata;
+  monto: number;
+  abono: number;
+  fechaInicio: string;
+  numCuotas: number;
+  notas: string | null;
+};
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -64,7 +67,6 @@ export function ContrataForm({
   volverHref: volverHrefProp,
   montoInicial,
   fechaInicioInicial,
-  onGuardada,
   citaId,
 }: {
   clientes: ClienteOpcion[];
@@ -89,10 +91,9 @@ export function ContrataForm({
    * "pendiente", tanto online como offline — usado por la misma feature de
    * citas para cerrar el círculo (marcar la cita como entregada) sin que
    * este componente sepa nada de citas. */
-  /** Cita que se está entregando: sin señal su enlace se encola en el mismo
-   *  lote que la contrata (ver entregarCita). */
+  /** Cita que se está entregando: su enlace con la contrata nueva va en la
+   *  misma operación de guardado (ver guardar.ts), nunca por separado. */
   citaId?: string | null;
-  onGuardada?: (info: { contrataId: string | null; offline: boolean }) => void;
 }) {
   const router = useRouter();
   const claims = useAuthClaims();
@@ -226,160 +227,105 @@ export function ContrataForm({
         `El monto debe cubrir el saldo pendiente de sus otras contratas (${formatMoneda(saldoOtras)})`
       );
 
-    const payload = {
+    const input = {
       tipo,
       monto: montoNum,
       abono: abonoNum,
       fechaInicio,
       numCuotas,
       notas: notas.trim() || null,
-      ...(clienteMode === "existente"
-        ? { clienteId, incluirOtras }
-        : { clienteNombre: clienteNombre.trim() }),
     };
-
+    const ownerId = claims.ready ? claims.ownerId : null;
     setGuardando(true);
-
-    // Tanto editar como crear se hacen en campo, con el cliente presente —
-    // pero SOLO se encolan cuando de verdad no hay conexión: si hay señal
-    // real, se guardan directo (igual que siempre) para no mostrarle al
-    // usuario un mensaje de "pendiente de conexión" cuando sí tiene internet
-    // (bug reportado: se marcaba offline al entregar una contrata con señal).
-    const sinConexion = debeTrabajarLocal();
-
-    if (editando && sinConexion && claims.ready && claims.ownerId) {
-      try {
-        await enqueue(claims.ownerId, "contrata.editar", {
-          contrataId: inicial!.id,
-          input: payload,
-        });
-      } catch (e) {
-        setGuardando(false);
-        setError(e instanceof Error ? e.message : "No se pudo guardar");
-        return;
-      }
-      setGuardando(false);
-      router.push(`/contratas/${inicial!.id}`);
-      return;
-    }
-
-    if (!editando && sinConexion && claims.ready && claims.ownerId) {
-      // Modo local / sin señal: la contrata nace en el teléfono con su id
-      // definitivo (ver entrega-local.ts) — aparece de inmediato en el
-      // perfil del cliente y se muestra el mismo panel de entrega con el
-      // WhatsApp que con señal. Al sincronizar, el servidor la crea con
-      // ese mismo id.
-      const owner = claims.ownerId;
-      try {
-        // Cliente, contrata y (si viene de una cita) el enlace se encolan en
-        // un solo lote atómico: si no caben todos no entra ninguno, y un
-        // reintento no deja un cliente huérfano duplicado.
-        const lote: { type: QueueOpType; payload: Record<string, unknown> }[] = [];
-        let clienteDestino = clienteId;
-        if (clienteMode === "nuevo") {
-          clienteDestino = crypto.randomUUID();
-          lote.push({
-            type: "cliente.crear",
-            payload: {
-              id: clienteDestino,
-              ownerId: owner,
-              nombre: clienteNombre.trim(),
-              telefono: null,
-              direccion: null,
-              referencia: null,
-              notas: null,
-            },
-          });
-        }
-        const id = crypto.randomUUID();
-        const hoy = new Date();
-        const entrega = await prepararEntregaLocal(owner, {
-          id,
-          clienteId: clienteDestino,
-          clienteNuevo: clienteMode === "nuevo" ? { nombre: clienteNombre.trim() } : undefined,
-          input: {
-            tipo,
-            monto: montoNum,
-            abono: abonoNum,
-            fechaInicio,
-            numCuotas,
-            notas: notas.trim() || null,
-          },
-          hoy,
-          cubrirVencidasDe:
-            clienteMode === "existente" && incluirOtras ? (otras ?? []).map((o) => o.id) : [],
-        });
-        lote.push({ type: "contrata.crear", payload: {
-          tipo,
-          monto: montoNum,
-          abono: abonoNum,
-          fechaInicio,
-          numCuotas,
-          notas: notas.trim() || null,
-          clienteId: clienteDestino,
-          incluirOtras: clienteMode === "existente" && incluirOtras,
-          id,
-          fechaCaptura: hoy.toISOString(),
-          _local: entrega.filas,
-        } });
-        if (citaId) {
-          lote.push({ type: "cita.entregar", payload: { citaId, contrataCreadaId: id } });
-        }
-        await enqueueLote(owner, lote);
-        setGuardando(false);
-        onGuardada?.({ contrataId: id, offline: true });
-        setCreada(entrega.recibo);
-      } catch (e) {
-        setGuardando(false);
-        setError(e instanceof Error ? e.message : "No se pudo guardar");
-      }
-      return;
-    }
-
-    let res: Response;
     try {
-      res = await fetchConTimeout(
-        editando ? `/api/contratas/${inicial!.id}` : "/api/contratas",
-        {
-          method: editando ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-            // Sin esta clave, un reintento tras un timeout crearía una
-            // contrata duplicada: el servidor pudo haberla aplicado aunque
-            // la respuesta nunca llegara.
-            ...idem.header(),
-          },
-          body: JSON.stringify(payload),
-        },
-        TIMEOUT_ESCRITURA_MS
-      );
+      if (editando) await guardarEdicion(ownerId, input);
+      else await guardarEntrega(ownerId, input);
     } catch (e) {
-      setGuardando(false);
       setError(mensajeDeError(e));
-      return;
+    } finally {
+      setGuardando(false);
     }
-    setGuardando(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo guardar");
-      return;
-    }
-    idem.confirmado();
-    const guardada = await res.json();
-    // La UI lee de IndexedDB (offline-first): sin este sync la contrata
-    // nueva no aparece en listas/dashboard hasta la próxima recarga completa.
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
+  }
 
-    // Al crear no se navega de inmediato: se muestra la confirmación con la
-    // opción de mandarle los detalles al cliente por WhatsApp, que es justo
-    // el momento de la entrega. Al editar sí se vuelve a la contrata.
-    if (!editando) {
-      onGuardada?.({ contrataId: guardada.id, offline: false });
-      setCreada(guardada as ContrataCreada);
-      return;
-    }
-    router.push(`/contratas/${guardada.id}`);
+  async function guardarEdicion(ownerId: string | null, input: DatosContrata) {
+    const contrataId = inicial!.id;
+    const r = await guardarOperacion<{ id: string }>({
+      ownerId,
+      clave: idem.clave(),
+      lote: [
+        {
+          type: "contrata.editar",
+          payload: {
+            contrataId,
+            input: {
+              ...input,
+              ...(clienteMode === "existente"
+                ? { clienteId }
+                : { clienteNombre: clienteNombre.trim() }),
+            },
+          },
+        },
+      ],
+    });
+    idem.confirmado();
+    if (r.enServidor && ownerId) await syncAll(ownerId, { forzar: true });
+    router.push(`/contratas/${contrataId}`);
     router.refresh();
+  }
+
+  /**
+   * Alta de la contrata. La operación se arma completa aquí —ids generados
+   * en el teléfono y las filas del efecto local— para que sea idéntica si
+   * se manda directo o si termina en la cola (ver guardar.ts).
+   */
+  async function guardarEntrega(ownerId: string | null, input: DatosContrata) {
+    const id = crypto.randomUUID();
+    const hoy = new Date();
+    const clienteNuevo =
+      clienteMode === "nuevo" ? { id: crypto.randomUUID(), nombre: clienteNombre.trim() } : null;
+    const liquidaOtras = clienteMode === "existente" && incluirOtras;
+
+    const entrega = ownerId
+      ? await prepararEntregaLocal(ownerId, {
+          id,
+          clienteId: clienteNuevo ? undefined : clienteId,
+          clienteNuevo: clienteNuevo ?? undefined,
+          input,
+          hoy,
+          cubrirVencidasDe: liquidaOtras ? (otras ?? []).map((o) => o.id) : [],
+        })
+      : null;
+
+    const r = await guardarOperacion<ContrataCreada>({
+      ownerId,
+      clave: idem.clave(),
+      lote: [
+        {
+          type: "contrata.crear",
+          payload: {
+            ...input,
+            ...(clienteNuevo
+              ? { clienteNombre: clienteNuevo.nombre, clienteNuevoId: clienteNuevo.id }
+              : { clienteId, incluirOtras: liquidaOtras }),
+            id,
+            fechaCaptura: hoy.toISOString(),
+            ...(entrega ? { _local: entrega.filas } : {}),
+          },
+        },
+        ...(citaId
+          ? [{ type: "cita.entregar" as const, payload: { citaId, contrataCreadaId: id } }]
+          : []),
+      ],
+    });
+    idem.confirmado();
+    if (r.enServidor) {
+      // La UI lee de IndexedDB: sin este sync la contrata no aparece en
+      // listas hasta la próxima recarga.
+      if (ownerId) await syncAll(ownerId, { forzar: true });
+      setCreada(r.datos);
+    } else {
+      setCreada(entrega!.recibo);
+    }
   }
 
   const volverHref = volverHrefProp ?? "/contratas";

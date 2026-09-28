@@ -15,13 +15,8 @@ import { formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getContratasConSaldo } from "@/lib/offline/repo";
 import { syncCitas } from "@/lib/offline/sync";
-import { enqueue } from "@/lib/offline/queue";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-  debeTrabajarLocal,
-} from "@/lib/offline/conexion";
+import { guardarOperacion } from "@/lib/offline/guardar";
+import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 
 export type ClienteOpcion = { id: string; nombre: string };
@@ -191,92 +186,28 @@ export function AgendarForm({
     };
 
     setGuardando(true);
-    const sinConexion = debeTrabajarLocal();
-
-    if (reagendando) {
-      if (ownerId && sinConexion) {
-        try {
-          await enqueue(ownerId, "cita.editar", { citaId: inicial!.id, input });
-        } catch (e) {
-          setGuardando(false);
-          setError(e instanceof Error ? e.message : "No se pudo guardar");
-          return;
-        }
-        // El efecto ya la movió en el teléfono: igual que con señal.
-        router.push(`/clientes/${clienteId}`);
-        return;
-      }
-      let res: Response;
-      try {
-        res = await fetchConTimeout(
-          `/api/citas/${inicial!.id}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", ...idem.header() },
-            body: JSON.stringify(input),
-          },
-          TIMEOUT_ESCRITURA_MS
-        );
-      } catch (e) {
-        setGuardando(false);
-        setError(mensajeDeError(e));
-        return;
-      }
-      setGuardando(false);
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "No se pudo guardar");
-        return;
-      }
-      idem.confirmado();
-      if (ownerId) await syncCitas(ownerId);
-      router.push(`/clientes/${clienteId}`);
-      return;
-    }
-
-    if (ownerId && sinConexion) {
-      try {
-        // Id generado aquí: la cita aparece de inmediato en Ruta y en el
-        // perfil del cliente, y el servidor la crea con este mismo id.
-        await enqueue(ownerId, "cita.crear", {
-          ...input,
-          id: crypto.randomUUID(),
-          ownerId,
-        });
-      } catch (e) {
-        setGuardando(false);
-        setError(e instanceof Error ? e.message : "No se pudo guardar");
-        return;
-      }
-      router.push(`/clientes/${clienteId}`);
-      return;
-    }
-
-    let res: Response;
     try {
-      res = await fetchConTimeout(
-        "/api/citas",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...idem.header() },
-          body: JSON.stringify(input),
-        },
-        TIMEOUT_ESCRITURA_MS
-      );
+      const r = await guardarOperacion({
+        ownerId,
+        clave: idem.clave(),
+        lote: [
+          reagendando
+            ? { type: "cita.editar", payload: { citaId: inicial!.id, input } }
+            : // Id generado aquí: sin señal la cita aparece de inmediato en
+              // Ruta y en el perfil, y el servidor la crea con este mismo id.
+              { type: "cita.crear", payload: { ...input, id: crypto.randomUUID(), ownerId } },
+        ],
+      });
+      idem.confirmado();
+      if (r.enServidor && ownerId) await syncCitas(ownerId);
+      // Sin señal el efecto local ya la dejó visible: igual que con señal.
+      if (reagendando || !r.enServidor) router.push(`/clientes/${clienteId}`);
+      else setGuardada(true);
     } catch (e) {
+      setError(mensajeDeError(e, reagendando ? "No se pudo guardar" : "No se pudo agendar"));
+    } finally {
       setGuardando(false);
-      setError(mensajeDeError(e, "No se pudo agendar"));
-      return;
     }
-    setGuardando(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo agendar");
-      return;
-    }
-    idem.confirmado();
-    if (ownerId) await syncCitas(ownerId);
-    setGuardada(true);
   }
 
   const volverHref = volverHrefProp ?? (clienteId ? `/clientes/${clienteId}` : "/ruta");

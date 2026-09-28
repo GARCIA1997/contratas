@@ -12,22 +12,26 @@ import { FechaInput } from "@/components/ui/fecha-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
-import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
-import { enqueueLote } from "@/lib/offline/queue";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-  debeTrabajarLocal,
-} from "@/lib/offline/conexion";
+import { guardarOperacion } from "@/lib/offline/guardar";
+import { mensajeDeError } from "@/lib/offline/conexion";
+import type { ResultadoRenovacion } from "@/components/contratas/renovar-form";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import {
   ReciboEntregaPanel,
   type ContrataEntregada,
 } from "@/components/contratas/recibo-entrega";
 import { usePrimerPago } from "@/lib/offline/use-primer-pago";
+
+type DatosUnificacion = {
+  tipo: TipoContrata;
+  monto: number;
+  abono: number;
+  fechaInicio: string;
+  numCuotas: number;
+  notas: string | null;
+};
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -70,12 +74,12 @@ export function UnificarForm({
    * seleccionadas dejen de ser "elegibles" — ver comentario en el page.tsx.
    * Trae `info` (mismo shape que `onRenovada` en renovar-form) para poder
    * cerrar el círculo con la cita agendada, si la hubo. */
-  /** Cita que se está entregando: sin señal su enlace se encola en el mismo
-   *  lote que la contrata (ver entregarCita). */
+  /** Cita que se está entregando: su enlace con la contrata nueva va en la
+   *  misma operación de guardado (ver guardar.ts), nunca por separado. */
   citaId?: string | null;
-  onUnificada?: (info?: { contrataId: string | null; offline: boolean }) => void;
+  /** Se llama antes de guardar: la página no debe redirigir al ver las elegidas liquidadas. */
+  onUnificada?: () => void;
 }) {
-  const claims = useAuthClaims();
   const idem = useIdempotencia();
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(
     () =>
@@ -170,7 +174,7 @@ export function UnificarForm({
       );
 
     const contrataIds = Array.from(seleccionadas);
-    const input = {
+    const input: DatosUnificacion = {
       tipo,
       monto: montoNum,
       abono: abonoNum,
@@ -180,84 +184,58 @@ export function UnificarForm({
     };
 
     setGuardando(true);
+    try {
+      await guardarUnificacion(contrataIds, input);
+    } catch (e) {
+      setError(mensajeDeError(e, "No se pudo unificar"));
+    } finally {
+      setGuardando(false);
+    }
+  }
 
-    // Unificar crea una contrata nueva — igual que renovar, sin conexión no
-    // se conoce su id todavía, así que se encola y se avisa "pendiente". Si
-    // hay señal real se guarda directo (antes se encolaba siempre, con o sin
-    // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
-    const sinConexion = debeTrabajarLocal();
-    if (ownerId && sinConexion) {
-      // Modo local / sin señal: igual que renovar — la contrata nueva nace
-      // en el teléfono con su id definitivo, las elegidas quedan liquidadas
-      // localmente y se muestra el recibo con WhatsApp. Ver entrega-local.ts.
-      try {
-        const id = crypto.randomUUID();
-        const hoy = new Date();
-        const entrega = await prepararEntregaLocal(ownerId, {
+  /** Igual que renovar (ver renovar-form.tsx): una sola operación, idéntica por ambos caminos. */
+  async function guardarUnificacion(contrataIds: string[], input: DatosUnificacion) {
+    const id = crypto.randomUUID();
+    const hoy = new Date();
+    const entrega = ownerId
+      ? await prepararEntregaLocal(ownerId, {
           id,
           clienteId,
           input,
           hoy,
           liquidarCompletas: contrataIds,
-        });
-        // Antes del efecto: la página redirige si deja de ver contratas
-        // elegibles y no sabe que esto fue una unificación.
-        onUnificada?.({ contrataId: id, offline: true });
-        await enqueueLote(ownerId, [
-          { type: "cliente.unificar", payload: {
-          clienteId,
-          contrataIds,
-          input: { ...input, id, fechaCaptura: hoy.toISOString() },
-          _local: entrega.filas,
-        } },
-          // En el mismo lote: si no cabe, no se entrega a medias.
-          ...(citaId
-            ? [{ type: "cita.entregar" as const, payload: { citaId, contrataCreadaId: id } }]
-            : []),
-        ]);
-        setGuardando(false);
-        setUnificada(entrega.recibo);
-      } catch (e) {
-        setGuardando(false);
-        setError(e instanceof Error ? e.message : "No se pudo unificar");
-      }
-      return;
-    }
+        })
+      : null;
 
-    let res: Response;
-    try {
-      res = await fetchConTimeout(
-        `/api/clientes/${clienteId}/unificar`,
+    // Antes de guardar: la página redirige si deja de ver contratas
+    // elegibles y no sabe que esto fue una unificación.
+    onUnificada?.();
+
+    const r = await guardarOperacion<ResultadoRenovacion>({
+      ownerId,
+      clave: idem.clave(),
+      lote: [
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...idem.header() },
-          body: JSON.stringify({ contrataIds, ...input }),
+          type: "cliente.unificar",
+          payload: {
+            clienteId,
+            contrataIds,
+            input: { ...input, id, fechaCaptura: hoy.toISOString() },
+            ...(entrega ? { _local: entrega.filas } : {}),
+          },
         },
-        TIMEOUT_ESCRITURA_MS
-      );
-    } catch (e) {
-      setGuardando(false);
-      setError(mensajeDeError(e, "No se pudo unificar"));
-      return;
-    }
-    setGuardando(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo unificar");
-      return;
-    }
+        ...(citaId
+          ? [{ type: "cita.entregar" as const, payload: { citaId, contrataCreadaId: id } }]
+          : []),
+      ],
+    });
     idem.confirmado();
-    const data = await res.json();
-    // onUnificada() (marca "completado" en la página) va ANTES de syncAll —
-    // ver comentario largo en renovar-form.tsx: sin este orden, el
-    // useLiveQuery de la página puede reaccionar al cambio en Dexie y
-    // redirigir antes de que React procese el setState de "completado".
-    onUnificada?.({ contrataId: data.nuevaContrata.id, offline: false });
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
-    // Igual que "nueva contrata"/renovar: se muestra la confirmación con la
-    // opción de mandarle los detalles al cliente por WhatsApp en vez de
-    // navegar de inmediato.
-    setUnificada(data.nuevaContrata);
+    if (r.enServidor) {
+      if (ownerId) await syncAll(ownerId, { forzar: true });
+      setUnificada(r.datos.nuevaContrata);
+    } else {
+      setUnificada(entrega!.recibo);
+    }
   }
 
   if (unificada) {

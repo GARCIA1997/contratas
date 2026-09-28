@@ -158,7 +158,9 @@ export type QueueOpType =
   | "deudor.editar";
 
 export type WriteQueueItem = {
-  id: string; // idempotency key (uuid)
+  id: string; // idempotency key (uuid), salvo que haya `clave`
+  /** Idempotency-Key heredada de un intento directo que se cayó (ver guardar.ts). */
+  clave?: string | null;
   ownerId: string;
   type: QueueOpType;
   payload: Record<string, unknown>;
