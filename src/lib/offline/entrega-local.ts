@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import type { TipoContrata } from "@prisma/client";
-import { db, type ContrataLocal, type PagoLocal } from "@/lib/offline/db";
+import { db, type ClienteLocal, type ContrataLocal, type PagoLocal } from "@/lib/offline/db";
 import { calcularFechasPago } from "@/lib/fechas";
 import { calcularAbono, cuotasVencidasOVigentes } from "@/lib/contrata";
 import { CONFIG_DEFAULTS, type ConfigView } from "@/lib/config";
@@ -33,6 +33,8 @@ type InputContrata = {
 
 /** Filas a escribir en IndexedDB (las aplica el efecto de la cola). */
 export type FilasEntregaLocal = {
+  /** Cliente dado de alta en la misma entrega (contrata a cliente nuevo). */
+  clienteNuevo?: ClienteLocal | null;
   contrata: ContrataLocal;
   pagos: PagoLocal[];
   /** Cuotas que se marcan pagadas en otras contratas del cliente. */
@@ -83,6 +85,8 @@ export async function prepararEntregaLocal(
   opts: {
     id: string;
     clienteId?: string;
+    /** Cliente que se da de alta con esta entrega (todavía no está en IndexedDB). */
+    clienteNuevo?: { id: string; nombre: string };
     input: InputContrata;
     hoy: Date;
     /** Contratas que se liquidan completas (renovar: la original; unificar: las elegidas). */
@@ -96,6 +100,7 @@ export async function prepararEntregaLocal(
   // Renovar/unificar no siempre tienen el clienteId a mano: se toma de la
   // contrata que se liquida.
   const clienteId =
+    opts.clienteNuevo?.id ??
     opts.clienteId ??
     (await db.contratas.get(opts.liquidarCompletas?.[0] ?? ""))?.clienteId;
   if (!clienteId) throw new Error("No se encontró el cliente en el teléfono");
@@ -115,7 +120,7 @@ export async function prepararEntregaLocal(
     id: opts.id,
     ownerId,
     clienteId,
-    clienteNombre: cliente?.nombre ?? "Cliente",
+    clienteNombre: cliente?.nombre ?? opts.clienteNuevo?.nombre ?? "Cliente",
     clienteTelefono: cliente?.telefono ?? null,
     tipo: input.tipo,
     monto: input.monto,
@@ -178,8 +183,22 @@ export async function prepararEntregaLocal(
     });
   }
 
+  const clienteNuevo: ClienteLocal | null = opts.clienteNuevo
+    ? {
+        id: opts.clienteNuevo.id,
+        ownerId,
+        nombre: opts.clienteNuevo.nombre,
+        telefono: null,
+        direccion: null,
+        referencia: null,
+        notas: null,
+        creadoEn: opts.hoy.toISOString(),
+        _dirty: true,
+      }
+    : null;
+
   return {
-    filas: { contrata, pagos, liquidar },
+    filas: { clienteNuevo, contrata, pagos, liquidar },
     recibo: {
       id: opts.id,
       cliente: { nombre: contrata.clienteNombre, telefono: contrata.clienteTelefono },
@@ -200,6 +219,7 @@ export async function prepararEntregaLocal(
 export async function aplicarFilasEntrega(filas: FilasEntregaLocal): Promise<void> {
   if (!db) return;
   const ahora = new Date().toISOString();
+  if (filas.clienteNuevo) await db.clientes.put({ ...filas.clienteNuevo, _dirty: true });
   await db.contratas.put({ ...filas.contrata, _dirty: true });
   await db.pagos.bulkPut(filas.pagos);
   for (const l of filas.liquidar) {

@@ -13,16 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
-import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
-import { enqueue } from "@/lib/offline/queue";
-import {
-  fetchConTimeout,
-  mensajeDeError,
-  TIMEOUT_ESCRITURA_MS,
-  debeTrabajarLocal,
-} from "@/lib/offline/conexion";
+import { guardarOperacion } from "@/lib/offline/guardar";
+import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import {
   ReciboEntregaPanel,
@@ -31,6 +25,23 @@ import {
 import { ReciboOtrasLiquidadasPanel } from "@/components/contratas/recibo-otras-liquidadas";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
 import { usePrimerPago } from "@/lib/offline/use-primer-pago";
+import { rutas } from "@/lib/rutas";
+
+type DatosRenovacion = {
+  tipo: TipoContrata;
+  monto: number;
+  abono: number;
+  fechaInicio: string;
+  numCuotas: number;
+  notas: string | null;
+  incluirOtras: boolean;
+};
+
+/** Lo que responde /api/contratas/[id]/renovar (y unificar). */
+export type ResultadoRenovacion = {
+  nuevaContrata: ContrataEntregada & { id: string };
+  otrasLiquidadas?: ContrataResumenCobro[];
+};
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -51,6 +62,7 @@ export function RenovarForm({
   maxCuotas,
   nombreApp,
   onRenovada,
+  citaId,
 }: {
   contrataId: string;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
@@ -68,9 +80,12 @@ export function RenovarForm({
    * usado por la página de "convertir cita en contrata" para cerrar el
    * círculo marcando la cita como entregada; el resto de los llamadores
    * ignora el argumento. */
-  onRenovada?: (info?: { contrataId: string | null; offline: boolean }) => void;
+  /** Cita que se está entregando: su enlace con la contrata nueva va en la
+   *  misma operación de guardado (ver guardar.ts), nunca por separado. */
+  citaId?: string | null;
+  /** Se llama antes de guardar: la página no debe redirigir al ver la original liquidada. */
+  onRenovada?: () => void;
 }) {
-  const claims = useAuthClaims();
   const idem = useIdempotencia();
   const [incluirOtras, setIncluirOtras] = useState(false);
   const [renovada, setRenovada] = useState<ContrataEntregada & { id: string } | null>(
@@ -139,7 +154,7 @@ export function RenovarForm({
         `El monto debe cubrir el saldo pendiente (${formatMoneda(saldoTotal)})`
       );
 
-    const input = {
+    const input: DatosRenovacion = {
       tipo,
       monto: montoNum,
       abono: abonoNum,
@@ -150,85 +165,68 @@ export function RenovarForm({
     };
 
     setGuardando(true);
+    try {
+      await guardarRenovacion(input);
+    } catch (e) {
+      setError(mensajeDeError(e, "No se pudo renovar"));
+    } finally {
+      setGuardando(false);
+    }
+  }
 
-    // Renovar crea una contrata nueva — sin conexión no se conoce su id
-    // todavía, así que se encola y se avisa "pendiente" en vez de navegar a
-    // una pantalla que no existe hasta que el servidor confirme. Si hay
-    // señal real se guarda directo (antes se encolaba siempre, con o sin
-    // conexión, y mostraba el aviso de "pendiente" aunque hubiera internet).
-    const sinConexion = debeTrabajarLocal();
-    if (ownerId && sinConexion) {
-      // Modo local / sin señal: la contrata nueva nace en el teléfono con su
-      // id definitivo, la original (y lo vencido de las otras, si se marcó)
-      // queda liquidada localmente, y se muestra el mismo recibo con
-      // WhatsApp que con señal. Ver entrega-local.ts.
-      try {
-        const id = crypto.randomUUID();
-        const hoy = new Date();
-        const entrega = await prepararEntregaLocal(ownerId, {
+  /**
+   * La contrata nueva nace con su id definitivo y la operación se arma
+   * completa aquí, idéntica si se manda directo o si termina en la cola
+   * (ver guardar.ts). Sin señal, la original (y lo vencido de las otras, si
+   * se marcó) queda liquidada en el teléfono y se muestra el mismo recibo
+   * con WhatsApp que con señal.
+   */
+  async function guardarRenovacion(input: DatosRenovacion) {
+    const id = crypto.randomUUID();
+    const hoy = new Date();
+    const otrasIds = input.incluirOtras ? otras.map((o) => o.id) : [];
+    const entrega = ownerId
+      ? await prepararEntregaLocal(ownerId, {
           id,
-          input: { ...input, notas: input.notas },
+          input,
           hoy,
           liquidarCompletas: [contrataId],
-          cubrirVencidasDe: incluirOtras ? otras.map((o) => o.id) : [],
-        });
-        // Antes de aplicar el efecto: la página redirige en cuanto ve la
-        // original liquidada si no sabe que esto fue una renovación.
-        onRenovada?.({ contrataId: id, offline: true });
-        await enqueue(ownerId, "contrata.renovar", {
-          contrataId,
-          otrasIds: incluirOtras ? otras.map((o) => o.id) : [],
-          input: { ...input, id, fechaCaptura: hoy.toISOString() },
-          _local: entrega.filas,
-        });
-        setGuardando(false);
-        setOtrasLiquidadas(entrega.recibo.otrasLiquidadas ?? []);
-        setRenovada(entrega.recibo);
-      } catch (e) {
-        setGuardando(false);
-        setError(e instanceof Error ? e.message : "No se pudo renovar");
-      }
-      return;
-    }
+          cubrirVencidasDe: otrasIds,
+        })
+      : null;
 
-    let res: Response;
-    try {
-      res = await fetchConTimeout(
-        `/api/contratas/${contrataId}/renovar`,
+    // Antes de guardar: la página redirige en cuanto ve la original
+    // liquidada (por el efecto local o por el sync) si no sabe que esto fue
+    // una renovación.
+    onRenovada?.();
+
+    const r = await guardarOperacion<ResultadoRenovacion>({
+      ownerId,
+      clave: idem.clave(),
+      lote: [
         {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...idem.header() },
-          body: JSON.stringify(input),
+          type: "contrata.renovar",
+          payload: {
+            contrataId,
+            otrasIds,
+            input: { ...input, id, fechaCaptura: hoy.toISOString() },
+            ...(entrega ? { _local: entrega.filas } : {}),
+          },
         },
-        TIMEOUT_ESCRITURA_MS
-      );
-    } catch (e) {
-      setGuardando(false);
-      setError(mensajeDeError(e, "No se pudo renovar"));
-      return;
-    }
-    setGuardando(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setError(data.error ?? "No se pudo renovar");
-      return;
-    }
+        ...(citaId
+          ? [{ type: "cita.entregar" as const, payload: { citaId, contrataCreadaId: id } }]
+          : []),
+      ],
+    });
     idem.confirmado();
-    const data = await res.json();
-    // onRenovada() (marca "completado" en la página) va ANTES de syncAll:
-    // syncAll escribe en Dexie, y el useLiveQuery de la página reacciona a
-    // ese cambio con su propio re-render — si ese re-render llega a correr
-    // antes de que React procese el setState de "completado", el efecto de
-    // redirect de la página alcanza a dispararse con el flag todavía en
-    // false y saca al usuario del panel de confirmación antes de que se
-    // alcance a mostrar.
-    onRenovada?.({ contrataId: data.nuevaContrata.id, offline: false });
-    if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
-    // Igual que "nueva contrata": se muestra la confirmación con la opción
-    // de mandarle los detalles al cliente por WhatsApp (mismo detalle
-    // completo, calendario incluido) en vez de navegar de inmediato.
-    setOtrasLiquidadas(data.otrasLiquidadas ?? []);
-    setRenovada(data.nuevaContrata);
+    if (r.enServidor) {
+      if (ownerId) await syncAll(ownerId, { forzar: true });
+      setOtrasLiquidadas(r.datos.otrasLiquidadas ?? []);
+      setRenovada(r.datos.nuevaContrata);
+    } else {
+      setOtrasLiquidadas(entrega!.recibo.otrasLiquidadas ?? []);
+      setRenovada(entrega!.recibo);
+    }
   }
 
   if (renovada) {
@@ -247,10 +245,10 @@ export function RenovarForm({
           otrasLiquidadas={otrasLiquidadas}
         />
         <Button variant="outline" className="w-full" asChild>
-          <Link href={`/contratas/${renovada.id}`}>Ver la contrata nueva</Link>
+          <Link href={rutas.contrata(renovada.id)}>Ver la contrata nueva</Link>
         </Button>
         <Button variant="ghost" className="w-full" asChild>
-          <Link href={`/contratas/${contrataId}`}>Volver a la contrata original</Link>
+          <Link href={rutas.contrata(contrataId)}>Volver a la contrata original</Link>
         </Button>
       </div>
     );
@@ -259,7 +257,7 @@ export function RenovarForm({
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={`/contratas/${contrataId}`}>
+        <Link href={rutas.contrata(contrataId)}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

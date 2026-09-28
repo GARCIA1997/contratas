@@ -8,6 +8,7 @@ import {
 } from "@/components/contratas/recibo-entrega";
 import { ReciboOtrasLiquidadasPanel } from "@/components/contratas/recibo-otras-liquidadas";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
+import { rutas } from "@/lib/rutas";
 
 export type ContrataCreada = ContrataEntregada & {
   id: string;
@@ -52,7 +53,7 @@ export function ContrataCreadaPanel({
       />
 
       <Button variant="outline" className="w-full" asChild>
-        <Link href={`/contratas/${contrata.id}`}>Ver la contrata</Link>
+        <Link href={rutas.contrata(contrata.id)}>Ver la contrata</Link>
       </Button>
       <Button variant="ghost" className="w-full" asChild>
         <Link href="/contratas">Volver a contratas</Link>

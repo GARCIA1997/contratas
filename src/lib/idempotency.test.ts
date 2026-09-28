@@ -90,6 +90,28 @@ describe("withIdempotency", () => {
     expect(tabla.size).toBe(0);
   });
 
+  it("si la mutación se aplicó pero falla guardar el resultado, responde éxito y NO libera la reserva (el reintento no la vuelve a ejecutar)", async () => {
+    const run = vi.fn().mockImplementation(async () => {
+      // Simula que la fila desaparece → el update posterior falla.
+      tabla.delete("k-f");
+      tabla.set("k-f", {
+        id: "k-f", ownerId: "o1", endpoint: "crear", resultado: null,
+        completada: false, creadoEn: new Date(),
+      });
+      return { id: "c1" };
+    });
+    const { prisma } = await import("@/lib/prisma");
+    const spy = vi
+      .spyOn(prisma.processedOperation, "update")
+      .mockRejectedValueOnce(new Error("DB caída"));
+    await expect(withIdempotency(req("k-f"), "o1", "crear", run)).resolves.toEqual({ id: "c1" });
+    expect(tabla.has("k-f")).toBe(true);
+    // Reintento inmediato: la reserva sigue "en curso" → 503, no re-ejecuta.
+    await expect(withIdempotency(req("k-f"), "o1", "crear", run)).rejects.toMatchObject({ status: 503 });
+    expect(run).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
   it("un reintento después de terminar devuelve el resultado sin volver a ejecutar", async () => {
     const run = vi.fn().mockResolvedValue({ total: 500 });
     const a = await withIdempotency(req("k1"), "o1", "cobrar", run);

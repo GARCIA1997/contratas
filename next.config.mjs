@@ -12,7 +12,11 @@ const withSerwist = withSerwistInit({
   swDest: "public/sw.js",
   // El service worker solo se genera en producción para no interferir en dev.
   disable: process.env.NODE_ENV === "development",
-  reloadOnOnline: true,
+  // NO recargar al volver la señal: con señal intermitente recargaba la app
+  // a cada rato, borrando lo que se estaba capturando y cerrando el recibo
+  // de WhatsApp de una entrega hecha sin señal. La reconexión (subir la
+  // cola, bajar datos) la maneja OfflineBootstrap sin tocar la pantalla.
+  reloadOnOnline: false,
 });
 
 /** @type {import('next').NextConfig} */
@@ -51,6 +55,38 @@ const nextConfig = {
   // atascada en el build anterior indefinidamente. Esto es la fuente de
   // verdad (Next la sirve directo); nginx en el VPS repite la misma
   // cabecera como defensa adicional (ver deploy/nginx.conf.example).
+  // Las pantallas de un registro pasaron de `/clientes/<id>` a
+  // `/clientes/ver?id=<id>` (rutas estáticas: abren sin señal para
+  // cualquier id — ver src/lib/rutas.ts). Esto mantiene vivos favoritos y
+  // enlaces viejos. Los segmentos estáticos existentes se excluyen para no
+  // redirigirlos a sí mismos.
+  async redirects() {
+    const ESTATICAS = {
+      clientes: "nuevo|buscar-global|ver|editar|historial|estado-cuenta|unificar",
+      contratas: "nueva|ver|editar|recibo|renovar",
+      deudores: "nuevo|ver|editar|estado-cuenta",
+      citas: "nueva|editar",
+    };
+    const SUBPANTALLAS = {
+      clientes: ["editar", "historial", "estado-cuenta", "unificar"],
+      contratas: ["editar", "recibo", "renovar"],
+      deudores: ["editar", "estado-cuenta"],
+      citas: ["editar"],
+    };
+    return Object.entries(SUBPANTALLAS).flatMap(([entidad, subs]) => {
+      const id = `:id((?!${ESTATICAS[entidad]})[^/]+)`;
+      return [
+        ...subs.map((sub) => ({
+          source: `/${entidad}/${id}/${sub}`,
+          destination: `/${entidad}/${sub}?id=:id`,
+          permanent: false,
+        })),
+        ...(entidad === "citas"
+          ? []
+          : [{ source: `/${entidad}/${id}`, destination: `/${entidad}/ver?id=:id`, permanent: false }]),
+      ];
+    });
+  },
   async headers() {
     return [
       {

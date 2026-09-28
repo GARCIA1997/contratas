@@ -10,6 +10,7 @@ import { EstadoBadge } from "@/components/estado-badge";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { formatMoneda } from "@/lib/utils";
 import type { ContrataResumen } from "@/components/contratas/tipos";
+import { rutas } from "@/lib/rutas";
 
 /**
  * El filtro principal es por estado de cobranza: lo primero que necesitas
@@ -40,7 +41,7 @@ export function ContratasLista({
   // funcionando en vez de quedar pegado en pantalla negra.
   useEffect(() => {
     for (const c of contratas) {
-      router.prefetch(`/contratas/${c.id}`);
+      router.prefetch(rutas.contrata(c.id));
     }
   }, [contratas, router]);
 
@@ -86,7 +87,7 @@ export function ContratasLista({
       <ul className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
         {visibles.map((c) => (
           <li key={c.id}>
-            <Link href={`/contratas/${c.id}`}>
+            <Link href={rutas.contrata(c.id)}>
               <Card className="flex items-center justify-between gap-3 p-3 transition-colors hover:bg-accent">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{c.clienteNombre}</p>

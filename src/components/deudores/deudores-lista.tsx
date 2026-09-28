@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatMoneda } from "@/lib/utils";
+import { rutas } from "@/lib/rutas";
 
 export type DeudorItem = {
   id: string;
@@ -24,7 +25,7 @@ export function DeudoresLista({ deudores }: { deudores: DeudorItem[] }) {
   // tocar cualquiera sigue funcionando en vez de quedar pegado en negro.
   useEffect(() => {
     for (const d of deudores) {
-      router.prefetch(`/deudores/${d.id}`);
+      router.prefetch(rutas.deudor(d.id));
     }
   }, [deudores, router]);
 
@@ -55,7 +56,7 @@ export function DeudoresLista({ deudores }: { deudores: DeudorItem[] }) {
       <ul className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
         {visibles.map((d) => (
           <li key={d.id}>
-            <Link href={`/deudores/${d.id}`}>
+            <Link href={rutas.deudor(d.id)}>
               <Card className="flex items-center justify-between gap-3 p-3 transition-colors hover:bg-accent">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{d.nombre}</p>

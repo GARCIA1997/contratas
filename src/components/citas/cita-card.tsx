@@ -11,14 +11,11 @@ import { CitaBadge } from "@/components/citas/cita-badge";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { estadoCitaVista } from "@/lib/citas";
-import { enqueue } from "@/lib/offline/queue";
+import { guardarOperacion } from "@/lib/offline/guardar";
 import { syncCitas } from "@/lib/offline/sync";
 import type { CitaLocal } from "@/lib/offline/db";
-import {
-  fetchConTimeout,
-  TIMEOUT_ESCRITURA_MS,
-  debeTrabajarLocal,
-} from "@/lib/offline/conexion";
+import { mensajeDeError } from "@/lib/offline/conexion";
+import { rutas } from "@/lib/rutas";
 
 const TIPO_LABEL: Record<CitaLocal["tipo"], string> = {
   NUEVA: "Nueva contrata",
@@ -45,39 +42,25 @@ export function CitaCard({
       ? cita.contrataOrigenId
       : null;
   const convertirHref = necesitaElegir
-    ? `/citas/${cita.id}/editar`
+    ? rutas.citaEditar(cita.id)
     : cita.tipo === "UNIFICACION"
-      ? `/clientes/${cita.clienteId}/unificar?citaId=${cita.id}`
+      ? rutas.clienteUnificar(cita.clienteId, cita.id)
       : contrataOrigenUtil
-        ? `/contratas/${contrataOrigenUtil}/renovar?citaId=${cita.id}`
+        ? rutas.contrataRenovar(contrataOrigenUtil, cita.id)
         : `/contratas/nueva?clienteId=${cita.clienteId}&citaId=${cita.id}`;
 
   async function descartar() {
     if (!confirm(`¿Descartar la cita de ${cita.clienteNombre}?`)) return;
     setDescartando(true);
-    const sinConexion = debeTrabajarLocal();
-    if (sinConexion) {
-      try {
-        await enqueue(ownerId, "cita.cancelar", { citaId: cita.id });
-      } catch (e) {
-        alert(e instanceof Error ? e.message : "No se pudo descartar");
-      }
-    } else {
-      try {
-        await fetchConTimeout(
-          `/api/citas/${cita.id}/cancelar`,
-          { method: "POST" },
-          TIMEOUT_ESCRITURA_MS
-        );
-        await syncCitas(ownerId);
-      } catch {
-        // Si la red falló, se encola para que no se pierda la intención.
-        // Cancelar dos veces deja el mismo estado, así que reintentar es
-        // seguro aunque la petición sí hubiera llegado.
-        await enqueue(ownerId, "cita.cancelar", { citaId: cita.id }).catch((e) =>
-          alert(e instanceof Error ? e.message : "No se pudo descartar")
-        );
-      }
+    try {
+      const r = await guardarOperacion({
+        ownerId,
+        clave: crypto.randomUUID(),
+        lote: [{ type: "cita.cancelar", payload: { citaId: cita.id } }],
+      });
+      if (r.enServidor) await syncCitas(ownerId);
+    } catch (e) {
+      alert(mensajeDeError(e, "No se pudo descartar"));
     }
     setDescartando(false);
   }
@@ -88,7 +71,7 @@ export function CitaCard({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <Link
-              href={`/clientes/${cita.clienteId}`}
+              href={rutas.cliente(cita.clienteId)}
               className="text-sm font-semibold hover:underline"
             >
               {cita.clienteNombre}
@@ -117,7 +100,7 @@ export function CitaCard({
         {cita.estado === "PENDIENTE" && (
           <div className="grid grid-cols-3 gap-2">
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/citas/${cita.id}/editar`}>
+              <Link href={rutas.citaEditar(cita.id)}>
                 <Pencil className="size-4" /> Reagendar
               </Link>
             </Button>

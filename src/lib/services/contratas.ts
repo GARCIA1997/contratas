@@ -42,6 +42,7 @@ export async function getContrata(
 type CrearInput = {
   clienteId?: string;
   clienteNombre?: string;
+  clienteNuevoId?: string;
   tipo: TipoContrata;
   monto: number;
   abono: number;
@@ -68,10 +69,21 @@ export function hoyDeCaptura(fechaCaptura?: string): Date {
   return f;
 }
 
+/**
+ * Alta hecha en modo local que YA llegó al servidor (reintento cuya
+ * respuesta se perdió y cuyo registro de idempotencia no se guardó): la
+ * contrata con ese id existe, así que se trata como hecha en vez de
+ * intentar crearla otra vez (P2002 → 500 → la cola se quedaba atorada).
+ */
+async function contrataYaCreada(ownerId: string, id?: string) {
+  if (!id) return null;
+  return prisma.contrata.findFirst({ where: { id, ownerId }, include: includeDatos });
+}
+
 /** Resuelve el cliente destino garantizando que pertenece al usuario. */
 async function resolverClienteId(
   ownerId: string,
-  input: { clienteId?: string; clienteNombre?: string },
+  input: { clienteId?: string; clienteNombre?: string; clienteNuevoId?: string },
   tx: Prisma.TransactionClient
 ): Promise<string> {
   if (input.clienteId) {
@@ -83,8 +95,20 @@ async function resolverClienteId(
     return cliente.id;
   }
   if (input.clienteNombre) {
+    if (input.clienteNuevoId) {
+      // Reintento de un alta que ya creó al cliente: se reutiliza.
+      const previo = await tx.cliente.findFirst({
+        where: { id: input.clienteNuevoId, ownerId },
+        select: { id: true },
+      });
+      if (previo) return previo.id;
+    }
     const nuevo = await tx.cliente.create({
-      data: { ownerId, nombre: input.clienteNombre },
+      data: {
+        ...(input.clienteNuevoId ? { id: input.clienteNuevoId } : {}),
+        ownerId,
+        nombre: input.clienteNombre,
+      },
       select: { id: true },
     });
     return nuevo.id;
@@ -115,6 +139,8 @@ export async function crearContrata(
   input: CrearInput,
   incluirOtras: boolean = false
 ): Promise<ContrataCreadaConDatos> {
+  const existente = await contrataYaCreada(ownerId, input.id);
+  if (existente) return { ...existente, otrasLiquidadas: [] };
   const config = await getConfig(ownerId);
   const fechaInicio = new Date(input.fechaInicio);
   const fechas = calcularFechasPago(
@@ -585,6 +611,18 @@ export async function renovarContrata(
   input: NuevaContrataInput,
   incluirOtras: boolean
 ): Promise<ResultadoRenovacion> {
+  const existente = await contrataYaCreada(ownerId, input.id);
+  if (existente) {
+    // Ya aplicada (ver contrataYaCreada): las liquidaciones fueron en la
+    // misma transacción, no hay nada más que hacer.
+    return {
+      nuevaContrata: existente,
+      montoEntregado: 0,
+      saldoLiquidado: 0,
+      contratasLiquidadas: 0,
+      otrasLiquidadas: [],
+    };
+  }
   const original = await getContrata(ownerId, contrataId);
   if (original.convertidaADeuda) {
     throw new HttpError(400, "Esta contrata ya fue convertida a deuda");
@@ -644,6 +682,18 @@ export async function unificarContratas(
   contrataIds: string[],
   input: NuevaContrataInput
 ): Promise<ResultadoRenovacion> {
+  const existente = await contrataYaCreada(ownerId, input.id);
+  if (existente) {
+    // Ya aplicada (ver contrataYaCreada): las liquidaciones fueron en la
+    // misma transacción, no hay nada más que hacer.
+    return {
+      nuevaContrata: existente,
+      montoEntregado: 0,
+      saldoLiquidado: 0,
+      contratasLiquidadas: 0,
+      otrasLiquidadas: [],
+    };
+  }
   if (contrataIds.length < 2) {
     throw new HttpError(400, "Selecciona al menos dos contratas para unificar");
   }

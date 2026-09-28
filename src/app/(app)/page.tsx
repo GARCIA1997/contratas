@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Card,
@@ -17,11 +16,8 @@ import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
   getKpis,
   getTendencia,
-  getIdsParaPrecarga,
   getCitasPendientes,
 } from "@/lib/offline/repo";
-import { precargarRutaDelDia } from "@/lib/offline/precarga-ligera";
-import { calidadConexion } from "@/lib/offline/conexion";
 import type { FiltroDashboard } from "@/lib/services/dashboard";
 import { formatMoneda, cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -37,7 +33,6 @@ const FILTROS: { key: FiltroDashboard; label: string }[] = [
 
 export default function DashboardPage() {
   const claims = useAuthClaims();
-  const router = useRouter();
   const searchParams = useSearchParams();
   const filtroParam = searchParams.get("filtro");
   const filtro: FiltroDashboard =
@@ -63,22 +58,6 @@ export default function DashboardPage() {
     () => (ownerId ? getCitasPendientes(ownerId) : undefined),
     [ownerId]
   );
-
-  // Precarga ligera y automática: solo la ruta del día y las citas, para
-  // que perder la señal a media visita no deje una pantalla en negro.
-  // Descargar TODA la app es otra cosa —deliberada y bajo demanda— y vive
-  // en el botón «Preparar para trabajar sin señal» (preparar-offline.ts).
-  useEffect(() => {
-    // Solo con señal buena: en 3G la precarga compite con lo que el usuario
-    // está tocando ahora mismo, y ahí vale más la pena responder rápido con
-    // lo que ya está en caché que adelantar pantallas.
-    if (!ownerId || calidadConexion() !== "rapida") return;
-    let cancelar: (() => void) | undefined;
-    getIdsParaPrecarga(ownerId).then((ids) => {
-      cancelar = precargarRutaDelDia(router, ids);
-    });
-    return () => cancelar?.();
-  }, [ownerId, router]);
 
   if (!kpis) return null;
 

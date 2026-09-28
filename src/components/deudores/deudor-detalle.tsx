@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { formatMoneda } from "@/lib/utils";
 import { enqueue } from "@/lib/offline/queue";
 import { syncDeudores } from "@/lib/offline/sync";
+import { rutas } from "@/lib/rutas";
 
 type AbonoUI = {
   id: string;
@@ -127,7 +128,7 @@ export function DeudorDetalle({
         {esAdmin && (
           <div className="flex gap-1">
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/deudores/${deudor.id}/editar`}>
+              <Link href={rutas.deudorEditar(deudor.id)}>
                 <Pencil className="size-4" /> Editar
               </Link>
             </Button>
@@ -165,7 +166,7 @@ export function DeudorDetalle({
       </Card>
 
       <Button className="w-full" variant="outline" asChild>
-        <Link href={`/deudores/${deudor.id}/estado-cuenta`}>
+        <Link href={rutas.deudorEstadoCuenta(deudor.id)}>
           <FileText className="size-4" /> Estado de cuenta
         </Link>
       </Button>
