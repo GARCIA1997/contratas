@@ -25,6 +25,7 @@ import {
 import { ReciboOtrasLiquidadasPanel } from "@/components/contratas/recibo-otras-liquidadas";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
 import { usePrimerPago } from "@/lib/offline/use-primer-pago";
+import { rutas } from "@/lib/rutas";
 
 type DatosRenovacion = {
   tipo: TipoContrata;
@@ -244,10 +245,10 @@ export function RenovarForm({
           otrasLiquidadas={otrasLiquidadas}
         />
         <Button variant="outline" className="w-full" asChild>
-          <Link href={`/contratas/${renovada.id}`}>Ver la contrata nueva</Link>
+          <Link href={rutas.contrata(renovada.id)}>Ver la contrata nueva</Link>
         </Button>
         <Button variant="ghost" className="w-full" asChild>
-          <Link href={`/contratas/${contrataId}`}>Volver a la contrata original</Link>
+          <Link href={rutas.contrata(contrataId)}>Volver a la contrata original</Link>
         </Button>
       </div>
     );
@@ -256,7 +257,7 @@ export function RenovarForm({
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={`/contratas/${contrataId}`}>
+        <Link href={rutas.contrata(contrataId)}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

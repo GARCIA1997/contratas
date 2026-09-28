@@ -23,6 +23,7 @@ import { formatMoneda } from "@/lib/utils";
 import { estadoContrata, haTerminadoPeriodo, saldoPendiente } from "@/lib/contrata";
 import { enqueue } from "@/lib/offline/queue";
 import { anclarFechaCliente } from "@/lib/fechas";
+import { rutas } from "@/lib/rutas";
 
 type PagoUI = {
   numeroCuota: number;
@@ -86,9 +87,9 @@ export function ContrataDetalle({
   // la pantalla) asegura que "Ver recibo" funcione aunque se pierda la
   // conexión un segundo después.
   useEffect(() => {
-    router.prefetch(`/contratas/${contrata.id}/recibo`);
-    router.prefetch(`/contratas/${contrata.id}/editar`);
-    router.prefetch(`/contratas/${contrata.id}/renovar`);
+    router.prefetch(rutas.contrataRecibo(contrata.id));
+    router.prefetch(rutas.contrataEditar(contrata.id));
+    router.prefetch(rutas.contrataRenovar(contrata.id));
   }, [router, contrata.id]);
 
   const estado = useMemo(
@@ -304,14 +305,14 @@ export function ContrataDetalle({
         </Button>
         <div className="flex gap-1">
           <Button variant="outline" size="sm" asChild>
-            <Link href={`/contratas/${contrata.id}/recibo`}>
+            <Link href={rutas.contrataRecibo(contrata.id)}>
               <FileText className="size-4" /> Recibo
             </Link>
           </Button>
           {esAdmin && (
             <>
               <Button variant="outline" size="sm" asChild>
-                <Link href={`/contratas/${contrata.id}/editar`}>
+                <Link href={rutas.contrataEditar(contrata.id)}>
                   <Pencil className="size-4" />
                 </Link>
               </Button>
@@ -331,7 +332,7 @@ export function ContrataDetalle({
       <div>
         <div className="flex items-center gap-2">
           <Link
-            href={`/clientes/${contrata.clienteId}`}
+            href={rutas.cliente(contrata.clienteId)}
             className="text-2xl font-bold tracking-tight hover:underline"
           >
             {contrata.clienteNombre}
@@ -388,7 +389,7 @@ export function ContrataDetalle({
 
       {puedeRenovar && (
         <Button variant="outline" className="w-full" asChild>
-          <Link href={`/contratas/${contrata.id}/renovar`}>
+          <Link href={rutas.contrataRenovar(contrata.id)}>
             <RefreshCw className="size-4" /> Renovar contrata
           </Link>
         </Button>

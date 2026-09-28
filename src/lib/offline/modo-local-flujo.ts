@@ -1,8 +1,7 @@
 import { syncAll, syncDeudorDetalle } from "@/lib/offline/sync";
 import { flushQueue } from "@/lib/offline/queue";
 import { db } from "@/lib/offline/db";
-import { getTodosLosIds } from "@/lib/offline/repo";
-import { prepararTodaLaApp } from "@/lib/offline/preparar-offline";
+import { descargarPantallas } from "@/lib/offline/pantallas-offline";
 import { calidadConexion } from "@/lib/offline/conexion";
 import { setModoLocal } from "@/lib/offline/modo-local";
 import type { ResumenEnvio } from "@/lib/offline/cola/estado";
@@ -66,9 +65,9 @@ export async function descargarParaModoLocal(
   reporte.datos = await syncAll(ownerId, { forzar: true });
 
   // Los abonos de cada deudor no vienen en el sync general.
-  const ids = await getTodosLosIds(ownerId);
-  reporte.deudores.total = ids.deudores.length;
-  for (const deudorId of ids.deudores) {
+  const deudores = await idsDeDeudores(ownerId);
+  reporte.deudores.total = deudores.length;
+  for (const deudorId of deudores) {
     if (cancelado()) break;
     onProgreso({ fase: "deudores", hechas: reporte.deudores.hechos, total: reporte.deudores.total });
     const ok = await syncDeudorDetalle(ownerId, deudorId).catch(() => false);
@@ -76,11 +75,10 @@ export async function descargarParaModoLocal(
   }
 
   if (!cancelado()) {
-    const r = await prepararTodaLaApp(router, ids, {
+    reporte.pantallas = await descargarPantallas(router, {
       onProgreso: ({ hechas, total }) => onProgreso({ fase: "pantallas", hechas, total }),
       cancelado,
     });
-    reporte.pantallas = r;
   }
   reporte.cancelado = cancelado();
   return reporte;
@@ -143,6 +141,12 @@ async function subirTodo(ownerId: string): Promise<ResumenEnvio | null> {
     await new Promise((r) => setTimeout(r, 500));
   }
   return null;
+}
+
+async function idsDeDeudores(ownerId: string): Promise<string[]> {
+  if (!db) return [];
+  const deudores = await db.deudores.where("ownerId").equals(ownerId).toArray();
+  return deudores.filter((d) => !d._deletedAt).map((d) => d.id);
 }
 
 /** Pendientes (se subirán solas) y apartadas (conflicto) en la cola. */

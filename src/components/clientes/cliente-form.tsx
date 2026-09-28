@@ -12,6 +12,7 @@ import { syncAll } from "@/lib/offline/sync";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
+import { rutas } from "@/lib/rutas";
 
 export type ClienteInicial = {
   id: string;
@@ -71,7 +72,7 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
       });
       idem.confirmado();
       if (r.enServidor && ownerId) await syncAll(ownerId, { forzar: true });
-      router.push(`/clientes/${id}`);
+      router.push(rutas.cliente(id));
       if (r.enServidor) router.refresh();
     } catch (e) {
       setError(mensajeDeError(e));
@@ -83,7 +84,7 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={editando ? `/clientes/${inicial!.id}` : "/clientes"}>
+        <Link href={editando ? rutas.cliente(inicial!.id) : "/clientes"}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

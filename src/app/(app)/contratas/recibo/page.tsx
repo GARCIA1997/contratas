@@ -1,11 +1,11 @@
 "use client";
 
-import { useParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ReciboView } from "@/components/contratas/recibo-view";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getContrata, getConfiguracion } from "@/lib/offline/repo";
 import { saldoPendiente } from "@/lib/contrata";
+import { useRegistroParams } from "@/lib/use-registro-params";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -13,7 +13,7 @@ function round(n: number) {
 
 export default function ReciboPage() {
   const claims = useAuthClaims();
-  const params = useParams<{ id: string }>();
+  const params = useRegistroParams();
   const ownerId = claims.ready ? claims.ownerId : null;
 
   const contrata = useLiveQuery(

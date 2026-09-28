@@ -12,6 +12,7 @@ import { syncAll } from "@/lib/offline/sync";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
+import { rutas } from "@/lib/rutas";
 
 export type DeudorInicial = {
   id: string;
@@ -66,7 +67,7 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
       });
       idem.confirmado();
       if (r.enServidor && ownerId) await syncAll(ownerId, { forzar: true });
-      router.push(`/deudores/${id}`);
+      router.push(rutas.deudor(id));
       if (r.enServidor) router.refresh();
     } catch (e) {
       setError(mensajeDeError(e));
@@ -78,7 +79,7 @@ export function DeudorForm({ inicial }: { inicial?: DeudorInicial }) {
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={editando ? `/deudores/${inicial!.id}` : "/deudores"}>
+        <Link href={editando ? rutas.deudor(inicial!.id) : "/deudores"}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

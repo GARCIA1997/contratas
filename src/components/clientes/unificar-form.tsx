@@ -23,6 +23,7 @@ import {
   type ContrataEntregada,
 } from "@/components/contratas/recibo-entrega";
 import { usePrimerPago } from "@/lib/offline/use-primer-pago";
+import { rutas } from "@/lib/rutas";
 
 type DatosUnificacion = {
   tipo: TipoContrata;
@@ -248,10 +249,10 @@ export function UnificarForm({
           tituloMensaje="Detalles de tu reestructuración"
         />
         <Button variant="outline" className="w-full" asChild>
-          <Link href={`/contratas/${unificada.id}`}>Ver la contrata nueva</Link>
+          <Link href={rutas.contrata(unificada.id)}>Ver la contrata nueva</Link>
         </Button>
         <Button variant="ghost" className="w-full" asChild>
-          <Link href={`/clientes/${clienteId}`}>Volver al cliente</Link>
+          <Link href={rutas.cliente(clienteId)}>Volver al cliente</Link>
         </Button>
       </div>
     );
@@ -260,7 +261,7 @@ export function UnificarForm({
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={`/clientes/${clienteId}`}>
+        <Link href={rutas.cliente(clienteId)}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

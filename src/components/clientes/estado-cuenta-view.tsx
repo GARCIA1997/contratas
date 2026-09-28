@@ -10,6 +10,7 @@ import { linkWhatsApp } from "@/lib/whatsapp";
 import { mensajeEstadoCuenta } from "@/lib/mensajes-whatsapp";
 import { desgloseCuotas, type EstadoContrata } from "@/lib/contrata";
 import { anclarFechaCliente } from "@/lib/fechas";
+import { rutas } from "@/lib/rutas";
 
 type PagoUI = {
   numeroCuota: number;
@@ -119,7 +120,7 @@ export function EstadoCuentaView({
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={`/clientes/${cliente.id}`}>
+        <Link href={rutas.cliente(cliente.id)}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>
@@ -165,7 +166,7 @@ export function EstadoCuentaView({
             {cliente.contratas.map((c) => (
               <li key={c.id}>
                 <Link
-                  href={`/contratas/${c.id}`}
+                  href={rutas.contrata(c.id)}
                   className="flex items-center justify-between gap-2 rounded-2xl border border-border/60 bg-secondary/30 px-3 py-2.5 transition-colors hover:bg-secondary/60"
                 >
                   <div className="min-w-0">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Combine,
   FileText,
@@ -28,6 +28,8 @@ import {
   getCobroVencidoPreview,
   getCitasDeCliente,
 } from "@/lib/offline/repo";
+import { rutas } from "@/lib/rutas";
+import { useRegistroParams } from "@/lib/use-registro-params";
 
 type ExtrasOnline = {
   cobroPreview: { total: number; items: unknown[] } | null;
@@ -72,7 +74,7 @@ function useExtrasOnline(clienteId: string, esAdmin: boolean): ExtrasOnline {
 
 export default function ClientePerfilPage() {
   const claims = useAuthClaims();
-  const params = useParams<{ id: string }>();
+  const params = useRegistroParams();
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready ? claims.esAdmin : false;
@@ -90,13 +92,13 @@ export default function ClientePerfilPage() {
   // solo lectura del perfil para que sigan funcionando si se pierde la
   // conexión justo después de abrirlo.
   useEffect(() => {
-    router.prefetch(`/clientes/${params.id}/historial`);
-    router.prefetch(`/clientes/${params.id}/estado-cuenta`);
+    router.prefetch(rutas.clienteHistorial(params.id));
+    router.prefetch(rutas.clienteEstadoCuenta(params.id));
     const elegibles = perfil?.contratas.filter(
       (c) => c.estado !== "LIQUIDADA" && c.estado !== "EN_DEUDA" && c.saldo > 0
     ).length;
     if (elegibles !== undefined && elegibles >= 2) {
-      router.prefetch(`/clientes/${params.id}/unificar`);
+      router.prefetch(rutas.clienteUnificar(params.id));
     }
   }, [router, params.id, perfil]);
 
@@ -153,7 +155,7 @@ export default function ClientePerfilPage() {
         {esAdmin && (
           <div className="flex gap-1">
             <Button variant="outline" size="sm" asChild>
-              <Link href={`/clientes/${perfil.id}/editar`}>
+              <Link href={rutas.clienteEditar(perfil.id)}>
                 <Pencil className="size-4" /> Editar
               </Link>
             </Button>
@@ -272,12 +274,12 @@ export default function ClientePerfilPage() {
 
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" asChild>
-          <Link href={`/clientes/${perfil.id}/estado-cuenta`}>
+          <Link href={rutas.clienteEstadoCuenta(perfil.id)}>
             <FileText className="size-4" /> Estado de cuenta
           </Link>
         </Button>
         <Button variant="outline" asChild>
-          <Link href={`/clientes/${perfil.id}/historial`}>
+          <Link href={rutas.clienteHistorial(perfil.id)}>
             <History className="size-4" /> Historial
           </Link>
         </Button>
@@ -297,7 +299,7 @@ export default function ClientePerfilPage() {
           </Button>
           {elegiblesUnificar >= 2 && (
             <Button variant="outline" asChild>
-              <Link href={`/clientes/${perfil.id}/unificar`}>
+              <Link href={rutas.clienteUnificar(perfil.id)}>
                 <Combine className="size-4" /> Unificar
               </Link>
             </Button>

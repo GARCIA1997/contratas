@@ -45,7 +45,7 @@ export function calidadConexion(): CalidadConexion {
 
   // Safari/iOS no expone navigator.connection: ahí no hay forma de medirlo
   // y se asume rápida. En esos equipos la protección viene de los timeouts
-  // y de haber preparado la app antes de salir (ver preparar-offline).
+  // y de las pantallas ya descargadas (ver pantallas-offline.ts).
   return "rapida";
 }
 

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { syncAll } from "@/lib/offline/sync";
 import { flushQueue } from "@/lib/offline/queue";
 import { suscribirseAConexion } from "@/lib/offline/conexion";
 import { instalarGuardiaFetch } from "@/lib/offline/modo-local";
+import { descargarPantallasEnSegundoPlano } from "@/lib/offline/pantallas-offline";
 
 /**
  * Monta el ciclo de vida de la capa offline para el owner activo.
@@ -23,13 +25,19 @@ import { instalarGuardiaFetch } from "@/lib/offline/modo-local";
  *   timers y peticiones (iOS sobre todo): al regresar, la señal pudo haber
  *   vuelto sin que llegara ningún evento, y un envío pudo haberse quedado a
  *   medias — el candado de la cola lo detecta y lo retoma.
+ *
+ * Con buena señal, además, deja descargadas en segundo plano las pantallas
+ * de la app (una vez por versión) para que abran aunque se pierda la señal
+ * sin haber preparado nada — ver pantallas-offline.ts.
  */
 export function OfflineBootstrap({ ownerId }: { ownerId: string }) {
+  const router = useRouter();
   useEffect(() => {
     instalarGuardiaFetch();
     async function intentar() {
       await flushQueue(ownerId);
       await syncAll(ownerId);
+      descargarPantallasEnSegundoPlano(router);
     }
     void intentar();
     const quitarConexion = suscribirseAConexion(() => void intentar());
@@ -38,7 +46,7 @@ export function OfflineBootstrap({ ownerId }: { ownerId: string }) {
       quitarConexion();
       quitarFrente();
     };
-  }, [ownerId]);
+  }, [ownerId, router]);
 
   return null;
 }

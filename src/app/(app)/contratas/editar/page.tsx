@@ -1,22 +1,24 @@
 "use client";
 
 import { useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ContrataForm } from "@/components/contratas/contrata-form";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getContrata, getClientes, getConfiguracion } from "@/lib/offline/repo";
 import { CONFIG_DEFAULTS } from "@/lib/config";
+import { rutas } from "@/lib/rutas";
+import { useRegistroParams } from "@/lib/use-registro-params";
 
 export default function EditarContrataPage() {
   const claims = useAuthClaims();
-  const params = useParams<{ id: string }>();
+  const params = useRegistroParams();
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready && claims.esAdmin;
 
   useEffect(() => {
-    if (claims.ready && !esAdmin) router.replace(`/contratas/${params.id}`);
+    if (claims.ready && !esAdmin) router.replace(rutas.contrata(params.id));
   }, [claims.ready, esAdmin, router, params.id]);
 
   const contrata = useLiveQuery(

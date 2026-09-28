@@ -11,6 +11,7 @@ import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getClientes, getConfiguracion, getCita } from "@/lib/offline/repo";
 import { CONFIG_DEFAULTS } from "@/lib/config";
+import { rutas } from "@/lib/rutas";
 
 export default function NuevaContrataPage() {
   const claims = useAuthClaims();
@@ -81,7 +82,7 @@ export default function NuevaContrataPage() {
         clientePreseleccionado={clientePreseleccionado}
         volverHref={
           clientePreseleccionado
-            ? `/clientes/${clientePreseleccionado.id}`
+            ? rutas.cliente(clientePreseleccionado.id)
             : "/contratas"
         }
         montoInicial={cita?.montoEstimado}

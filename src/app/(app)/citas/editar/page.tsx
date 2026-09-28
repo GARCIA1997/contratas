@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { AgendarForm } from "@/components/citas/agendar-form";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getCita, getClientes } from "@/lib/offline/repo";
 import { anclarFechaCliente } from "@/lib/fechas";
+import { rutas } from "@/lib/rutas";
+import { useRegistroParams } from "@/lib/use-registro-params";
 
 export default function EditarCitaPage() {
   const claims = useAuthClaims();
   const router = useRouter();
-  const params = useParams<{ id: string }>();
+  const params = useRegistroParams();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready && claims.esAdmin;
 
@@ -54,7 +56,7 @@ export default function EditarCitaPage() {
           .slice(0, 10),
         notas: cita.notas,
       }}
-      volverHref={`/clientes/${cita.clienteId}`}
+      volverHref={rutas.cliente(cita.clienteId)}
     />
   );
 }

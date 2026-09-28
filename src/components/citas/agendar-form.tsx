@@ -18,6 +18,7 @@ import { syncCitas } from "@/lib/offline/sync";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
+import { rutas } from "@/lib/rutas";
 
 export type ClienteOpcion = { id: string; nombre: string };
 
@@ -201,7 +202,7 @@ export function AgendarForm({
       idem.confirmado();
       if (r.enServidor && ownerId) await syncCitas(ownerId);
       // Sin señal el efecto local ya la dejó visible: igual que con señal.
-      if (reagendando || !r.enServidor) router.push(`/clientes/${clienteId}`);
+      if (reagendando || !r.enServidor) router.push(rutas.cliente(clienteId));
       else setGuardada(true);
     } catch (e) {
       setError(mensajeDeError(e, reagendando ? "No se pudo guardar" : "No se pudo agendar"));
@@ -210,7 +211,7 @@ export function AgendarForm({
     }
   }
 
-  const volverHref = volverHrefProp ?? (clienteId ? `/clientes/${clienteId}` : "/ruta");
+  const volverHref = volverHrefProp ?? (clienteId ? rutas.cliente(clienteId) : "/ruta");
 
   if (guardada) {
     return (

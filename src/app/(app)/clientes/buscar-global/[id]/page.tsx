@@ -13,6 +13,7 @@ import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import type { ClienteGlobalDetalle } from "@/lib/services/clientes-globales";
 import type { TipoContrata } from "@prisma/client";
+import { rutas } from "@/lib/rutas";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -67,7 +68,7 @@ export default function ClienteGlobalDetallePage() {
       }
       const nuevo = await res.json();
       if (claims.ready && claims.ownerId) await syncAll(claims.ownerId, { forzar: true });
-      router.push(`/clientes/${nuevo.id}`);
+      router.push(rutas.cliente(nuevo.id));
     } catch (e) {
       setErrorDuplicar(e instanceof Error ? e.message : "No se pudo registrar el cliente");
       setDuplicando(false);

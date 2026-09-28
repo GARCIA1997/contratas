@@ -1,14 +1,14 @@
 "use client";
 
-import { useParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { EstadoCuentaDeudorView } from "@/components/deudores/estado-cuenta-deudor-view";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getDeudor, getConfiguracion } from "@/lib/offline/repo";
+import { useRegistroParams } from "@/lib/use-registro-params";
 
 export default function EstadoCuentaDeudorPage() {
   const claims = useAuthClaims();
-  const params = useParams<{ id: string }>();
+  const params = useRegistroParams();
   const ownerId = claims.ready ? claims.ownerId : null;
 
   const deudor = useLiveQuery(

@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { DeudorForm } from "@/components/deudores/deudor-form";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getDeudor } from "@/lib/offline/repo";
+import { rutas } from "@/lib/rutas";
+import { useRegistroParams } from "@/lib/use-registro-params";
 
 export default function EditarDeudorPage() {
   const claims = useAuthClaims();
-  const params = useParams<{ id: string }>();
+  const params = useRegistroParams();
   const router = useRouter();
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready && claims.esAdmin;
@@ -20,7 +22,7 @@ export default function EditarDeudorPage() {
   );
 
   useEffect(() => {
-    if (claims.ready && !esAdmin) router.replace(`/deudores/${params.id}`);
+    if (claims.ready && !esAdmin) router.replace(rutas.deudor(params.id));
   }, [claims.ready, esAdmin, params.id, router]);
 
   if (!claims.ready || !esAdmin) return null;

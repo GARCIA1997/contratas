@@ -27,6 +27,7 @@ import {
   type ContrataCreada,
 } from "@/components/contratas/contrata-creada";
 import { usePrimerPago } from "@/lib/offline/use-primer-pago";
+import { rutas } from "@/lib/rutas";
 
 export type ClienteOpcion = { id: string; nombre: string };
 
@@ -269,7 +270,7 @@ export function ContrataForm({
     });
     idem.confirmado();
     if (r.enServidor && ownerId) await syncAll(ownerId, { forzar: true });
-    router.push(`/contratas/${contrataId}`);
+    router.push(rutas.contrata(contrataId));
     router.refresh();
   }
 
@@ -342,7 +343,7 @@ export function ContrataForm({
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={editando ? `/contratas/${inicial!.id}` : volverHref}>
+        <Link href={editando ? rutas.contrata(inicial!.id) : volverHref}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>

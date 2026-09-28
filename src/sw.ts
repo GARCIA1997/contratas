@@ -1,5 +1,5 @@
 import { defaultCache } from "@serwist/next/worker";
-import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
+import type { PrecacheEntry, SerwistGlobalConfig, SerwistPlugin } from "serwist";
 import { ExpirationPlugin, NetworkFirst, Serwist } from "serwist";
 
 /**
@@ -11,6 +11,20 @@ import { ExpirationPlugin, NetworkFirst, Serwist } from "serwist";
  * 3 días: alcanza para preparar la noche anterior y trabajar el día
  * siguiente aunque se alargue la ruta.
  */
+/**
+ * Las pantallas de un registro llevan el id en la query (`/clientes/ver?id=…`)
+ * y la página es la misma para todos: se guarda UNA entrada por ruta, sin
+ * query (tampoco el `_rsc` que agrega Next). Así lo descargado para un
+ * cliente sirve para cualquier otro, incluidos los creados sin señal.
+ */
+const sinQuery: SerwistPlugin = {
+  cacheKeyWillBeUsed: async ({ request }) => {
+    const url = new URL(request.url);
+    url.search = "";
+    return url.href;
+  },
+};
+
 const EXPIRACION_PANTALLAS = {
   maxEntries: 2000,
   maxAgeSeconds: 3 * 24 * 60 * 60,
@@ -72,9 +86,7 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "pages-rsc-prefetch",
         networkTimeoutSeconds: 4,
-        plugins: [
-          new ExpirationPlugin(EXPIRACION_PANTALLAS),
-        ],
+        plugins: [sinQuery, new ExpirationPlugin(EXPIRACION_PANTALLAS)],
       }),
     },
     {
@@ -85,9 +97,7 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "pages-rsc",
         networkTimeoutSeconds: 4,
-        plugins: [
-          new ExpirationPlugin(EXPIRACION_PANTALLAS),
-        ],
+        plugins: [sinQuery, new ExpirationPlugin(EXPIRACION_PANTALLAS)],
       }),
     },
     {
@@ -98,9 +108,7 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "pages",
         networkTimeoutSeconds: 4,
-        plugins: [
-          new ExpirationPlugin(EXPIRACION_PANTALLAS),
-        ],
+        plugins: [sinQuery, new ExpirationPlugin(EXPIRACION_PANTALLAS)],
       }),
     },
     {
@@ -113,9 +121,7 @@ const serwist = new Serwist({
       handler: new NetworkFirst({
         cacheName: "others",
         networkTimeoutSeconds: 4,
-        plugins: [
-          new ExpirationPlugin(EXPIRACION_PANTALLAS),
-        ],
+        plugins: [sinQuery, new ExpirationPlugin(EXPIRACION_PANTALLAS)],
       }),
     },
     ...defaultCache,

@@ -34,6 +34,7 @@ import {
   type FiltroPeriodicidad,
 } from "@/lib/citas";
 import type { ParadaRuta } from "@/lib/services/ruta";
+import { rutas } from "@/lib/rutas";
 
 /** Para el mensaje de "no hay entregas X pendientes". */
 const ETIQUETA_FILTRO: Record<FiltroPeriodicidad, string> = {
@@ -107,7 +108,7 @@ function Parada({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <Link
-              href={`/clientes/${parada.clienteId}`}
+              href={rutas.cliente(parada.clienteId)}
               className="truncate text-sm font-semibold hover:underline"
             >
               {parada.nombre}
@@ -257,7 +258,7 @@ export default function RutaDelDiaPage() {
   useEffect(() => {
     if (!paradas) return;
     for (const p of paradas) {
-      router.prefetch(`/clientes/${p.clienteId}`);
+      router.prefetch(rutas.cliente(p.clienteId));
     }
   }, [paradas, router]);
 

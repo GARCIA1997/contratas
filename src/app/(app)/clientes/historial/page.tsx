@@ -1,14 +1,14 @@
 "use client";
 
-import { useParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { HistorialView } from "@/components/clientes/historial-view";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getHistorialCliente } from "@/lib/offline/repo";
+import { useRegistroParams } from "@/lib/use-registro-params";
 
 export default function HistorialClientePage() {
   const claims = useAuthClaims();
-  const params = useParams<{ id: string }>();
+  const params = useRegistroParams();
   const ownerId = claims.ready ? claims.ownerId : null;
 
   const historial = useLiveQuery(

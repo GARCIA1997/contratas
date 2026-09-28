@@ -1,49 +1,55 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
-import { UnificarForm } from "@/components/clientes/unificar-form";
+import { RenovarForm } from "@/components/contratas/renovar-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import {
-  getClientePerfil,
-  getContratasConSaldo,
+  getContrata,
+  getContratasConVencido,
   getConfiguracion,
   getCita,
 } from "@/lib/offline/repo";
+import { saldoPendiente } from "@/lib/contrata";
 import { CONFIG_DEFAULTS } from "@/lib/config";
+import { rutas } from "@/lib/rutas";
+import { useRegistroParams } from "@/lib/use-registro-params";
 
-export default function UnificarContratasPage() {
+export default function RenovarContrataPage() {
   const claims = useAuthClaims();
-  const params = useParams<{ id: string }>();
+  const params = useRegistroParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const citaId = searchParams.get("citaId");
   const ownerId = claims.ready ? claims.ownerId : null;
   const esAdmin = claims.ready && claims.esAdmin;
-  // Igual que en renovar: una vez unificadas, las contratas seleccionadas
-  // quedan liquidadas y `elegibles` cae debajo de 2 — sin este flag, el
-  // efecto de abajo redirige de vuelta antes de que el usuario alcance a
-  // ver el panel de confirmación / enviar el recibo por WhatsApp.
+  // Una vez renovada, la contrata original queda liquidada (saldo 0) — sin
+  // este flag, el efecto de abajo la detecta como "ya no elegible" y
+  // redirige de vuelta ANTES de que el usuario alcance a ver el panel de
+  // confirmación / enviar el recibo por WhatsApp.
   const [completado, setCompletado] = useState(false);
 
   useEffect(() => {
-    if (claims.ready && !esAdmin) router.replace(`/clientes/${params.id}`);
+    if (claims.ready && !esAdmin) router.replace(rutas.contrata(params.id));
   }, [claims.ready, esAdmin, router, params.id]);
 
-  const perfil = useLiveQuery(
-    () => (ownerId ? getClientePerfil(ownerId, params.id) : undefined),
-    [ownerId, params.id]
-  );
-  const elegibles = useLiveQuery(
-    () => (ownerId ? getContratasConSaldo(ownerId, params.id) : undefined),
+  const contrata = useLiveQuery(
+    () => (ownerId ? getContrata(ownerId, params.id) : undefined),
     [ownerId, params.id]
   );
   const config = useLiveQuery(
     () => (ownerId ? getConfiguracion(ownerId) : undefined),
     [ownerId]
+  );
+  const otras = useLiveQuery(
+    () =>
+      ownerId && contrata
+        ? getContratasConVencido(ownerId, contrata.clienteId, contrata.id)
+        : undefined,
+    [ownerId, contrata]
   );
   const cita = useLiveQuery(
     () => (ownerId && citaId ? getCita(ownerId, citaId) : undefined),
@@ -52,19 +58,36 @@ export default function UnificarContratasPage() {
 
   useEffect(() => {
     if (completado) return;
-    if (elegibles && elegibles.length < 2) {
-      router.replace(`/clientes/${params.id}`);
+    if (contrata === null) {
+      router.replace("/contratas");
+      return;
     }
-  }, [elegibles, params.id, router, completado]);
+    if (contrata && contrata.convertidaADeuda) {
+      router.replace(rutas.contrata(params.id));
+      return;
+    }
+    if (
+      contrata &&
+      saldoPendiente(
+        contrata.pagos.map((p) => ({
+          ...p,
+          fechaProgramada: new Date(p.fechaProgramada),
+        })),
+        contrata.abono
+      ) <= 0
+    ) {
+      router.replace(rutas.contrata(params.id));
+    }
+  }, [contrata, params.id, router, completado]);
 
   if (
     !claims.ready ||
     !esAdmin ||
-    perfil === undefined ||
-    perfil === null ||
-    !elegibles ||
-    (!completado && elegibles.length < 2) ||
-    !config
+    contrata === undefined ||
+    contrata === null ||
+    contrata.convertidaADeuda ||
+    !config ||
+    !otras
   ) {
     return (
       <p className="py-10 text-center text-sm text-muted-foreground">
@@ -72,6 +95,14 @@ export default function UnificarContratasPage() {
       </p>
     );
   }
+
+  const saldoOriginal = saldoPendiente(
+    contrata.pagos.map((p) => ({
+      ...p,
+      fechaProgramada: new Date(p.fechaProgramada),
+    })),
+    contrata.abono
+  );
 
   return (
     <div className="space-y-4 md:max-w-xl">
@@ -86,22 +117,23 @@ export default function UnificarContratasPage() {
             )}
             <p className="text-xs text-muted-foreground">
               Solo de referencia — el monto real a cubrir se calcula en vivo
-              contra el saldo pendiente de las contratas que marques.
+              contra el saldo pendiente.
             </p>
           </CardContent>
         </Card>
       )}
-      <UnificarForm
-        clienteId={perfil.id}
+      <RenovarForm
+        contrataId={contrata.id}
         ownerId={ownerId}
-        clienteNombre={perfil.nombre}
-        contratas={elegibles.map((c) => ({ id: c.id, tipo: c.tipo, saldo: c.saldo }))}
-        preseleccion={cita?.contratasUnificarIds}
+        clienteNombre={contrata.clienteNombre}
+        tipoOriginal={contrata.tipo}
+        saldoOriginal={saldoOriginal}
+        otras={otras.map((c) => ({ id: c.id, tipo: c.tipo, saldo: c.saldo }))}
         cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
         maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
         nombreApp={config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp}
         citaId={citaId}
-        onUnificada={() => setCompletado(true)}
+        onRenovada={() => setCompletado(true)}
       />
     </div>
   );

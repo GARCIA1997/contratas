@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { rutas } from "@/lib/rutas";
 
 export type ClienteItem = {
   id: string;
@@ -22,7 +23,7 @@ export function ClientesLista({ clientes }: { clientes: ClienteItem[] }) {
   // tocar cualquiera sigue funcionando en vez de quedar pegado en negro.
   useEffect(() => {
     for (const c of clientes) {
-      router.prefetch(`/clientes/${c.id}`);
+      router.prefetch(rutas.cliente(c.id));
     }
   }, [clientes, router]);
 
@@ -53,7 +54,7 @@ export function ClientesLista({ clientes }: { clientes: ClienteItem[] }) {
       <ul className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0 lg:grid-cols-3">
         {visibles.map((c) => (
           <li key={c.id}>
-            <Link href={`/clientes/${c.id}`}>
+            <Link href={rutas.cliente(c.id)}>
               <Card className="flex items-center justify-between gap-3 p-3 transition-colors hover:bg-accent">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{c.nombre}</p>

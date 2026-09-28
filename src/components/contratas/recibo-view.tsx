@@ -12,6 +12,7 @@ import { anclarFechaCliente } from "@/lib/fechas";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { mensajeDetalleContrata } from "@/lib/mensajes-whatsapp";
 import { estadoContrata, desgloseCuotas } from "@/lib/contrata";
+import { rutas } from "@/lib/rutas";
 
 type PagoUI = {
   numeroCuota: number;
@@ -107,7 +108,7 @@ export function ReciboView({
   return (
     <div className="space-y-4 md:max-w-xl">
       <Button variant="ghost" size="sm" asChild>
-        <Link href={`/contratas/${contrata.id}`}>
+        <Link href={rutas.contrata(contrata.id)}>
           <ArrowLeft className="size-4" /> Volver
         </Link>
       </Button>
@@ -206,7 +207,7 @@ export function ReciboView({
       )}
 
       <Button variant="outline" className="w-full" asChild>
-        <Link href={`/clientes/${contrata.clienteId}/estado-cuenta`}>
+        <Link href={rutas.clienteEstadoCuenta(contrata.clienteId)}>
           Ver estado de cuenta completo del cliente
         </Link>
       </Button>
