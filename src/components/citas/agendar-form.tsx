@@ -8,6 +8,7 @@ import { ArrowLeft, Check } from "lucide-react";
 import type { TipoCitaContrata } from "@/lib/citas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FechaInput } from "@/components/ui/fecha-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
@@ -525,13 +526,8 @@ export function AgendarForm({
           </div>
           <div className="space-y-2">
             <Label htmlFor="fecha">Fecha de entrega</Label>
-            <Input
-              id="fecha"
-              type="date"
-              value={fechaEntrega}
-              onChange={(e) => setFechaEntrega(e.target.value)}
-              required
-            />
+            <FechaInput
+              id="fecha" value={fechaEntrega} onChange={setFechaEntrega} />
           </div>
         </div>
 

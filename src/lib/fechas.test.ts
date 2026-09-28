@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { alinearADiaCobro, anclarFechaCliente, calcularFechasPago } from "./fechas";
+import { alinearADiaCobro, anclarFechaCliente, calcularFechasPago, sugerirPrimerPago } from "./fechas";
 
 describe("anclarFechaCliente", () => {
   it("lee el año/mes/día en UTC y los reconstruye en hora local", () => {
@@ -99,5 +99,34 @@ describe("calcularFechasPago", () => {
     const fechas = calcularFechasPago("QUINCENAL", "DIAS_15_Y_ULTIMO", new Date(2026, 6, 15), 2, 1);
     expect(fechas[0].getDate()).toBe(15);
     expect(fechas[0].getMonth()).toBe(6);
+  });
+});
+
+describe("sugerirPrimerPago", () => {
+  // 21 sep 2026 es lunes.
+  it("SEMANAL: entrega lunes con cobro lunes → lunes siguiente", () => {
+    expect(sugerirPrimerPago("SEMANAL", new Date(2026, 8, 21), "QUINCE_DIAS", 1)).toBe("2026-09-28");
+  });
+  it("SEMANAL: nunca cae a pocos días de la entrega", () => {
+    for (let d = 0; d < 7; d++) {
+      for (let cobro = 0; cobro < 7; cobro++) {
+        const entrega = new Date(2026, 8, 21 + d);
+        const s = sugerirPrimerPago("SEMANAL", entrega, "QUINCE_DIAS", cobro);
+        const [y, m, dd] = s.split("-").map(Number);
+        const dias = Math.round((new Date(y, m - 1, dd).getTime() - entrega.getTime()) / 86400000);
+        expect(dias).toBeGreaterThanOrEqual(4);
+        expect(dias).toBeLessThanOrEqual(10);
+        expect(new Date(y, m - 1, dd).getDay()).toBe(cobro);
+      }
+    }
+  });
+  it("QUINCENAL 15/último: entrega el 1 → el 15", () => {
+    expect(sugerirPrimerPago("QUINCENAL", new Date(2026, 8, 1), "DIAS_15_Y_ULTIMO", 1)).toBe("2026-09-15");
+  });
+  it("QUINCENAL 15 días: entrega + 15", () => {
+    expect(sugerirPrimerPago("QUINCENAL", new Date(2026, 8, 3), "QUINCE_DIAS", 1)).toBe("2026-09-18");
+  });
+  it("MENSUAL: mismo día del mes siguiente", () => {
+    expect(sugerirPrimerPago("MENSUAL", new Date(2026, 8, 22), "QUINCE_DIAS", 1)).toBe("2026-10-22");
   });
 });
