@@ -176,3 +176,45 @@ export function calcularFechasPago(
   }
   return fechas;
 }
+
+/**
+ * Fecha sugerida para el PRIMER pago de una contrata que se entrega en
+ * `entrega`: un periodo después, respetando la configuración de cada
+ * usuario (antes el formulario proponía el mismo día de la entrega y había
+ * que corregirla a mano cada vez).
+ *
+ *  - SEMANAL: el día de cobro configurado más cercano a entrega + 7 días
+ *    (entrega lunes con cobro lunes → el lunes siguiente). Queda siempre
+ *    entre 4 y 10 días después de la entrega, nunca al día siguiente.
+ *  - QUINCENAL: la quincena que toca a ~15 días, ya anclada al modo del
+ *    usuario (15/último, 1/15 o 15 días exactos) — misma alineación que
+ *    `calcularFechasPago`.
+ *  - MENSUAL: el mismo día del mes siguiente.
+ *
+ * Devuelve `yyyy-MM-dd`, el formato de los formularios. Es solo la
+ * sugerencia inicial: sigue siendo editable.
+ */
+export function sugerirPrimerPago(
+  tipo: TipoContrata,
+  entrega: Date,
+  modoQuincenal: ModoQuincenal,
+  diaCobroSemanal: number
+): string {
+  const base = startOfDay(entrega);
+  let fecha: Date;
+  if (tipo === "SEMANAL") {
+    const objetivo = addDays(base, 7);
+    let diff = diaCobroSemanal - getDay(objetivo);
+    if (diff > 3) diff -= 7;
+    if (diff < -3) diff += 7;
+    fecha = addDays(objetivo, diff);
+  } else if (tipo === "QUINCENAL") {
+    fecha = calcularFechasPago("QUINCENAL", modoQuincenal, addDays(base, 15), 1)[0];
+  } else {
+    fecha = addMonths(base, 1);
+  }
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, "0");
+  const d = String(fecha.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}

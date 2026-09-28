@@ -29,6 +29,7 @@ import {
   ContrataCreadaPanel,
   type ContrataCreada,
 } from "@/components/contratas/contrata-creada";
+import { usePrimerPago } from "@/lib/offline/use-primer-pago";
 
 export type ClienteOpcion = { id: string; nombre: string };
 
@@ -76,6 +77,9 @@ export function ContrataForm({
    * arranca el formulario, editables — usado al convertir una cita
    * agendada en contrata real. Ignorado si se pasa `inicial`. */
   montoInicial?: number;
+  /** Día de ENTREGA (yyyy-MM-dd) — p. ej. el de la cita agendada. El
+   * primer pago se sugiere un periodo después (ver `usePrimerPago`). Sin
+   * él, se asume que se entrega hoy. */
   fechaInicioInicial?: string;
   /** Se invoca justo antes de mostrar la confirmación/pantalla de
    * "pendiente", tanto online como offline — usado por la misma feature de
@@ -110,10 +114,13 @@ export function ContrataForm({
   const [numCuotas, setNumCuotas] = useState(
     inicial?.numCuotas ?? cuotasPorDefecto
   );
-  const [fechaInicio, setFechaInicio] = useState(
-    inicial?.fechaInicio ??
-      fechaInicioInicial ??
-      new Date().toISOString().slice(0, 10)
+  // Al crear se sugiere un periodo después de la entrega (hoy, o el día de
+  // la cita agendada que se está convirtiendo); al editar se respeta la
+  // fecha que ya tiene la contrata.
+  const [fechaInicio, setFechaInicio] = usePrimerPago(
+    tipo,
+    fechaInicioInicial,
+    inicial?.fechaInicio
   );
   const [abono, setAbono] = useState(inicial ? String(inicial.abono) : "");
   const [notas, setNotas] = useState(inicial?.notas ?? "");
@@ -524,7 +531,7 @@ export function ContrataForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="fecha">Fecha de inicio</Label>
+            <Label htmlFor="fecha">Primer pago</Label>
             <FechaInput
               id="fecha" value={fechaInicio} onChange={setFechaInicio} />
           </div>

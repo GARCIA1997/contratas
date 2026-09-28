@@ -25,6 +25,7 @@ import {
   ReciboEntregaPanel,
   type ContrataEntregada,
 } from "@/components/contratas/recibo-entrega";
+import { usePrimerPago } from "@/lib/offline/use-primer-pago";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -84,9 +85,7 @@ export function UnificarForm({
   const [monto, setMonto] = useState("");
   const [montoTocado, setMontoTocado] = useState(false);
   const [numCuotas, setNumCuotas] = useState(cuotasPorDefecto);
-  const [fechaInicio, setFechaInicio] = useState(
-    new Date().toISOString().slice(0, 10)
-  );
+  const [fechaInicio, setFechaInicio] = usePrimerPago(tipo);
   const [abono, setAbono] = useState("");
   const [notas, setNotas] = useState("");
   const abonoTocado = useRef(false);
@@ -374,7 +373,7 @@ export function UnificarForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-2">
-            <Label htmlFor="fecha">Fecha de inicio</Label>
+            <Label htmlFor="fecha">Primer pago</Label>
             <FechaInput
               id="fecha" value={fechaInicio} onChange={setFechaInicio} />
           </div>
