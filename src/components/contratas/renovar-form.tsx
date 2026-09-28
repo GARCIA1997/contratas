@@ -16,7 +16,7 @@ import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
-import { enqueue } from "@/lib/offline/queue";
+import { enqueueLote } from "@/lib/offline/queue";
 import {
   fetchConTimeout,
   mensajeDeError,
@@ -51,6 +51,7 @@ export function RenovarForm({
   maxCuotas,
   nombreApp,
   onRenovada,
+  citaId,
 }: {
   contrataId: string;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
@@ -68,6 +69,9 @@ export function RenovarForm({
    * usado por la página de "convertir cita en contrata" para cerrar el
    * círculo marcando la cita como entregada; el resto de los llamadores
    * ignora el argumento. */
+  /** Cita que se está entregando: sin señal su enlace se encola en el mismo
+   *  lote que la contrata (ver entregarCita). */
+  citaId?: string | null;
   onRenovada?: (info?: { contrataId: string | null; offline: boolean }) => void;
 }) {
   const claims = useAuthClaims();
@@ -175,12 +179,18 @@ export function RenovarForm({
         // Antes de aplicar el efecto: la página redirige en cuanto ve la
         // original liquidada si no sabe que esto fue una renovación.
         onRenovada?.({ contrataId: id, offline: true });
-        await enqueue(ownerId, "contrata.renovar", {
+        await enqueueLote(ownerId, [
+          { type: "contrata.renovar", payload: {
           contrataId,
           otrasIds: incluirOtras ? otras.map((o) => o.id) : [],
           input: { ...input, id, fechaCaptura: hoy.toISOString() },
           _local: entrega.filas,
-        });
+        } },
+          // En el mismo lote: si no cabe, no se entrega a medias.
+          ...(citaId
+            ? [{ type: "cita.entregar" as const, payload: { citaId, contrataCreadaId: id } }]
+            : []),
+        ]);
         setGuardando(false);
         setOtrasLiquidadas(entrega.recibo.otrasLiquidadas ?? []);
         setRenovada(entrega.recibo);

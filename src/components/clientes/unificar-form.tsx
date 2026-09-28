@@ -15,7 +15,7 @@ import { formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
-import { enqueue } from "@/lib/offline/queue";
+import { enqueueLote } from "@/lib/offline/queue";
 import {
   fetchConTimeout,
   mensajeDeError,
@@ -51,6 +51,7 @@ export function UnificarForm({
   maxCuotas,
   nombreApp,
   onUnificada,
+  citaId,
 }: {
   clienteId: string;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
@@ -69,6 +70,9 @@ export function UnificarForm({
    * seleccionadas dejen de ser "elegibles" — ver comentario en el page.tsx.
    * Trae `info` (mismo shape que `onRenovada` en renovar-form) para poder
    * cerrar el círculo con la cita agendada, si la hubo. */
+  /** Cita que se está entregando: sin señal su enlace se encola en el mismo
+   *  lote que la contrata (ver entregarCita). */
+  citaId?: string | null;
   onUnificada?: (info?: { contrataId: string | null; offline: boolean }) => void;
 }) {
   const claims = useAuthClaims();
@@ -199,12 +203,18 @@ export function UnificarForm({
         // Antes del efecto: la página redirige si deja de ver contratas
         // elegibles y no sabe que esto fue una unificación.
         onUnificada?.({ contrataId: id, offline: true });
-        await enqueue(ownerId, "cliente.unificar", {
+        await enqueueLote(ownerId, [
+          { type: "cliente.unificar", payload: {
           clienteId,
           contrataIds,
           input: { ...input, id, fechaCaptura: hoy.toISOString() },
           _local: entrega.filas,
-        });
+        } },
+          // En el mismo lote: si no cabe, no se entrega a medias.
+          ...(citaId
+            ? [{ type: "cita.entregar" as const, payload: { citaId, contrataCreadaId: id } }]
+            : []),
+        ]);
         setGuardando(false);
         setUnificada(entrega.recibo);
       } catch (e) {

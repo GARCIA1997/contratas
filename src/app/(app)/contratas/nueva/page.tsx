@@ -89,6 +89,7 @@ export default function NuevaContrataPage() {
         fechaInicioInicial={
           cita ? anclarFechaCliente(cita.fechaEntrega).toISOString().slice(0, 10) : undefined
         }
+        citaId={citaId}
         onGuardada={(info) => {
           if (citaId && ownerId) void entregarCita(ownerId, citaId, info);
         }}

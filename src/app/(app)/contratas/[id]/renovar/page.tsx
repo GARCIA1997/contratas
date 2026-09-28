@@ -131,6 +131,7 @@ export default function RenovarContrataPage() {
         cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
         maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
         nombreApp={config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp}
+        citaId={citaId}
         onRenovada={(info) => {
           setCompletado(true);
           if (citaId && ownerId && info) void entregarCita(ownerId, citaId, info);

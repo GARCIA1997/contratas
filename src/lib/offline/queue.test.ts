@@ -14,10 +14,13 @@ vi.mock("@/lib/report-error", () => ({ reportarError: vi.fn() }));
 import {
   conflictCount,
   enqueue,
+  enqueueLote,
   flushQueue,
   pendingCount,
   reintentarConflictos,
 } from "@/lib/offline/queue";
+
+import { LIMITE_OPERACIONES_LOCALES } from "@/lib/offline/modo-local";
 
 if (!maybeDb) throw new Error("db no inicializada — ¿falta jsdom/fake-indexeddb?");
 const db = maybeDb;
@@ -55,7 +58,12 @@ async function seedContrata(id = "c1") {
 }
 
 beforeEach(async () => {
-  await Promise.all([db.contratas.clear(), db.pagos.clear(), db.writeQueue.clear()]);
+  await Promise.all([
+    db.contratas.clear(),
+    db.pagos.clear(),
+    db.writeQueue.clear(),
+    db.clientes.clear(),
+  ]);
   vi.restoreAllMocks();
   Object.values(syncMocks).forEach((fn) => fn.mockClear());
   Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
@@ -76,6 +84,31 @@ describe("enqueue", () => {
     expect(pendientes).toHaveLength(1);
     expect(pendientes[0].status).toBe("pending");
     expect(pendientes[0].type).toBe("contrata.pago.toggle");
+  });
+});
+
+describe("enqueueLote", () => {
+  it("si no caben todas, no encola ninguna (sin cliente huérfano)", async () => {
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await db.writeQueue.bulkAdd(
+      Array.from({ length: LIMITE_OPERACIONES_LOCALES - 1 }, (_, i) => ({
+        id: `x${i}`,
+        ownerId: OWNER,
+        type: "contrata.pago.toggle" as const,
+        payload: { contrataId: "zz", numeroCuota: 1 },
+        createdAt: new Date(2026, 0, 1, 0, 0, i).toISOString(),
+        status: "pending" as const,
+        attempts: 0,
+      }))
+    );
+    await expect(
+      enqueueLote(OWNER, [
+        { type: "cliente.crear", payload: { id: "cli-n", ownerId: OWNER, nombre: "Ana" } },
+        { type: "contrata.crear", payload: { id: "c-n", clienteId: "cli-n" } },
+      ])
+    ).rejects.toThrow(/límite/);
+    expect(await pendingCount(OWNER)).toBe(LIMITE_OPERACIONES_LOCALES - 1);
+    expect(await db.clientes.get("cli-n")).toBeUndefined();
   });
 });
 
@@ -135,6 +168,49 @@ describe("flushQueue", () => {
     expect(restantes).toHaveLength(1);
     expect(restantes[0].status).toBe("conflict");
     expect((restantes[0].payload as { contrataId: string }).contrataId).toBe("c1");
+  });
+
+  it("en 4xx: aparta también las operaciones posteriores que tocan la misma entidad (no invierte un toggle)", async () => {
+    await seedContrata("c1");
+    await seedContrata("c2");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c1", numeroCuota: 1 });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "c2", numeroCuota: 1 });
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 409 }))
+      .mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+
+    // Solo se mandó el rechazado y el de c2 — el segundo toggle de c1 no.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/contratas/c2/");
+    const restantes = await db.writeQueue.where("ownerId").equals(OWNER).toArray();
+    expect(restantes).toHaveLength(2);
+    expect(restantes.every((op) => op.status === "conflict")).toBe(true);
+  });
+
+  it("en 4xx de una entrega: cita.entregar que apunta a esa contrata no se manda (evita FK → 500 → cola atorada)", async () => {
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueueLote(OWNER, [
+      { type: "contrata.crear", payload: { id: "nueva", clienteId: "cli-1", tipo: "SEMANAL" } },
+      { type: "cita.entregar", payload: { citaId: "cita-1", contrataCreadaId: "nueva" } },
+    ]);
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 400 }))
+      .mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+    await flushQueue(OWNER);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await conflictCount(OWNER)).toBe(2);
   });
 
   it("en 5xx: detiene el drenado para respetar el orden", async () => {

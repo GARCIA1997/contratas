@@ -1,4 +1,3 @@
-import { enqueue } from "@/lib/offline/queue";
 import { syncCitas } from "@/lib/offline/sync";
 
 /**
@@ -14,16 +13,10 @@ export async function entregarCita(
   info: { contrataId: string | null; offline: boolean }
 ): Promise<void> {
   if (info.offline) {
-    // Si ya no cabe en la cola (límite de movimientos sin sincronizar), la
-    // cita queda pendiente y se marca a mano después — la contrata ya se
-    // guardó y no debe verse afectada.
-    // En modo local la contrata ya nace con su id definitivo (ver
-    // entrega-local.ts) y su alta va antes en la cola, así que el enlace
-    // cita → contrata se puede mandar desde ya.
-    await enqueue(ownerId, "cita.entregar", {
-      citaId,
-      contrataCreadaId: info.contrataId,
-    }).catch(() => undefined);
+    // Sin señal el formulario ya encoló `cita.entregar` en el MISMO lote que
+    // la contrata (recibe `citaId`): o entraron las dos o ninguna. Antes se
+    // encolaba aquí aparte y, si ya no cabía, se perdía en silencio — la
+    // cita seguía pendiente y volver a entregarla creaba otra contrata.
     return;
   }
   try {

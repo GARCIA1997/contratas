@@ -83,6 +83,8 @@ export async function prepararEntregaLocal(
   opts: {
     id: string;
     clienteId?: string;
+    /** Cliente que se crea en el mismo lote (todavía no está en IndexedDB). */
+    clienteNuevo?: { nombre: string };
     input: InputContrata;
     hoy: Date;
     /** Contratas que se liquidan completas (renovar: la original; unificar: las elegidas). */
@@ -115,7 +117,7 @@ export async function prepararEntregaLocal(
     id: opts.id,
     ownerId,
     clienteId,
-    clienteNombre: cliente?.nombre ?? "Cliente",
+    clienteNombre: cliente?.nombre ?? opts.clienteNuevo?.nombre ?? "Cliente",
     clienteTelefono: cliente?.telefono ?? null,
     tipo: input.tipo,
     monto: input.monto,

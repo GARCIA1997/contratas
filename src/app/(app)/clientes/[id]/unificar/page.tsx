@@ -101,6 +101,7 @@ export default function UnificarContratasPage() {
         cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
         maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
         nombreApp={config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp}
+        citaId={citaId}
         onUnificada={(info) => {
           setCompletado(true);
           if (citaId && ownerId && info) void entregarCita(ownerId, citaId, info);

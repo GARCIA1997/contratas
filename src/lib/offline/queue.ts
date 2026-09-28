@@ -182,14 +182,26 @@ export async function enqueue(
   type: QueueOpType,
   payload: Record<string, unknown>
 ): Promise<void> {
+  await enqueueLote(ownerId, [{ type, payload }]);
+}
+
+/**
+ * Encola varias operaciones como una sola unidad: o entran todas o ninguna.
+ * Una entrega a cliente nuevo son 2–3 operaciones (cliente, contrata y el
+ * enlace con la cita); encolarlas sueltas dejaba registros a medias cuando
+ * la segunda chocaba con el límite — el cliente quedaba creado y el
+ * reintento del formulario creaba otro (duplicado).
+ *
+ * El conteo contra LIMITE_OPERACIONES_LOCALES va DENTRO de la transacción
+ * para que dos encolados simultáneos no se pasen del techo.
+ */
+export async function enqueueLote(
+  ownerId: string,
+  ops: { type: QueueOpType; payload: Record<string, unknown> }[]
+): Promise<void> {
   const database = db;
-  if (!database) return;
-  // Techo de seguridad: ver LIMITE_OPERACIONES_LOCALES. Se revisa antes de
-  // aplicar el efecto optimista para que la UI no muestre algo que nunca
-  // se va a subir.
-  const acumuladas = await database.writeQueue.where("ownerId").equals(ownerId).count();
-  if (acumuladas >= LIMITE_OPERACIONES_LOCALES) throw new LimiteOfflineError();
-  const id = crypto.randomUUID();
+  if (!database || ops.length === 0) return;
+  const base = Date.now();
   await database.transaction(
     "rw",
     // Toda tabla que `applyLocalEffect` pueda tocar tiene que estar en el
@@ -206,19 +218,55 @@ export async function enqueue(
       database.citas,
     ],
     async () => {
-      await database.writeQueue.add({
-        id,
-        ownerId,
-        type,
-        payload,
-        createdAt: new Date().toISOString(),
-        status: "pending",
-        attempts: 0,
-      });
-      await applyLocalEffect(type, payload);
+      // Techo de seguridad: se revisa antes de aplicar cualquier efecto
+      // optimista para que la UI no muestre algo que nunca se va a subir.
+      const acumuladas = await database.writeQueue.where("ownerId").equals(ownerId).count();
+      if (acumuladas + ops.length > LIMITE_OPERACIONES_LOCALES) throw new LimiteOfflineError();
+      for (let i = 0; i < ops.length; i++) {
+        const { type, payload } = ops[i];
+        await database.writeQueue.add({
+          id: crypto.randomUUID(),
+          ownerId,
+          type,
+          payload,
+          // +i ms: el orden de la cola es por createdAt y dentro del lote
+          // importa (el cliente antes que su contrata).
+          createdAt: new Date(base + i).toISOString(),
+          status: "pending",
+          attempts: 0,
+        });
+        await applyLocalEffect(type, payload);
+      }
     }
   );
   void flushQueue(ownerId);
+}
+
+/**
+ * Ids de las entidades que toca una operación (la que modifica y las que
+ * referencia). Sirve para dos cosas: saber qué operaciones posteriores
+ * dependen de una rechazada, y saber si una contrata todavía tiene algo
+ * pendiente antes de liberarla de `_dirty`.
+ */
+export function entidadesDe(payload: Record<string, unknown>): string[] {
+  const ids: unknown[] = [
+    payload.contrataId,
+    payload.clienteId,
+    payload.deudorId,
+    payload.citaId,
+    payload.id,
+    payload.contrataCreadaId,
+    ...((payload.contrataIds as unknown[]) ?? []),
+    ...((payload.otrasIds as unknown[]) ?? []),
+    (payload.input as Record<string, unknown> | undefined)?.id,
+  ];
+  const local = payload._local as
+    | { contrata?: { id: string }; liquidar?: { contrataId: string }[] }
+    | undefined;
+  if (local) {
+    ids.push(local.contrata?.id, ...(local.liquidar ?? []).map((l) => l.contrataId));
+  }
+  return ids.filter((x): x is string => typeof x === "string" && x.length > 0);
 }
 
 let flushing = false;
@@ -273,7 +321,25 @@ export async function flushQueue(ownerId: string): Promise<void> {
       )
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
+    // Entidades tocadas por una operación rechazada en esta pasada. Todo lo
+    // que venga después y las toque se aparta también (queda en conflicto,
+    // en su orden): aplicarlo sin la anterior da resultados que el usuario
+    // nunca vio — un toggle rechazado seguido de otro invierte el pago, un
+    // `cita.entregar` apunta a una contrata que no existe (FK → 500 → cola
+    // atorada para siempre). `reintentarConflictos` las regresa juntas.
+    const bloqueadas = new Set<string>();
+
     for (const op of pendientes) {
+      const entidades = entidadesDe(op.payload);
+      if (entidades.some((e) => bloqueadas.has(e))) {
+        entidades.forEach((e) => bloqueadas.add(e));
+        await database.writeQueue.update(op.id, {
+          status: "conflict",
+          lastError: "Depende de una operación rechazada",
+        });
+        await deshacerEntregaRechazada(ownerId, op.type, op.payload);
+        continue;
+      }
       await database.writeQueue.update(op.id, { status: "syncing" });
       try {
         const { url, init } = ENDPOINTS[op.type](op.payload);
@@ -319,11 +385,12 @@ export async function flushQueue(ownerId: string): Promise<void> {
           }
           // Un 4xx es un rechazo definitivo de ESTA operación (el servidor
           // la validó y no aplica) — reintentar no cambia nada, así que se
-          // sigue con las demás en vez de dejar atorado todo lo capturado
-          // después (con el modo local puede ser un día entero de cobros).
-          // Un 5xx o fallo de red sí detiene el drenado: es transitorio y
-          // hay que respetar el orden.
+          // sigue con las que NO dependen de ella (ver `bloqueadas`) en vez
+          // de dejar atorado todo lo capturado después. Un 5xx o fallo de
+          // red sí detiene el drenado: es transitorio y hay que respetar el
+          // orden.
           if (esConflicto) {
+            entidades.forEach((e) => bloqueadas.add(e));
             await deshacerEntregaRechazada(ownerId, op.type, op.payload);
             continue;
           }
@@ -541,11 +608,15 @@ async function limpiarDirtySiSinPendientes(payload: Record<string, unknown>) {
   if (!database) return;
   const contrataId = payload.contrataId as string | undefined;
   if (contrataId) {
+    // Cualquier operación viva que la toque — no solo las que la llevan en
+    // `contrataId`: una entrega pendiente que la liquida la referencia en
+    // `_local.liquidar`/`contrataIds`, y liberarla antes dejaba que el sync
+    // la pisara con cuotas "sin pagar" que ya se habían cobrado.
     const quedan = await database.writeQueue
       .filter(
         (op) =>
-          (op.payload as Record<string, unknown>).contrataId === contrataId &&
-          op.status !== "conflict"
+          op.status !== "conflict" &&
+          entidadesDe(op.payload as Record<string, unknown>).includes(contrataId)
       )
       .count();
     if (quedan === 0) {

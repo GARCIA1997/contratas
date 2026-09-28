@@ -57,6 +57,15 @@ async function requireCita(ownerId: string, id: string) {
 }
 
 export async function crearCita(ownerId: string, input: CitaInput) {
+  // Agendada en modo local y ya recibida antes (reintento): se devuelve la
+  // existente en vez de chocar con el id (P2002 → 500 → cola atorada).
+  if (input.id) {
+    const existente = await prisma.citaAgendada.findFirst({
+      where: { id: input.id, ownerId },
+      include: { cliente: { select: CLIENTE_SELECT } },
+    });
+    if (existente) return existente;
+  }
   await requireCliente(ownerId, input.clienteId);
   // "Nueva" nunca lleva contrata origen, y "Unificación" usa
   // `contratasUnificarIds` en su lugar — se ignora lo que no aplique al

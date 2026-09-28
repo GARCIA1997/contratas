@@ -17,7 +17,8 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
-import { enqueue } from "@/lib/offline/queue";
+import { enqueue, enqueueLote } from "@/lib/offline/queue";
+import type { QueueOpType } from "@/lib/offline/db";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
 import { getContratasConVencido } from "@/lib/offline/repo";
 import {
@@ -64,6 +65,7 @@ export function ContrataForm({
   montoInicial,
   fechaInicioInicial,
   onGuardada,
+  citaId,
 }: {
   clientes: ClienteOpcion[];
   cuotasPorDefecto: number;
@@ -87,6 +89,9 @@ export function ContrataForm({
    * "pendiente", tanto online como offline — usado por la misma feature de
    * citas para cerrar el círculo (marcar la cita como entregada) sin que
    * este componente sepa nada de citas. */
+  /** Cita que se está entregando: sin señal su enlace se encola en el mismo
+   *  lote que la contrata (ver entregarCita). */
+  citaId?: string | null;
   onGuardada?: (info: { contrataId: string | null; offline: boolean }) => void;
 }) {
   const router = useRouter();
@@ -266,17 +271,24 @@ export function ContrataForm({
       // ese mismo id.
       const owner = claims.ownerId;
       try {
+        // Cliente, contrata y (si viene de una cita) el enlace se encolan en
+        // un solo lote atómico: si no caben todos no entra ninguno, y un
+        // reintento no deja un cliente huérfano duplicado.
+        const lote: { type: QueueOpType; payload: Record<string, unknown> }[] = [];
         let clienteDestino = clienteId;
         if (clienteMode === "nuevo") {
           clienteDestino = crypto.randomUUID();
-          await enqueue(owner, "cliente.crear", {
-            id: clienteDestino,
-            ownerId: owner,
-            nombre: clienteNombre.trim(),
-            telefono: null,
-            direccion: null,
-            referencia: null,
-            notas: null,
+          lote.push({
+            type: "cliente.crear",
+            payload: {
+              id: clienteDestino,
+              ownerId: owner,
+              nombre: clienteNombre.trim(),
+              telefono: null,
+              direccion: null,
+              referencia: null,
+              notas: null,
+            },
           });
         }
         const id = crypto.randomUUID();
@@ -284,6 +296,7 @@ export function ContrataForm({
         const entrega = await prepararEntregaLocal(owner, {
           id,
           clienteId: clienteDestino,
+          clienteNuevo: clienteMode === "nuevo" ? { nombre: clienteNombre.trim() } : undefined,
           input: {
             tipo,
             monto: montoNum,
@@ -296,7 +309,7 @@ export function ContrataForm({
           cubrirVencidasDe:
             clienteMode === "existente" && incluirOtras ? (otras ?? []).map((o) => o.id) : [],
         });
-        await enqueue(owner, "contrata.crear", {
+        lote.push({ type: "contrata.crear", payload: {
           tipo,
           monto: montoNum,
           abono: abonoNum,
@@ -308,7 +321,11 @@ export function ContrataForm({
           id,
           fechaCaptura: hoy.toISOString(),
           _local: entrega.filas,
-        });
+        } });
+        if (citaId) {
+          lote.push({ type: "cita.entregar", payload: { citaId, contrataCreadaId: id } });
+        }
+        await enqueueLote(owner, lote);
         setGuardando(false);
         onGuardada?.({ contrataId: id, offline: true });
         setCreada(entrega.recibo);
