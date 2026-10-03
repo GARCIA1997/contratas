@@ -2,6 +2,11 @@
 
 import { useEffect } from "react";
 import { reportarError } from "@/lib/report-error";
+import { esFallaIndexedDB, reabrirIndexedDB } from "@/lib/offline/dexie-retry";
+
+/** Solo se reporta la PRIMERA falla de IndexedDB por sesión: basta para
+ *  verla en el monitor sin que una conexión muerta genere decenas. */
+let indexedDBReportado = false;
 
 /**
  * Captura cualquier error de JS o promesa rechazada que se escape sin pasar
@@ -20,6 +25,13 @@ export function ErrorLogListener() {
     }
     function onRejection(event: PromiseRejectionEvent) {
       const reason = event.reason;
+      // Conexión de IndexedDB muerta (bug de iOS, ver dexie-retry.ts): se
+      // reabre para que lo siguiente funcione, y se reporta una sola vez.
+      if (esFallaIndexedDB(reason)) {
+        void reabrirIndexedDB().catch(() => undefined);
+        if (indexedDBReportado) return;
+        indexedDBReportado = true;
+      }
       reportarError({
         origen: "client",
         mensaje:

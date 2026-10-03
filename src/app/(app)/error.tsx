@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { Button } from "@/components/ui/button";
 import { reportarError } from "@/lib/report-error";
+import { esFallaIndexedDB, reabrirIndexedDB } from "@/lib/offline/dexie-retry";
 
 /**
  * Error boundary del grupo (app) — sin este archivo, cualquier error de
@@ -15,21 +16,20 @@ import { reportarError } from "@/lib/report-error";
 
 // dexie-react-hooks relanza a propósito el error del observable de
 // useLiveQuery durante el render (para que un Error Boundary lo capture).
-// Reportado en campo vía ErrorLog: el bug transitorio de WebKit/Safari
-// "Attempt to iterate a cursor that doesn't exist" llegaba hasta acá y
-// tumbaba la pantalla — dexie-retry.ts ya reintenta la consulta más
-// frecuente (pagosDeContrata) para que casi nunca llegue a pasar esto, pero
-// si de todos modos ocurre, aquí no tiene caso mostrarle "algo salió mal"
-// al usuario: basta con reintentar solo.
-function esCursorInvalidoTransitorio(error: Error) {
-  return error.message.includes("cursor that doesn't exist");
-}
+// Reportado en campo vía ErrorLog: los bugs de IndexedDB de WebKit/Safari
+// (cursor inexistente, "without an in-progress transaction", "internal
+// error… Indexed Database server") llegaban hasta acá y tumbaban la
+// pantalla. Son de la conexión, no de los datos: se reabre la conexión y
+// se reintenta solo, sin mostrarle "algo salió mal" al usuario.
 
 // Módulo (no estado de React): sobrevive a los remounts que dispara reset(),
 // que es justo lo que hay que contar para no reintentar en bucle infinito
 // si el error resulta no ser transitorio.
-let reintentosCursor = 0;
-const MAX_REINTENTOS_CURSOR = 2;
+// El contador se reinicia tras 30 s sin fallas: cada regreso del segundo
+// plano es un episodio nuevo y merece sus propios reintentos.
+let reintentosIndexedDB = 0;
+let ultimoReintento = 0;
+const MAX_REINTENTOS_INDEXEDDB = 2;
 
 export default function AppError({
   error,
@@ -38,13 +38,17 @@ export default function AppError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  if (Date.now() - ultimoReintento > 30_000) reintentosIndexedDB = 0;
   const reintentarSolo =
-    esCursorInvalidoTransitorio(error) && reintentosCursor < MAX_REINTENTOS_CURSOR;
+    esFallaIndexedDB(error) && reintentosIndexedDB < MAX_REINTENTOS_INDEXEDDB;
 
   useEffect(() => {
     if (reintentarSolo) {
-      reintentosCursor += 1;
-      reset();
+      reintentosIndexedDB += 1;
+      ultimoReintento = Date.now();
+      void reabrirIndexedDB()
+        .catch(() => undefined)
+        .then(() => reset());
       return;
     }
     Sentry.captureException(error);

@@ -1,5 +1,6 @@
 "use client";
 
+import { errorDeMontos } from "@/lib/contrata";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -219,6 +220,8 @@ export function ContrataForm({
     const abonoNum = parseFloat(abono);
     if (!montoNum || montoNum <= 0) return setError("Monto inválido");
     if (!abonoNum || abonoNum <= 0) return setError("Abono inválido");
+    const errMontos = errorDeMontos(montoNum, abonoNum);
+    if (errMontos) return setError(errMontos);
     if (clienteMode === "existente" && !clienteFijo && !clienteId)
       return setError("Elige un cliente de la lista");
     if (clienteMode === "nuevo" && !clienteNombre.trim())

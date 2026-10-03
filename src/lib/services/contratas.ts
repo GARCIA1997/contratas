@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import { getConfig } from "@/lib/config";
 import { calcularFechasPago } from "@/lib/fechas";
-import { saldoPendiente, montoVencidoOVigente, cuotasVencidasOVigentes } from "@/lib/contrata";
+import { saldoPendiente, montoVencidoOVigente, cuotasVencidasOVigentes, errorDeMontos } from "@/lib/contrata";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
 
 export type ContrataConDatos = Prisma.ContrataGetPayload<{
@@ -141,6 +141,8 @@ export async function crearContrata(
 ): Promise<ContrataCreadaConDatos> {
   const existente = await contrataYaCreada(ownerId, input.id);
   if (existente) return { ...existente, otrasLiquidadas: [] };
+  const errMontos = errorDeMontos(input.monto, input.abono);
+  if (errMontos) throw new HttpError(400, errMontos);
   const config = await getConfig(ownerId);
   const fechaInicio = new Date(input.fechaInicio);
   const fechas = calcularFechasPago(
@@ -209,6 +211,8 @@ export async function actualizarContrata(
   input: ActualizarInput
 ): Promise<ContrataConDatos> {
   const actual = await getContrata(ownerId, id);
+  const errMontos = errorDeMontos(input.monto ?? actual.monto, input.abono ?? actual.abono);
+  if (errMontos) throw new HttpError(400, errMontos);
   const config = await getConfig(ownerId);
 
   const tipo = input.tipo ?? actual.tipo;
@@ -521,6 +525,9 @@ async function crearContrataTx(
   input: NuevaContrataInput,
   config: Awaited<ReturnType<typeof getConfig>>
 ) {
+  // Cubre renovar y unificar (ambas crean la contrata nueva por aquí).
+  const errMontos = errorDeMontos(input.monto, input.abono);
+  if (errMontos) throw new HttpError(400, errMontos);
   const fechaInicio = new Date(input.fechaInicio);
   const fechas = calcularFechasPago(
     input.tipo,

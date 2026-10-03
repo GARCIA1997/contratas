@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError, requireUser } from "@/lib/session";
 
@@ -163,16 +164,44 @@ async function espaciosActivos(desde: Date, hasta: Date): Promise<number> {
   return filas.length;
 }
 
-/** Saldo vivo de todas las contratas activas (abono × cuotas − abonado). */
+/**
+ * Contratas con montos imposibles (abono por pago mayor que lo prestado, o un
+ * total a pagar de más de 5× el monto): son errores de captura y se dejan
+ * FUERA de cartera, cobranza y mora para que no distorsionen las cifras. Se
+ * listan aparte en Negocio para corregirlas. En producción la contrata real
+ * con el total más alto es de 2.05× su monto.
+ */
+const SQL_ANOMALA = Prisma.sql`(c."abono" > c."monto" OR c."abono" * c."numCuotas" > c."monto" * 5)`;
+
+/**
+ * Hoy como fecha de calendario de México, en el mismo formato en que se
+ * guardan las fechas programadas de las cuotas (medianoche UTC del día).
+ */
+export function hoyCalendario(ahora = new Date()): Date {
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Mexico_City",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(ahora)
+    .split("-")
+    .map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d!));
+}
+
+/**
+ * Saldo por cobrar de las contratas activas — mismo cálculo que la app
+ * (`saldoPendiente`): por cada cuota NO pagada, abono menos lo ya abonado.
+ * Antes se hacía "abono × cuotas − todo lo abonado", que contaba como
+ * deuda las cuotas marcadas pagadas sin monto registrado.
+ */
 async function carteraActiva(): Promise<number> {
   const [fila] = await prisma.$queryRaw<{ saldo: number | null }[]>`
-    SELECT SUM(c."abono" * c."numCuotas" - COALESCE(p.abonado, 0))::float AS saldo
-    FROM "Contrata" c
-    LEFT JOIN (
-      SELECT "contrataId", SUM("montoAbonado") AS abonado
-      FROM "Pago" GROUP BY "contrataId"
-    ) p ON p."contrataId" = c."id"
-    WHERE c."convertidaADeuda" = false
+    SELECT SUM(GREATEST(c."abono" - p."montoAbonado", 0))::float AS saldo
+    FROM "Pago" p
+    JOIN "Contrata" c ON c."id" = p."contrataId"
+    WHERE p."pagado" = false AND c."convertidaADeuda" = false AND NOT ${SQL_ANOMALA}
   `;
   return Math.round((fila?.saldo ?? 0) * 100) / 100;
 }
@@ -462,36 +491,203 @@ export async function getEspacios(desde: Date) {
 
 /* ── Negocio (todos los espacios) ─────────────────────────────────────── */
 
+const DIA_MS = 86_400_000;
+const r2 = (n: number | null | undefined) => Math.round((n ?? 0) * 100) / 100;
+
 export async function getNegocio(desde: Date) {
-  const [porTipo, cobradoPorDia, deudores, cartera, entregadas] = await Promise.all([
-    prisma.contrata.groupBy({
-      by: ["tipo"],
-      _count: true,
-      _sum: { monto: true },
-      where: { convertidaADeuda: false },
-    }),
-    prisma.$queryRaw<{ dia: Date; total: number }[]>`
-      SELECT date_trunc('day', "fechaPago") AS dia, SUM("montoAbonado")::float AS total
-      FROM "Pago" WHERE "fechaPago" >= ${desde}
-      GROUP BY 1 ORDER BY 1`,
-    prisma.$queryRaw<{ deuda: number | null; abonado: number | null }[]>`
-      SELECT (SELECT SUM("deudaInicial") FROM "Deudor")::float AS deuda,
-             (SELECT SUM("monto") FROM "AbonoDeudor")::float AS abonado`,
-    carteraActiva(),
-    prisma.contrata.aggregate({
-      _count: true,
-      _sum: { monto: true },
-      where: { creadoEn: { gte: desde } },
-    }),
-  ]);
-  const d = deudores[0];
+  const hoy = hoyCalendario();
+  const manana = new Date(hoy.getTime() + DIA_MS);
+  // Inicio del periodo como fecha de calendario (para las cuotas programadas).
+  const desdeCal = hoyCalendario(desde);
+  const hace = (d: number) => new Date(hoy.getTime() - d * DIA_MS);
+  const en = (d: number) => new Date(hoy.getTime() + d * DIA_MS);
+
+  const [cartera, cobranza, colocacion, porTipo, cobradoPorDia, esperadoPorDia, deudores, porEspacio, anomalas] =
+    await Promise.all([
+      // Cartera, intereses por cobrar, mora por antigüedad y lo que viene.
+      prisma.$queryRaw<
+        {
+          cartera: number | null;
+          intereses: number | null;
+          vencido: number | null;
+          v1_7: number | null;
+          v8_30: number | null;
+          v31_60: number | null;
+          v61: number | null;
+          prox7: number | null;
+          prox30: number | null;
+          activas: bigint;
+          con_vencido: bigint;
+          capital: number | null;
+        }[]
+      >`
+        WITH pend AS (
+          SELECT c."id" AS cid, c."monto", p."fechaProgramada" AS f,
+                 GREATEST(c."abono" - p."montoAbonado", 0) AS falta,
+                 1 - c."monto" / NULLIF(c."abono" * c."numCuotas", 0) AS frac
+          FROM "Pago" p JOIN "Contrata" c ON c."id" = p."contrataId"
+          WHERE p."pagado" = false AND c."convertidaADeuda" = false AND NOT ${SQL_ANOMALA}
+        ), activas AS (SELECT DISTINCT cid, "monto" FROM pend)
+        SELECT
+          SUM(falta)::float AS cartera,
+          SUM(falta * GREATEST(frac, 0))::float AS intereses,
+          SUM(falta) FILTER (WHERE f < ${hoy})::float AS vencido,
+          SUM(falta) FILTER (WHERE f < ${hoy} AND f >= ${hace(7)})::float AS v1_7,
+          SUM(falta) FILTER (WHERE f < ${hace(7)} AND f >= ${hace(30)})::float AS v8_30,
+          SUM(falta) FILTER (WHERE f < ${hace(30)} AND f >= ${hace(60)})::float AS v31_60,
+          SUM(falta) FILTER (WHERE f < ${hace(60)})::float AS v61,
+          SUM(falta) FILTER (WHERE f >= ${hoy} AND f < ${en(7)})::float AS prox7,
+          SUM(falta) FILTER (WHERE f >= ${hoy} AND f < ${en(30)})::float AS prox30,
+          COUNT(DISTINCT cid) AS activas,
+          COUNT(DISTINCT cid) FILTER (WHERE f < ${hoy}) AS con_vencido,
+          (SELECT SUM("monto") FROM activas)::float AS capital
+        FROM pend`,
+      // Cobranza del periodo: cobrado, ganancia (interés) y lo que se esperaba.
+      prisma.$queryRaw<{ cobrado: number | null; ganancia: number | null; esperado: number | null; pagos: bigint }[]>`
+        SELECT
+          SUM(p."montoAbonado") FILTER (WHERE p."fechaPago" >= ${desde})::float AS cobrado,
+          SUM(p."montoAbonado" * GREATEST(1 - c."monto" / NULLIF(c."abono" * c."numCuotas", 0), 0))
+            FILTER (WHERE p."fechaPago" >= ${desde})::float AS ganancia,
+          SUM(c."abono") FILTER (WHERE p."fechaProgramada" >= ${desdeCal} AND p."fechaProgramada" < ${manana})::float AS esperado,
+          COUNT(*) FILTER (WHERE p."fechaPago" >= ${desde}) AS pagos
+        FROM "Pago" p JOIN "Contrata" c ON c."id" = p."contrataId"
+        WHERE NOT ${SQL_ANOMALA}`,
+      // Colocación del periodo.
+      prisma.$queryRaw<{ cantidad: bigint; monto: number | null; clientes: bigint }[]>`
+        SELECT COUNT(*) AS cantidad, SUM(c."monto")::float AS monto, COUNT(DISTINCT c."clienteId") AS clientes
+        FROM "Contrata" c WHERE c."creadoEn" >= ${desde} AND NOT ${SQL_ANOMALA}`,
+      // Contratas ACTIVAS (con cuotas pendientes) por tipo.
+      prisma.$queryRaw<{ tipo: string; contratas: bigint; capital: number | null; saldo: number | null }[]>`
+        SELECT c."tipo"::text AS tipo, COUNT(DISTINCT c."id") AS contratas,
+               SUM(GREATEST(c."abono" - p."montoAbonado", 0))::float AS saldo,
+               (SELECT SUM(c2."monto") FROM "Contrata" c2
+                 WHERE c2."tipo" = c."tipo" AND c2."convertidaADeuda" = false
+                   AND NOT (c2."abono" > c2."monto" OR c2."abono" * c2."numCuotas" > c2."monto" * 5)
+                   AND EXISTS (SELECT 1 FROM "Pago" p2 WHERE p2."contrataId" = c2."id" AND p2."pagado" = false))::float AS capital
+        FROM "Pago" p JOIN "Contrata" c ON c."id" = p."contrataId"
+        WHERE p."pagado" = false AND c."convertidaADeuda" = false AND NOT ${SQL_ANOMALA}
+        GROUP BY c."tipo"`,
+      prisma.$queryRaw<{ dia: Date; total: number }[]>`
+        SELECT date_trunc('day', p."fechaPago") AS dia, SUM(p."montoAbonado")::float AS total
+        FROM "Pago" p JOIN "Contrata" c ON c."id" = p."contrataId"
+        WHERE p."fechaPago" >= ${desde} AND NOT ${SQL_ANOMALA}
+        GROUP BY 1 ORDER BY 1`,
+      prisma.$queryRaw<{ dia: Date; total: number }[]>`
+        SELECT date_trunc('day', p."fechaProgramada") AS dia, SUM(c."abono")::float AS total
+        FROM "Pago" p JOIN "Contrata" c ON c."id" = p."contrataId"
+        WHERE p."fechaProgramada" >= ${desdeCal} AND p."fechaProgramada" < ${manana} AND NOT ${SQL_ANOMALA}
+        GROUP BY 1 ORDER BY 1`,
+      prisma.$queryRaw<{ deuda: number | null; abonado: number | null; abonado_periodo: number | null; con_saldo: bigint }[]>`
+        SELECT
+          (SELECT SUM("deudaInicial") FROM "Deudor")::float AS deuda,
+          (SELECT SUM("monto") FROM "AbonoDeudor")::float AS abonado,
+          (SELECT SUM("monto") FROM "AbonoDeudor" WHERE "fecha" >= ${desde})::float AS abonado_periodo,
+          (SELECT COUNT(*) FROM "Deudor" d
+            WHERE d."deudaInicial" > COALESCE((SELECT SUM(a."monto") FROM "AbonoDeudor" a WHERE a."deudorId" = d."id"), 0)) AS con_saldo`,
+      // Por espacio de trabajo.
+      prisma.$queryRaw<
+        { ownerId: string; cartera: number | null; vencido: number | null; cobrado: number | null; entregado: number | null; activas: bigint }[]
+      >`
+        SELECT u."id" AS "ownerId",
+          (SELECT SUM(GREATEST(c."abono" - p."montoAbonado", 0)) FROM "Pago" p JOIN "Contrata" c ON c."id" = p."contrataId"
+            WHERE c."ownerId" = u."id" AND p."pagado" = false AND c."convertidaADeuda" = false AND NOT ${SQL_ANOMALA})::float AS cartera,
+          (SELECT SUM(GREATEST(c."abono" - p."montoAbonado", 0)) FROM "Pago" p JOIN "Contrata" c ON c."id" = p."contrataId"
+            WHERE c."ownerId" = u."id" AND p."pagado" = false AND c."convertidaADeuda" = false AND NOT ${SQL_ANOMALA}
+              AND p."fechaProgramada" < ${hoy})::float AS vencido,
+          (SELECT SUM(p."montoAbonado") FROM "Pago" p JOIN "Contrata" c ON c."id" = p."contrataId"
+            WHERE c."ownerId" = u."id" AND p."fechaPago" >= ${desde} AND NOT ${SQL_ANOMALA})::float AS cobrado,
+          (SELECT SUM(c."monto") FROM "Contrata" c
+            WHERE c."ownerId" = u."id" AND c."creadoEn" >= ${desde} AND NOT ${SQL_ANOMALA})::float AS entregado,
+          (SELECT COUNT(*) FROM "Contrata" c
+            WHERE c."ownerId" = u."id" AND c."convertidaADeuda" = false AND NOT ${SQL_ANOMALA}
+              AND EXISTS (SELECT 1 FROM "Pago" p WHERE p."contrataId" = c."id" AND p."pagado" = false)) AS activas
+        FROM "User" u WHERE u."workspaceOwnerId" IS NULL`,
+      prisma.$queryRaw<
+        { id: string; espacio: string | null; cliente: string; tipo: string; monto: number; abono: number; numCuotas: number; creadoEn: Date }[]
+      >`
+        SELECT c."id", u."nombre" AS espacio, cl."nombre" AS cliente, c."tipo"::text AS tipo,
+               c."monto", c."abono", c."numCuotas", c."creadoEn"
+        FROM "Contrata" c JOIN "User" u ON u."id" = c."ownerId" JOIN "Cliente" cl ON cl."id" = c."clienteId"
+        WHERE ${SQL_ANOMALA}
+        ORDER BY c."creadoEn" DESC`,
+    ]);
+
+  const k = cartera[0]!;
+  const co = cobranza[0]!;
+  const col = colocacion[0]!;
+  const d = deudores[0]!;
+  const espacios = await getEspacios(desde);
+  const nombres = new Map(espacios.map((e) => [e.id, e]));
+  const carteraTotal = r2(k.cartera);
+  const vencido = r2(k.vencido);
+  const cobrado = r2(co.cobrado);
+  const esperado = r2(co.esperado);
+  const cantidad = Number(col.cantidad);
+
   return {
-    cartera,
-    entregadas: { cantidad: entregadas._count, monto: entregadas._sum.monto ?? 0 },
-    porTipo: porTipo.map((t) => ({ tipo: t.tipo, contratas: t._count, capital: t._sum.monto ?? 0 })),
+    cartera: carteraTotal,
+    capitalActivo: r2(k.capital),
+    interesesPorCobrar: r2(k.intereses),
+    contratasActivas: Number(k.activas),
+    contratasConVencido: Number(k.con_vencido),
+    mora: {
+      vencido,
+      porcentaje: carteraTotal > 0 ? r2((vencido / carteraTotal) * 100) : 0,
+      antiguedad: [
+        { rango: "1–7 días", monto: r2(k.v1_7) },
+        { rango: "8–30 días", monto: r2(k.v8_30) },
+        { rango: "31–60 días", monto: r2(k.v31_60) },
+        { rango: "Más de 60", monto: r2(k.v61) },
+      ],
+    },
+    proximos: { dias7: r2(k.prox7), dias30: r2(k.prox30) },
+    cobranza: {
+      cobrado,
+      ganancia: r2(co.ganancia),
+      esperado,
+      cumplimiento: esperado > 0 ? r2((cobrado / esperado) * 100) : null,
+      pagos: Number(co.pagos),
+    },
+    entregadas: {
+      cantidad,
+      monto: r2(col.monto),
+      ticketPromedio: cantidad > 0 ? r2((col.monto ?? 0) / cantidad) : 0,
+      clientes: Number(col.clientes),
+    },
+    porTipo: porTipo.map((t) => ({
+      tipo: t.tipo,
+      contratas: Number(t.contratas),
+      capital: r2(t.capital),
+      saldo: r2(t.saldo),
+    })),
     cobradoPorDia: cobradoPorDia.map((r) => ({ dia: r.dia.toISOString(), total: r.total })),
-    deudaViva: Math.round(((d?.deuda ?? 0) - (d?.abonado ?? 0)) * 100) / 100,
-    espacios: await getEspacios(desde),
+    esperadoPorDia: esperadoPorDia.map((r) => ({ dia: r.dia.toISOString(), total: r.total })),
+    deudores: {
+      deudaViva: r2((d.deuda ?? 0) - (d.abonado ?? 0)),
+      abonadoPeriodo: r2(d.abonado_periodo),
+      conSaldo: Number(d.con_saldo),
+    },
+    espacios: porEspacio
+      .map((e) => {
+        const info = nombres.get(e.ownerId);
+        const c = r2(e.cartera);
+        const v = r2(e.vencido);
+        return {
+          id: e.ownerId,
+          nombre: info?.nombre ?? "—",
+          clientes: info?.clientes ?? 0,
+          movimientos: info?.movimientos ?? 0,
+          activas: Number(e.activas),
+          cartera: c,
+          vencido: v,
+          mora: c > 0 ? r2((v / c) * 100) : 0,
+          cobrado: r2(e.cobrado),
+          entregado: r2(e.entregado),
+        };
+      })
+      .filter((e) => e.activas > 0 || e.cobrado > 0 || e.entregado > 0)
+      .sort((a, b) => b.cartera - a.cartera),
+    anomalas: anomalas.map((a) => ({ ...a, creadoEn: a.creadoEn.toISOString() })),
   };
 }
 

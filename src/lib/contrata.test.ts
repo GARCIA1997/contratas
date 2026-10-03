@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  errorDeMontos,
   calcularAbono,
   calcularScorePago,
   construirHistorial,
@@ -236,5 +237,15 @@ describe("construirHistorial", () => {
     expect(eventos).toHaveLength(2);
     expect(eventos[0].tipo).toBe("PAGO");
     expect(eventos[1].tipo).toBe("CONTRATA_CREADA");
+  });
+});
+
+describe("errorDeMontos", () => {
+  it("rechaza un abono por pago mayor que lo prestado (caso real: $30,000 con abono $24,002,025)", () => {
+    expect(errorDeMontos(30000, 24002025)).toMatch(/no puede ser mayor/);
+  });
+  it("acepta montos normales", () => {
+    expect(errorDeMontos(30000, 2400)).toBeNull();
+    expect(errorDeMontos(5000, 600)).toBeNull();
   });
 });

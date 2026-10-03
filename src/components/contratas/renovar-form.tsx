@@ -1,5 +1,6 @@
 "use client";
 
+import { errorDeMontos } from "@/lib/contrata";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { format } from "date-fns";
@@ -149,6 +150,8 @@ export function RenovarForm({
     const abonoNum = parseFloat(abono);
     if (!montoNum || montoNum <= 0) return setError("Monto inválido");
     if (!abonoNum || abonoNum <= 0) return setError("Abono inválido");
+    const errMontos = errorDeMontos(montoNum, abonoNum);
+    if (errMontos) return setError(errMontos);
     if (!cubreDeuda)
       return setError(
         `El monto debe cubrir el saldo pendiente (${formatMoneda(saldoTotal)})`

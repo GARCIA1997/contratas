@@ -36,3 +36,11 @@ describe("desdeDe", () => {
     expect(desdeDe("30d", ahora)).toEqual(new Date(2026, 8, 3, 15, 30));
   });
 });
+
+describe("hoyCalendario", () => {
+  it("usa la fecha de México aunque en UTC ya sea el día siguiente", async () => {
+    const { hoyCalendario } = await import("./datos");
+    // 23:30 en CDMX del 3 de oct = 05:30 UTC del 4 de oct.
+    expect(hoyCalendario(new Date("2026-10-04T05:30:00Z"))).toEqual(new Date(Date.UTC(2026, 9, 3)));
+  });
+});
