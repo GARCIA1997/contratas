@@ -38,6 +38,11 @@ model User {
   citasAgendadas CitaAgendada[]
   creadoEn       DateTime           @default(now())
 
+  /// Acceso al monitor de operaciones (/monitor): ve datos de TODOS los
+  /// espacios, así que no depende del rol sino de este permiso explícito.
+  /// Se otorga con `npx tsx scripts/acceso-monitor.ts <correo>`.
+  accesoMonitor  Boolean            @default(false)
+
   // Espacio de trabajo: null = dueño de su propio espacio (registro público);
   // con valor = miembro invitado del espacio de ese dueño (creado desde
   // Configuración → Usuarios). Todos los datos del miembro se scopean al

@@ -1,0 +1,36 @@
+/* Estilos del monitor: Tailwind con el tema de Stitch (ver
+ * tailwind.monitor.config.ts), aplicado solo dentro de #monitor. */
+@config "../../../tailwind.monitor.config.ts";
+
+@tailwind components;
+@tailwind utilities;
+
+/* El contenedor mismo: el `important: "#monitor"` de Tailwind solo alcanza a
+ * los descendientes, así que el fondo y el color base van aquí. */
+#monitor {
+  min-height: 100vh;
+  background: #0c1321;
+  color: #dce2f6;
+  font-family: var(--font-inter), "Inter", system-ui, sans-serif;
+  font-feature-settings: "tnum" 1, "cv05" 1;
+}
+#monitor .material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 20;
+}
+#monitor ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+#monitor ::-webkit-scrollbar-thumb {
+  background: #2e3544;
+  border-radius: 9999px;
+}

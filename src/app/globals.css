@@ -1,3 +1,7 @@
+/* Config explícito: el monitor usa otro (tailwind.monitor.config.ts) y sin
+ * esta línea Tailwind podía procesar este archivo con el del monitor. */
+@config "../../tailwind.config.ts";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
