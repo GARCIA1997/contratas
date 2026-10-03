@@ -1,6 +1,6 @@
 import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig, SerwistPlugin } from "serwist";
-import { ExpirationPlugin, NetworkFirst, Serwist } from "serwist";
+import { ExpirationPlugin, NetworkFirst, NetworkOnly, Serwist } from "serwist";
 
 /**
  * Caché de pantallas. "Preparar para trabajar sin señal" precarga TODAS las
@@ -49,6 +49,15 @@ const serwist = new Serwist({
   // páginas — cubre parte del "pantalla en blanco offline" para páginas ya
   // visitadas una vez con red.
   runtimeCaching: [
+    // El monitor de operaciones (/monitor) siempre va a la red: son datos en
+    // vivo de toda la plataforma y no tienen versión offline. Sin esta regla
+    // las de abajo lo cachearían ignorando la query (?rango=7d vs 30d se
+    // mezclarían) y servirían datos viejos a los 4 s.
+    {
+      matcher: ({ url: { pathname }, sameOrigin }) =>
+        sameOrigin && (pathname === "/monitor" || pathname.startsWith("/monitor/")),
+      handler: new NetworkOnly(),
+    },
     // Red de seguridad adicional para el pull-sync (Fase A): si la petición
     // de sincronización se hace con la red inestable, sirve la última copia
     // cacheada. La fuente de verdad real del offline es IndexedDB (ver

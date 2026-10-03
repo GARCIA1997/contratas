@@ -147,3 +147,17 @@ contraseña). Edita la IP/usuario al inicio del script si cambian.
   (`docker-compose.override.yml`, no versionado, solo existe ahí). Conecta
   tu cliente a `localhost:5433` con las credenciales de `.env` del VPS
   mientras el túnel esté abierto.
+
+## Monitor de operaciones (/monitor)
+
+Panel web interno (errores, actividad, usuarios y métricas de toda la
+plataforma). Entra con una cuenta normal de Kredired que tenga
+`User.accesoMonitor = true`; cualquier otra recibe 404.
+
+Otorgar acceso en producción (después del deploy que trae la migración):
+
+```bash
+ssh deploy@187.127.248.213 "cd ~/kredired && sudo docker compose exec -T db psql -U contratas contratas -c \"UPDATE \\\"User\\\" SET \\\"accesoMonitor\\\" = true WHERE email = 'CORREO_O_TELEFONO';\""
+```
+
+En local: `npx tsx scripts/acceso-monitor.ts <correo>` (`--quitar` para revocar).
