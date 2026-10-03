@@ -6,6 +6,7 @@ import { syncAll } from "@/lib/offline/sync";
 import { flushQueue } from "@/lib/offline/queue";
 import { suscribirseAConexion } from "@/lib/offline/conexion";
 import { instalarGuardiaFetch } from "@/lib/offline/modo-local";
+import { asegurarIndexedDB, vigilarIndexedDB } from "@/lib/offline/dexie-retry";
 import { descargarPantallasEnSegundoPlano } from "@/lib/offline/pantallas-offline";
 
 /**
@@ -34,7 +35,12 @@ export function OfflineBootstrap({ ownerId }: { ownerId: string }) {
   const router = useRouter();
   useEffect(() => {
     instalarGuardiaFetch();
+    const dejarDeVigilar = vigilarIndexedDB();
     async function intentar() {
+      // Primero la conexión local: al volver del segundo plano en iPhone
+      // suele estar muerta (ver dexie-retry.ts) y la cola y el sync son lo
+      // primero que la usan.
+      await asegurarIndexedDB();
       await flushQueue(ownerId);
       await syncAll(ownerId);
       descargarPantallasEnSegundoPlano(router);
@@ -43,6 +49,7 @@ export function OfflineBootstrap({ ownerId }: { ownerId: string }) {
     const quitarConexion = suscribirseAConexion(() => void intentar());
     const quitarFrente = suscribirseAVolverAlFrente(() => void intentar());
     return () => {
+      dejarDeVigilar();
       quitarConexion();
       quitarFrente();
     };

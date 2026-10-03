@@ -333,3 +333,18 @@ export function construirHistorial(
   eventos.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
   return eventos;
 }
+
+/**
+ * Revisión de captura para el abono de una contrata. En producción se dio
+ * una contrata de $30,000 con abono de $24,002,025 por pago (se tecleó de
+ * más): sola inflaba la cartera en cientos de millones. Un abono por pago
+ * mayor que el monto prestado nunca es real — en toda la base, la contrata
+ * con el total más alto a pagar es de 2.05× su monto. Devuelve el mensaje
+ * de error, o null si los montos son razonables.
+ */
+export function errorDeMontos(monto: number, abono: number): string | null {
+  if (monto > 0 && abono > monto) {
+    return `El abono por pago (${abono.toLocaleString("es-MX")}) no puede ser mayor que el monto prestado (${monto.toLocaleString("es-MX")}). Revisa que no se haya escrito de más.`;
+  }
+  return null;
+}

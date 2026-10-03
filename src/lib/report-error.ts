@@ -15,6 +15,13 @@ export function reportarError(params: {
   // `redirect()` y `notFound()` de Next.js se implementan lanzando estos
   // "errores" a propósito; no son fallas y solo llenaban el monitor de ruido.
   if (/NEXT_REDIRECT|NEXT_NOT_FOUND/.test(params.mensaje)) return;
+  // "Script error." sin stack: el navegador oculta el detalle porque viene de
+  // un script de otro origen (extensiones, traductor o bloqueadores de
+  // Safari) — no trae nada con qué diagnosticarlo ni es código de la app.
+  if (params.mensaje === "Script error." && !params.stack) return;
+  // Stack de Deno (`ext:core/…`): no es un navegador sino un bot que ejecuta
+  // el JS de la página (vistas previas de enlaces, rastreadores).
+  if (params.stack?.includes("ext:core/")) return;
   try {
     void fetch("/api/errores", {
       method: "POST",
