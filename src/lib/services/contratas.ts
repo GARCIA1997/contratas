@@ -240,6 +240,18 @@ export async function actualizarContrata(
       const pagadoPrev = new Map(
         actual.pagos.map((p) => [p.numeroCuota, p])
       );
+      // Las cuotas con dinero registrado no se pueden quedar fuera: al
+      // recalendarizar se borran y se recrean, y lo abonado en ellas se
+      // perdería del historial y de lo cobrado.
+      const ultimaConDinero = actual.pagos
+        .filter((p) => p.pagado || p.montoAbonado > 0)
+        .reduce((m, p) => Math.max(m, p.numeroCuota), 0);
+      if (numCuotas < ultimaConDinero) {
+        throw new HttpError(
+          400,
+          `No puedes dejar ${numCuotas} cuotas: la cuota ${ultimaConDinero} ya tiene pagos registrados.`
+        );
+      }
       await tx.pago.deleteMany({ where: { contrataId: id } });
       await tx.pago.createMany({
         data: fechas.map((fechaProgramada, i) => {
@@ -250,6 +262,10 @@ export async function actualizarContrata(
             fechaProgramada,
             pagado: prev?.pagado ?? false,
             fechaPago: prev?.pagado ? prev.fechaPago : null,
+            // Antes no se copiaba: las cuotas pagadas quedaban en $0 abonado
+            // (no contaban en cobrado ni ganancia) y los abonos parciales de
+            // las pendientes se perdían. Monitor → Calidad de datos.
+            montoAbonado: prev?.montoAbonado ?? 0,
           };
         }),
       });

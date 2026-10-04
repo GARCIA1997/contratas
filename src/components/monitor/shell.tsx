@@ -18,6 +18,7 @@ const NAV = [
   { href: "/monitor/actividad", icono: "pulse_alert", texto: "Actividad" },
   { href: "/monitor/usuarios", icono: "group", texto: "Usuarios" },
   { href: "/monitor/negocio", icono: "payments", texto: "Negocio" },
+  { href: "/monitor/calidad", icono: "fact_check", texto: "Calidad" },
 ];
 
 const RANGOS = [
