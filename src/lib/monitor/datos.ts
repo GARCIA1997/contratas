@@ -929,19 +929,6 @@ const REVISIONES: Revision[] = [
       WHERE c."fechaInicio" > now() + interval '90 days'`,
   },
   {
-    id: "cartera-estancada",
-    titulo: "Contratas activas vencidas hace más de 90 días",
-    descripcion: "Su última cuota venció hace más de 3 meses y aún deben: candidatas a pasar a deuda.",
-    severidad: "aviso",
-    consulta: Prisma.sql`
-      SELECT u.nombre, cl.nombre, MAX(p."fechaProgramada"),
-        'Debe $' || SUM(GREATEST(c.abono - p."montoAbonado", 0)) FILTER (WHERE NOT p.pagado)
-      FROM "Contrata" c JOIN "Pago" p ON p."contrataId" = c.id JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE NOT c."convertidaADeuda"
-      GROUP BY u.nombre, cl.nombre, c.id
-      HAVING bool_or(NOT p.pagado) AND MAX(p."fechaProgramada") < now() - interval '90 days'`,
-  },
-  {
     id: "cliente-sin-telefono",
     titulo: "Clientes sin teléfono",
     descripcion: "No se les puede mandar recibo ni recordatorio por WhatsApp.",
@@ -962,17 +949,6 @@ const REVISIONES: Revision[] = [
       FROM "Deudor" d JOIN "User" u ON u.id = d."ownerId"
       WHERE (d.telefono IS NULL OR trim(d.telefono) = '')
         AND d."deudaInicial" > COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0)`,
-  },
-  {
-    id: "cliente-sin-contratas",
-    titulo: "Clientes sin contratas",
-    descripcion: "Registrados hace más de 30 días y nunca se les entregó nada.",
-    severidad: "info",
-    consulta: Prisma.sql`
-      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Registrado y sin contratas'
-      FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
-      WHERE cl."creadoEn" < now() - interval '30 days'
-        AND NOT EXISTS (SELECT 1 FROM "Contrata" c WHERE c."clienteId" = cl.id)`,
   },
 ];
 
