@@ -729,3 +729,266 @@ async function nombresDe(ids: (string | null | undefined)[]): Promise<Map<string
   });
   return new Map(users.map((u) => [u.id, u.nombre ?? u.email]));
 }
+
+/* ── Calidad de datos ─────────────────────────────────────────────────── */
+
+export type Severidad = "error" | "aviso" | "info";
+
+export type FilaCalidad = {
+  espacio: string | null;
+  cliente: string | null;
+  detalle: string;
+  fecha: Date | null;
+};
+
+type Revision = {
+  id: string;
+  titulo: string;
+  descripcion: string;
+  severidad: Severidad;
+  consulta: Prisma.Sql;
+};
+
+/**
+ * Revisiones de integridad sobre TODOS los espacios. Nacieron de un caso
+ * real: una contrata con abono de $24,002,025 inflaba la cartera en cientos
+ * de millones sin que nada lo señalara. Cada revisión es una consulta de
+ * solo lectura que devuelve filas con la misma forma (espacio, cliente,
+ * detalle, fecha) para mostrarlas igual en la pantalla de Calidad.
+ *
+ * - error: afecta dinero o cifras (cartera, cobrado, saldos).
+ * - aviso: probable duplicado o captura a revisar.
+ * - info:  datos incompletos que limitan funciones (p. ej. WhatsApp).
+ */
+const REVISIONES: Revision[] = [
+  {
+    id: "montos-imposibles",
+    titulo: "Contratas con montos imposibles",
+    descripcion: "Abono por pago mayor que lo prestado, o total a pagar de más de 5× el monto. Casi seguro un error al teclear; quedan fuera de la cartera.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre AS espacio, cl.nombre AS cliente, c."creadoEn" AS fecha,
+        'Prestado $' || c.monto || ' · abono $' || c.abono || ' × ' || c."numCuotas" AS detalle
+      FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE c.abono > c.monto OR c.abono * c."numCuotas" > c.monto * 5`,
+  },
+  {
+    id: "total-menor-prestado",
+    titulo: "Contratas que pierden dinero",
+    descripcion: "El total a pagar (abono × cuotas) es menor que lo prestado. Probablemente el abono quedó corto.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, c."creadoEn",
+        'Prestado $' || c.monto || ' · paga en total $' || (c.abono * c."numCuotas")
+      FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE c.abono * c."numCuotas" < c.monto`,
+  },
+  {
+    id: "sobrepago",
+    titulo: "Cuotas con más abonado que el abono",
+    descripcion: "Lo registrado en la cuota supera lo que se debía. Si es el doble exacto, es un abono aplicado dos veces. Infla lo cobrado.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, p."fechaPago",
+        'Cuota ' || p."numeroCuota" || ': abonado $' || p."montoAbonado" || ' de $' || c.abono ||
+        CASE WHEN abs(p."montoAbonado" - 2 * c.abono) < 0.01 THEN ' (doble)' ELSE '' END
+      FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE p."montoAbonado" > c.abono + 0.01`,
+  },
+  {
+    id: "pagada-sin-monto",
+    titulo: "Cuotas pagadas sin monto registrado",
+    descripcion: "Marcadas como pagadas con $0 abonado: no cuentan en cobrado ni en ganancia. Las causaba editar una contrata (corregido en 4.12.0).",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, p."fechaPago",
+        'Cuota ' || p."numeroCuota" || ' de ' || c."numCuotas" || ' · abono $' || c.abono
+      FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE p.pagado AND p."montoAbonado" = 0 AND c.abono > 0`,
+  },
+  {
+    id: "completa-no-pagada",
+    titulo: "Cuotas completas sin marcar como pagadas",
+    descripcion: "Ya se abonó todo, pero la cuota sigue pendiente: aparece en Ruta y en la mora sin deberse.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, p."fechaProgramada",
+        'Cuota ' || p."numeroCuota" || ': abonado $' || p."montoAbonado" || ' de $' || c.abono
+      FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE NOT p.pagado AND c.abono > 0 AND p."montoAbonado" >= c.abono`,
+  },
+  {
+    id: "cuotas-desfasadas",
+    titulo: "Contratas con cuotas que no cuadran",
+    descripcion: "El número de cuotas de la contrata no coincide con las cuotas que realmente tiene.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, c."creadoEn",
+        c."numCuotas" || ' cuotas pactadas, ' || (SELECT COUNT(*) FROM "Pago" p WHERE p."contrataId" = c.id) || ' registradas'
+      FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE c."numCuotas" <> (SELECT COUNT(*) FROM "Pago" p WHERE p."contrataId" = c.id)`,
+  },
+  {
+    id: "cliente-de-otro-espacio",
+    titulo: "Contratas con cliente de otro espacio",
+    descripcion: "La contrata y su cliente pertenecen a usuarios distintos. Rompe el aislamiento entre espacios.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, c."creadoEn", 'El cliente es de otro usuario'
+      FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE cl."ownerId" <> c."ownerId"`,
+  },
+  {
+    id: "deuda-sin-deudor",
+    titulo: "Contratas pasadas a deuda sin deudor",
+    descripcion: "Se marcaron como deuda pero no quedaron ligadas a ningún deudor: ese saldo no aparece en Deudores.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, c."creadoEn", 'Prestado $' || c.monto || ' · ' || lower(c.tipo::text)
+      FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE (c."convertidaADeuda" AND c."deudorId" IS NULL) OR (NOT c."convertidaADeuda" AND c."deudorId" IS NOT NULL)`,
+  },
+  {
+    id: "pago-fechas",
+    titulo: "Cuotas con fechas de pago inválidas",
+    descripcion: "Pagadas sin fecha de pago, con fecha en el futuro, o con abono negativo.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, p."fechaPago",
+        'Cuota ' || p."numeroCuota" || CASE WHEN p."montoAbonado" < 0 THEN ': abono negativo'
+          WHEN p."fechaPago" IS NULL THEN ': pagada sin fecha' ELSE ': fecha de pago futura' END
+      FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE p."montoAbonado" < 0 OR (p.pagado AND p."fechaPago" IS NULL) OR p."fechaPago" > now() + interval '1 day'`,
+  },
+  {
+    id: "deudor-sobreabonado",
+    titulo: "Deudores con más abonado que la deuda",
+    descripcion: "Los abonos superan la deuda: saldo negativo.",
+    severidad: "error",
+    consulta: Prisma.sql`
+      SELECT u.nombre, d.nombre, d."creadoEn",
+        'Deuda $' || d."deudaInicial" || ' · abonado $' || COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0)
+      FROM "Deudor" d JOIN "User" u ON u.id = d."ownerId"
+      WHERE d."deudaInicial" < COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0) - 0.01`,
+  },
+  {
+    id: "contratas-duplicadas",
+    titulo: "Posibles contratas duplicadas",
+    descripcion: "Mismo cliente, mismo monto y tipo, creadas con menos de 30 minutos de diferencia (doble toque o reintento).",
+    severidad: "aviso",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, b."creadoEn",
+        '$' || a.monto || ' ' || lower(a.tipo::text) || ' · ' ||
+        round(extract(epoch from (b."creadoEn" - a."creadoEn")) / 60) || ' min después de la otra'
+      FROM "Contrata" a JOIN "Contrata" b ON b."clienteId" = a."clienteId" AND b.monto = a.monto AND b.tipo = a.tipo
+        AND b."creadoEn" > a."creadoEn" AND b."creadoEn" - a."creadoEn" < interval '30 minutes'
+      JOIN "User" u ON u.id = a."ownerId" JOIN "Cliente" cl ON cl.id = a."clienteId"`,
+  },
+  {
+    id: "clientes-duplicados",
+    titulo: "Posibles clientes duplicados",
+    descripcion: "Mismo nombre (y mismo teléfono, si tienen) en el mismo espacio.",
+    severidad: "aviso",
+    consulta: Prisma.sql`
+      SELECT u.nombre, MIN(cl.nombre), MAX(cl."creadoEn"),
+        COUNT(*) || ' registros' || CASE WHEN COUNT(DISTINCT right(regexp_replace(COALESCE(cl.telefono, ''), '[^0-9]', '', 'g'), 10)) = 1
+          AND MIN(cl.telefono) IS NOT NULL THEN ' con el mismo teléfono' ELSE '' END
+      FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
+      GROUP BY u.nombre, cl."ownerId", lower(trim(cl.nombre))
+      HAVING COUNT(*) > 1`,
+  },
+  {
+    id: "telefono-invalido",
+    titulo: "Teléfonos inválidos",
+    descripcion: "No tienen 10 dígitos (o 12 con lada 52): el recibo por WhatsApp no llega.",
+    severidad: "aviso",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Teléfono: ' || cl.telefono
+      FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
+      WHERE cl.telefono IS NOT NULL AND trim(cl.telefono) <> ''
+        AND length(regexp_replace(cl.telefono, '[^0-9]', '', 'g')) NOT IN (10, 12, 13)`,
+  },
+  {
+    id: "nombre-sospechoso",
+    titulo: "Nombres de cliente sospechosos",
+    descripcion: "Muy cortos o solo números.",
+    severidad: "aviso",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Nombre: "' || cl.nombre || '"'
+      FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
+      WHERE length(trim(cl.nombre)) < 3 OR trim(cl.nombre) ~ '^[0-9 ]+$'`,
+  },
+  {
+    id: "inicio-futuro",
+    titulo: "Contratas que empiezan muy en el futuro",
+    descripcion: "Primer pago a más de 90 días: probablemente una fecha mal capturada.",
+    severidad: "aviso",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, c."fechaInicio", 'Inicia el ' || to_char(c."fechaInicio", 'DD/MM/YYYY')
+      FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
+      WHERE c."fechaInicio" > now() + interval '90 days'`,
+  },
+  {
+    id: "cliente-sin-telefono",
+    titulo: "Clientes sin teléfono",
+    descripcion: "No se les puede mandar recibo ni recordatorio por WhatsApp.",
+    severidad: "info",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Sin teléfono'
+      FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
+      WHERE cl.telefono IS NULL OR trim(cl.telefono) = ''`,
+  },
+  {
+    id: "deudor-sin-telefono",
+    titulo: "Deudores con saldo y sin teléfono",
+    descripcion: "No se les puede mandar el recordatorio de abono.",
+    severidad: "info",
+    consulta: Prisma.sql`
+      SELECT u.nombre, d.nombre, d."creadoEn",
+        'Debe $' || (d."deudaInicial" - COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0))
+      FROM "Deudor" d JOIN "User" u ON u.id = d."ownerId"
+      WHERE (d.telefono IS NULL OR trim(d.telefono) = '')
+        AND d."deudaInicial" > COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0)`,
+  },
+];
+
+const LIMITE_FILAS = 200;
+
+export async function getCalidadDatos() {
+  const resultados = await Promise.all(
+    REVISIONES.map(async (r) => {
+      // Cada consulta devuelve 4 columnas en este orden; se renombran por
+      // posición porque varias traen dos «nombre» (usuario y cliente).
+      const filas = await prisma.$queryRaw<
+        { espacio: string | null; cliente: string | null; fecha: Date | null; detalle: string | null }[]
+      >(Prisma.sql`SELECT * FROM (${r.consulta}) AS q(espacio, cliente, fecha, detalle) LIMIT ${LIMITE_FILAS + 1}`);
+      const lista: FilaCalidad[] = filas.map((f) => ({
+        espacio: f.espacio,
+        cliente: f.cliente,
+        fecha: f.fecha instanceof Date ? f.fecha : null,
+        detalle: String(f.detalle ?? ""),
+      }));
+      lista.sort((a, b) => (b.fecha?.getTime() ?? 0) - (a.fecha?.getTime() ?? 0));
+      return {
+        id: r.id,
+        titulo: r.titulo,
+        descripcion: r.descripcion,
+        severidad: r.severidad,
+        total: lista.length,
+        masDeLimite: lista.length > LIMITE_FILAS,
+        filas: lista.slice(0, LIMITE_FILAS).map((f) => ({ ...f, fecha: f.fecha?.toISOString() ?? null })),
+      };
+    })
+  );
+  const orden: Record<Severidad, number> = { error: 0, aviso: 1, info: 2 };
+  return resultados.sort((a, b) => orden[a.severidad] - orden[b.severidad] || b.total - a.total);
+}
+
+/** Conteo rápido por severidad (para la tarjeta de salud del Resumen). */
+export async function getResumenCalidad() {
+  const r = await getCalidadDatos();
+  return {
+    errores: r.filter((x) => x.severidad === "error").reduce((s, x) => s + x.total, 0),
+    avisos: r.filter((x) => x.severidad === "aviso").reduce((s, x) => s + x.total, 0),
+  };
+}

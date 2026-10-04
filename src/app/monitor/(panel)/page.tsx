@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getResumen } from "@/lib/monitor/datos";
+import { getResumen, getResumenCalidad } from "@/lib/monitor/datos";
 import { GraficaActividad, Sparkline } from "@/components/monitor/graficas";
 import { dineroCorto, haceCuanto, hora, iniciales, numero, origenError } from "@/components/monitor/formato";
 import { cn } from "@/lib/utils";
@@ -80,7 +80,7 @@ function Servicio(props: { ok: boolean; aviso?: boolean; nombre: string; detalle
 
 export default async function ResumenPage({ searchParams }: { searchParams: { rango?: string } }) {
   const rango = rangoDeParams(searchParams);
-  const r = await getResumen(rango);
+  const [r, calidad] = await Promise.all([getResumen(rango), getResumenCalidad()]);
   const k = r.kpis;
   const movs = r.serie.map((p) => p.movimientos);
   const errs = r.serie.map((p) => p.errores);
@@ -203,6 +203,16 @@ export default async function ResumenPage({ searchParams }: { searchParams: { ra
                 dato={`${r.salud.operacionesAtoradas} atoradas`}
                 estado={r.salud.operacionesAtoradas > 0 ? "Revisar" : "Operativo"}
               />
+              <Link href={`/monitor/calidad?rango=${rango}`} className="block">
+                <Servicio
+                  ok={calidad.errores === 0}
+                  aviso={calidad.avisos > 0}
+                  nombre="Calidad de datos"
+                  detalle="Contratas, cuotas, clientes y deudores"
+                  dato={`${calidad.errores} errores`}
+                  estado={calidad.errores > 0 ? "Revisar" : calidad.avisos > 0 ? `${calidad.avisos} avisos` : "Sin hallazgos"}
+                />
+              </Link>
               <Servicio
                 ok
                 aviso={r.salud.erroresUltimaHora > 0}
