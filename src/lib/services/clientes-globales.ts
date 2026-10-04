@@ -186,3 +186,98 @@ export async function duplicarClienteGlobal(id: string, ownerIdDestino: string) 
     },
   });
 }
+
+/* ── Verificación de duplicados al registrar un cliente ─────────────────── */
+
+/** Los últimos 10 dígitos: "+52 313 191 1315" y "3131911315" son el mismo. */
+export function telefonoClave(telefono: string | null | undefined): string | null {
+  const d = soloDigitos(telefono ?? "");
+  return d.length >= 10 ? d.slice(-10) : null;
+}
+
+export type ClientePropioCoincidente = { id: string; nombre: string; telefono: string | null };
+export type ClienteDeOtro = {
+  administrador: string;
+  nombre: string;
+  /** El nombre capturado también coincide (no solo el teléfono). */
+  mismoNombre: boolean;
+  contratasActivas: number;
+  saldo: number;
+};
+
+export type ResultadoVerificacion = {
+  /** Nombre y teléfono iguales (o solo nombre si no se dio teléfono): es el mismo cliente. */
+  propio: ClientePropioCoincidente | null;
+  /** Mismo teléfono pero OTRO nombre en el espacio propio (p. ej. un familiar). */
+  telefonoPropio: ClientePropioCoincidente | null;
+  /** Clientes de otros administradores con ese teléfono. */
+  otros: ClienteDeOtro[];
+};
+
+/**
+ * Antes de dar de alta un cliente: ¿ya existe? Es el mismo cliente si
+ * coinciden NOMBRE y TELÉFONO (sin acentos/mayúsculas; teléfono por sus
+ * últimos 10 dígitos). Si solo coincide el teléfono se avisa a quién le
+ * pertenece ese número — en campo es normal que familiares lo compartan —
+ * y se deja registrar. Sin teléfono capturado, se compara solo el nombre
+ * dentro del espacio propio.
+ */
+export async function verificarClienteNuevo(
+  ownerId: string,
+  datos: { nombre: string; telefono?: string | null }
+): Promise<ResultadoVerificacion> {
+  const tel = telefonoClave(datos.telefono);
+  const nombre = normalizarTexto(datos.nombre);
+
+  const propios = await prisma.cliente.findMany({
+    where: { ownerId },
+    select: { id: true, nombre: true, telefono: true },
+  });
+  const mismoNombre = (c: { nombre: string }) => !!nombre && normalizarTexto(c.nombre) === nombre;
+  const mismoTel = (c: { telefono: string | null }) => !!tel && telefonoClave(c.telefono) === tel;
+
+  const propio = tel
+    ? propios.find((c) => mismoTel(c) && mismoNombre(c)) ?? null
+    : propios.find(mismoNombre) ?? null;
+  const telefonoPropio = !propio && tel ? propios.find(mismoTel) ?? null : null;
+
+  if (!tel || propio) return { propio, telefonoPropio, otros: [] };
+
+  const ajenos = (
+    await prisma.cliente.findMany({
+      where: { ownerId: { not: ownerId }, telefono: { not: null } },
+      select: { id: true, nombre: true, telefono: true, ownerId: true },
+    })
+  ).filter(mismoTel);
+  if (ajenos.length === 0) return { propio, telefonoPropio, otros: [] };
+
+  const [duenos, contratas] = await Promise.all([
+    prisma.user.findMany({
+      where: { id: { in: Array.from(new Set(ajenos.map((c) => c.ownerId))) } },
+      select: { id: true, nombre: true, email: true },
+    }),
+    prisma.contrata.findMany({
+      where: { clienteId: { in: ajenos.map((c) => c.id) }, convertidaADeuda: false },
+      select: { clienteId: true, abono: true, pagos: { select: { pagado: true, montoAbonado: true } } },
+    }),
+  ]);
+  const nombreDueno = new Map(duenos.map((u) => [u.id, u.nombre ?? u.email]));
+  const otros = ajenos
+    .map((c) => {
+      const activas = contratas.filter((k) => k.clienteId === c.id && k.pagos.some((p) => !p.pagado));
+      const saldo = activas.reduce(
+        (s, k) => s + k.pagos.filter((p) => !p.pagado).reduce((t, p) => t + Math.max(k.abono - p.montoAbonado, 0), 0),
+        0
+      );
+      return {
+        administrador: nombreDueno.get(c.ownerId) ?? "Otro administrador",
+        nombre: c.nombre,
+        mismoNombre: mismoNombre(c),
+        contratasActivas: activas.length,
+        saldo: Math.round(saldo * 100) / 100,
+      };
+    })
+    // Primero las que también coinciden en nombre: son el mismo cliente.
+    .sort((a, b) => Number(b.mismoNombre) - Number(a.mismoNombre));
+  return { propio, telefonoPropio, otros };
+}

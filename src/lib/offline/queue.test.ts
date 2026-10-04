@@ -498,3 +498,45 @@ describe("flushQueue", () => {
     expect(await pendingCount(OWNER)).toBe(0);
   });
 });
+
+describe("falla de iOS al sacar de la cola una operación ya confirmada", () => {
+  it("reabre y la saca: se envía UNA sola vez y no queda nada en la cola (caso real de producción)", async () => {
+    await seedContrata("ios");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "ios", numeroCuota: 1 });
+
+    const borrarReal = db.writeQueue.delete.bind(db.writeQueue);
+    const borrar = vi
+      .spyOn(db.writeQueue, "delete")
+      .mockRejectedValueOnce(
+        new Error("Failed to delete record from object store\n UnknownError: Failed to delete record from object store")
+      )
+      .mockImplementation(borrarReal);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+
+    await expect(flushQueue(OWNER)).resolves.not.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(borrar).toHaveBeenCalledTimes(2);
+    expect(await db.writeQueue.where("ownerId").equals(OWNER).count()).toBe(0);
+    borrar.mockRestore();
+  });
+
+  it("si la conexión sigue muerta, no deja una promesa rechazada: la cola se reintenta después", async () => {
+    await seedContrata("ios2");
+    Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+    await enqueue(OWNER, "contrata.pago.toggle", { contrataId: "ios2", numeroCuota: 1 });
+
+    const borrar = vi
+      .spyOn(db.writeQueue, "delete")
+      .mockRejectedValue(new Error("Failed to delete record from object store"));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 200 })));
+    Object.defineProperty(navigator, "onLine", { value: true, configurable: true });
+
+    const resumen = await flushQueue(OWNER);
+    expect(resumen?.interrumpida).toBe(true);
+    borrar.mockRestore();
+    cancelarReintento();
+  });
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -13,6 +13,8 @@ import { guardarOperacion } from "@/lib/offline/guardar";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import { rutas } from "@/lib/rutas";
+import { verificarClienteNuevo, type Verificacion } from "@/lib/offline/verificar-cliente";
+import { AvisoClienteExistente } from "@/components/clientes/aviso-cliente-existente";
 
 export type ClienteInicial = {
   id: string;
@@ -36,13 +38,35 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
   const [notas, setNotas] = useState(inicial?.notas ?? "");
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [aviso, setAviso] = useState<Exclude<Verificacion, { tipo: "nuevo" }> | null>(null);
+  // Candado síncrono: dos toques seguidos en "Crear" llegaban a disparar dos
+  // altas antes de que el botón se deshabilitara (el estado tarda un render).
+  const enCurso = useRef(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!nombre.trim()) return setError("El nombre es obligatorio");
+    await guardar(false);
+  }
 
+  async function guardar(yaRevisado: boolean) {
+    if (enCurso.current) return;
+    enCurso.current = true;
     setGuardando(true);
+    setAviso(null);
+
+    // Antes de dar de alta: ¿ya existe? (teléfono, cola y servidor).
+    const ownerIdRevision = claims.ready ? claims.ownerId : null;
+    if (!editando && !yaRevisado && ownerIdRevision) {
+      const v = await verificarClienteNuevo(ownerIdRevision, { nombre: nombre.trim(), telefono });
+      if (v.tipo !== "nuevo") {
+        setAviso(v);
+        setGuardando(false);
+        enCurso.current = false;
+        return;
+      }
+    }
 
     const datos = {
       nombre: nombre.trim(),
@@ -78,6 +102,7 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
       setError(mensajeDeError(e));
     } finally {
       setGuardando(false);
+      enCurso.current = false;
     }
   }
 
@@ -140,7 +165,15 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
           />
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" className="w-full" disabled={guardando}>
+        {aviso && claims.ready && claims.ownerId && (
+          <AvisoClienteExistente
+            ownerId={claims.ownerId}
+            verificacion={aviso}
+            onRegistrarDeTodos={() => void guardar(true)}
+            onCancelar={() => setAviso(null)}
+          />
+        )}
+        <Button type="submit" className="w-full" disabled={guardando || !!aviso}>
           {guardando ? "Guardando…" : editando ? "Guardar cambios" : "Crear cliente"}
         </Button>
       </form>
