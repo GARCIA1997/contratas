@@ -752,7 +752,9 @@ type Revision = {
 };
 
 /**
- * Revisiones de integridad sobre TODOS los espacios. Nacieron de un caso
+ * Revisiones de integridad sobre TODOS los espacios. Las de contratas y
+ * cuotas solo miran contratas ACTIVAS (con cuotas pendientes y no pasadas a
+ * deuda): lo ya finalizado no se corrige ni distorsiona la operación. Nacieron de un caso
  * real: una contrata con abono de $24,002,025 inflaba la cartera en cientos
  * de millones sin que nada lo señalara. Cada revisión es una consulta de
  * solo lectura que devuelve filas con la misma forma (espacio, cliente,
@@ -773,7 +775,8 @@ const REVISIONES: Revision[] = [
         'Prestado $' || c.monto || ' · abono $' || c.abono || ' × ' || c."numCuotas" AS detalle,
         c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE c.abono > c.monto OR c.abono * c."numCuotas" > c.monto * 5`,
+      WHERE (c.abono > c.monto OR c.abono * c."numCuotas" > c.monto * 5)
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "total-menor-prestado",
@@ -785,7 +788,8 @@ const REVISIONES: Revision[] = [
         'Prestado $' || c.monto || ' · paga en total $' || (c.abono * c."numCuotas"),
         c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE c.abono * c."numCuotas" < c.monto`,
+      WHERE (c.abono * c."numCuotas" < c.monto)
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "sobrepago",
@@ -798,7 +802,8 @@ const REVISIONES: Revision[] = [
         CASE WHEN abs(p."montoAbonado" - 2 * c.abono) < 0.01 THEN ' (doble)' ELSE '' END,
         p.id AS clave
       FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE p."montoAbonado" > c.abono + 0.01`,
+      WHERE (p."montoAbonado" > c.abono + 0.01)
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "pagada-sin-monto",
@@ -810,7 +815,8 @@ const REVISIONES: Revision[] = [
         'Cuota ' || p."numeroCuota" || ' de ' || c."numCuotas" || ' · abono $' || c.abono,
         p.id AS clave
       FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE p.pagado AND p."montoAbonado" = 0 AND c.abono > 0`,
+      WHERE (p.pagado AND p."montoAbonado" = 0 AND c.abono > 0)
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "completa-no-pagada",
@@ -822,7 +828,8 @@ const REVISIONES: Revision[] = [
         'Cuota ' || p."numeroCuota" || ': abonado $' || p."montoAbonado" || ' de $' || c.abono,
         p.id AS clave
       FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE NOT p.pagado AND c.abono > 0 AND p."montoAbonado" >= c.abono`,
+      WHERE (NOT p.pagado AND c.abono > 0 AND p."montoAbonado" >= c.abono)
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "cuotas-desfasadas",
@@ -834,7 +841,8 @@ const REVISIONES: Revision[] = [
         c."numCuotas" || ' cuotas pactadas, ' || (SELECT COUNT(*) FROM "Pago" p WHERE p."contrataId" = c.id) || ' registradas',
         c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE c."numCuotas" <> (SELECT COUNT(*) FROM "Pago" p WHERE p."contrataId" = c.id)`,
+      WHERE (c."numCuotas" <> (SELECT COUNT(*) FROM "Pago" p WHERE p."contrataId" = c.id))
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "cliente-de-otro-espacio",
@@ -845,7 +853,8 @@ const REVISIONES: Revision[] = [
       SELECT u.nombre, cl.nombre, c."creadoEn", 'El cliente es de otro usuario',
         c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE cl."ownerId" <> c."ownerId"`,
+      WHERE (cl."ownerId" <> c."ownerId")
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "deuda-sin-deudor",
@@ -869,7 +878,8 @@ const REVISIONES: Revision[] = [
           WHEN p."fechaPago" IS NULL THEN ': pagada sin fecha' ELSE ': fecha de pago futura' END,
         p.id AS clave
       FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE p."montoAbonado" < 0 OR (p.pagado AND p."fechaPago" IS NULL) OR p."fechaPago" > now() + interval '1 day'`,
+      WHERE (p."montoAbonado" < 0 OR (p.pagado AND p."fechaPago" IS NULL) OR p."fechaPago" > now() + interval '1 day')
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "deudor-sobreabonado",
@@ -896,7 +906,8 @@ const REVISIONES: Revision[] = [
       FROM "Contrata" a JOIN "Contrata" b ON b."clienteId" = a."clienteId" AND b.monto = a.monto AND b.tipo = a.tipo
         AND b.abono = a.abono AND b."numCuotas" = a."numCuotas" AND b."fechaInicio" = a."fechaInicio"
         AND b."creadoEn" > a."creadoEn" AND b."creadoEn" - a."creadoEn" < interval '30 minutes'
-      JOIN "User" u ON u.id = a."ownerId" JOIN "Cliente" cl ON cl.id = a."clienteId"`,
+      JOIN "User" u ON u.id = a."ownerId" JOIN "Cliente" cl ON cl.id = a."clienteId"
+      WHERE NOT b."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = b.id AND NOT px.pagado)`,
   },
   {
     id: "clientes-duplicados",
@@ -944,7 +955,8 @@ const REVISIONES: Revision[] = [
       SELECT u.nombre, cl.nombre, c."fechaInicio", 'Inicia el ' || to_char(c."fechaInicio", 'DD/MM/YYYY'),
         c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
-      WHERE c."fechaInicio" > now() + interval '90 days'`,
+      WHERE (c."fechaInicio" > now() + interval '90 days')
+        AND NOT c."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = c.id AND NOT px.pagado)`,
   },
   {
     id: "cliente-sin-telefono",
