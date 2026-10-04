@@ -8,6 +8,8 @@ import { db } from "@/lib/offline/db";
  *  - "Attempt to get all index records from database without an in-progress transaction"
  *  - "Attempt to get count from database without an in-progress transaction"
  *  - "An internal error was encountered in the Indexed Database server"
+ *  - "Failed to delete record from object store" (al sacar de la cola una
+ *    operación ya confirmada por el servidor)
  *
  * Es un bug conocido de WebKit: cuando la app pasa un rato en segundo plano,
  * iOS suspende o mata el proceso que atiende IndexedDB y la conexión que
@@ -25,6 +27,11 @@ const PATRONES = [
   "Connection to Indexed Database server lost",
   "Database has been closed",
   "DatabaseClosedError",
+  // Variantes del backend de WebKit al leer/escribir/borrar ("Failed to
+  // delete record from object store", "Failed to put…"). Un UnknownError
+  // de IndexedDB siempre es del motor, nunca de los datos de la app.
+  "from object store",
+  "UnknownError",
 ];
 
 export function esFallaIndexedDB(err: unknown): boolean {

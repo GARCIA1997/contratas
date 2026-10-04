@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
+import { conIndexedDBSano, esFallaIndexedDB, reabrirIndexedDB } from "@/lib/offline/dexie-retry";
 import { reportarError } from "@/lib/report-error";
 import { db, type QueueOpType, type WriteQueueItem } from "@/lib/offline/db";
 import { applyLocalEffect } from "@/lib/offline/effects";
@@ -148,6 +149,13 @@ export async function flushQueue(ownerId: string): Promise<ResumenEnvio | null> 
   const resumen: ResumenEnvio = { enviadas: 0, rechazadas: 0, interrumpida: false, terminadoEn: 0 };
   try {
     await vaciar(ownerId, resumen);
+  } catch (err) {
+    // Conexión local muerta aun después de reintentar: no es un error de la
+    // operación. Se reabre y se reintenta la cola más tarde, en vez de
+    // dejar una promesa rechazada sin manejar (un reporte por cada intento).
+    if (!esFallaIndexedDB(err)) throw err;
+    resumen.interrumpida = true;
+    void reabrirIndexedDB().catch(() => undefined);
   } finally {
     resumen.terminadoEn = Date.now();
     // Si otro flush retomó un candado abandonado, ese ya es el dueño.
@@ -194,7 +202,12 @@ async function vaciar(ownerId: string, resumen: ResumenEnvio): Promise<void> {
 
       const resultado = await enviar(op);
       if (resultado === "ok") {
-        await database.writeQueue.delete(op.id);
+        // El servidor ya la aplicó; si iOS falla al sacarla de la cola local
+        // (bug de IndexedDB, ver dexie-retry.ts) se reabre la conexión y se
+        // reintenta. Antes la operación se quedaba en la cola y se reenviaba
+        // en cada pasada (sin duplicarse gracias a la Idempotency-Key, pero
+        // generando un error por intento).
+        await conIndexedDBSano(() => database.writeQueue.delete(op.id));
         await reconciliarTrasExito(ownerId, op);
         resumen.enviadas++;
         continue;
