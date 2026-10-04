@@ -2,6 +2,7 @@ import { getCalidadDatos, type Severidad } from "@/lib/monitor/datos";
 import { fechaHora, numero } from "@/components/monitor/formato";
 import { Chips, Encabezado, KpiSimple } from "@/components/monitor/ui";
 import { cn } from "@/lib/utils";
+import { BotonIgnorar, RestaurarIgnorados } from "@/components/monitor/acciones-calidad";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export default async function CalidadPage({
   // aparecen solas en cuanto algo falle).
   const verTodo = searchParams.todo === "1";
   const suma = (s: Severidad) => revisiones.filter((r) => r.severidad === s).reduce((t, r) => t + r.total, 0);
-  const visibles = revisiones.filter((r) => (!severidad || r.severidad === severidad) && (verTodo || r.total > 0));
+  const visibles = revisiones.filter((r) => (!severidad || r.severidad === severidad) && (verTodo || r.total > 0 || r.ignorados > 0));
   const limpias = revisiones.filter((r) => r.total === 0).length;
   const extra = { rango: searchParams.rango, todo: searchParams.todo };
 
@@ -99,6 +100,11 @@ export default async function CalidadPage({
                   expand_more
                 </span>
               </summary>
+              {r.ignorados > 0 && (
+                <div className="px-space-lg pb-space-sm">
+                  <RestaurarIgnorados revision={r.id} cuantos={r.ignorados} />
+                </div>
+              )}
               {r.filas.length > 0 && (
                 <div className="overflow-x-auto px-space-lg pb-space-md">
                   <table className="w-full text-left">
@@ -107,17 +113,21 @@ export default async function CalidadPage({
                         <th className="rounded-l px-2.5 py-2">Usuario</th>
                         <th className="px-2 py-2">Cliente</th>
                         <th className="px-2 py-2">Detalle</th>
-                        <th className="rounded-r px-2.5 py-2">Fecha</th>
+                        <th className="px-2.5 py-2">Fecha</th>
+                        <th className="rounded-r px-2.5 py-2" />
                       </tr>
                     </thead>
                     <tbody className="font-body-sm text-body-sm">
                       {r.filas.map((f, i) => (
-                        <tr key={i} className="transition-colors hover:bg-surface-container/60">
+                        <tr key={f.clave || i} className="transition-colors hover:bg-surface-container/60">
                           <td className="px-2.5 py-2 text-on-surface-variant">{f.espacio ?? "—"}</td>
                           <td className="px-2 py-2 text-on-surface">{f.cliente ?? "—"}</td>
                           <td className="px-2 py-2 font-code-sm text-code-sm text-on-surface">{f.detalle}</td>
                           <td className="px-2.5 py-2 font-code-sm text-code-sm text-on-surface-variant">
                             {f.fecha ? fechaHora(f.fecha) : "—"}
+                          </td>
+                          <td className="px-2.5 py-1.5 text-right">
+                            <BotonIgnorar revision={r.id} clave={f.clave} />
                           </td>
                         </tr>
                       ))}

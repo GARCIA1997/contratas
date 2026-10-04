@@ -735,6 +735,8 @@ async function nombresDe(ids: (string | null | undefined)[]): Promise<Map<string
 export type Severidad = "error" | "aviso" | "info";
 
 export type FilaCalidad = {
+  /** Identifica el caso para poder ignorarlo (ids de los registros). */
+  clave: string;
   espacio: string | null;
   cliente: string | null;
   detalle: string;
@@ -768,7 +770,8 @@ const REVISIONES: Revision[] = [
     severidad: "error",
     consulta: Prisma.sql`
       SELECT u.nombre AS espacio, cl.nombre AS cliente, c."creadoEn" AS fecha,
-        'Prestado $' || c.monto || ' · abono $' || c.abono || ' × ' || c."numCuotas" AS detalle
+        'Prestado $' || c.monto || ' · abono $' || c.abono || ' × ' || c."numCuotas" AS detalle,
+        c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE c.abono > c.monto OR c.abono * c."numCuotas" > c.monto * 5`,
   },
@@ -779,7 +782,8 @@ const REVISIONES: Revision[] = [
     severidad: "error",
     consulta: Prisma.sql`
       SELECT u.nombre, cl.nombre, c."creadoEn",
-        'Prestado $' || c.monto || ' · paga en total $' || (c.abono * c."numCuotas")
+        'Prestado $' || c.monto || ' · paga en total $' || (c.abono * c."numCuotas"),
+        c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE c.abono * c."numCuotas" < c.monto`,
   },
@@ -791,7 +795,8 @@ const REVISIONES: Revision[] = [
     consulta: Prisma.sql`
       SELECT u.nombre, cl.nombre, p."fechaPago",
         'Cuota ' || p."numeroCuota" || ': abonado $' || p."montoAbonado" || ' de $' || c.abono ||
-        CASE WHEN abs(p."montoAbonado" - 2 * c.abono) < 0.01 THEN ' (doble)' ELSE '' END
+        CASE WHEN abs(p."montoAbonado" - 2 * c.abono) < 0.01 THEN ' (doble)' ELSE '' END,
+        p.id AS clave
       FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE p."montoAbonado" > c.abono + 0.01`,
   },
@@ -802,7 +807,8 @@ const REVISIONES: Revision[] = [
     severidad: "error",
     consulta: Prisma.sql`
       SELECT u.nombre, cl.nombre, p."fechaPago",
-        'Cuota ' || p."numeroCuota" || ' de ' || c."numCuotas" || ' · abono $' || c.abono
+        'Cuota ' || p."numeroCuota" || ' de ' || c."numCuotas" || ' · abono $' || c.abono,
+        p.id AS clave
       FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE p.pagado AND p."montoAbonado" = 0 AND c.abono > 0`,
   },
@@ -813,7 +819,8 @@ const REVISIONES: Revision[] = [
     severidad: "error",
     consulta: Prisma.sql`
       SELECT u.nombre, cl.nombre, p."fechaProgramada",
-        'Cuota ' || p."numeroCuota" || ': abonado $' || p."montoAbonado" || ' de $' || c.abono
+        'Cuota ' || p."numeroCuota" || ': abonado $' || p."montoAbonado" || ' de $' || c.abono,
+        p.id AS clave
       FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE NOT p.pagado AND c.abono > 0 AND p."montoAbonado" >= c.abono`,
   },
@@ -824,7 +831,8 @@ const REVISIONES: Revision[] = [
     severidad: "error",
     consulta: Prisma.sql`
       SELECT u.nombre, cl.nombre, c."creadoEn",
-        c."numCuotas" || ' cuotas pactadas, ' || (SELECT COUNT(*) FROM "Pago" p WHERE p."contrataId" = c.id) || ' registradas'
+        c."numCuotas" || ' cuotas pactadas, ' || (SELECT COUNT(*) FROM "Pago" p WHERE p."contrataId" = c.id) || ' registradas',
+        c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE c."numCuotas" <> (SELECT COUNT(*) FROM "Pago" p WHERE p."contrataId" = c.id)`,
   },
@@ -834,7 +842,8 @@ const REVISIONES: Revision[] = [
     descripcion: "La contrata y su cliente pertenecen a usuarios distintos. Rompe el aislamiento entre espacios.",
     severidad: "error",
     consulta: Prisma.sql`
-      SELECT u.nombre, cl.nombre, c."creadoEn", 'El cliente es de otro usuario'
+      SELECT u.nombre, cl.nombre, c."creadoEn", 'El cliente es de otro usuario',
+        c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE cl."ownerId" <> c."ownerId"`,
   },
@@ -844,7 +853,8 @@ const REVISIONES: Revision[] = [
     descripcion: "Se marcaron como deuda pero no quedaron ligadas a ningún deudor: ese saldo no aparece en Deudores.",
     severidad: "error",
     consulta: Prisma.sql`
-      SELECT u.nombre, cl.nombre, c."creadoEn", 'Prestado $' || c.monto || ' · ' || lower(c.tipo::text)
+      SELECT u.nombre, cl.nombre, c."creadoEn", 'Prestado $' || c.monto || ' · ' || lower(c.tipo::text),
+        c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE (c."convertidaADeuda" AND c."deudorId" IS NULL) OR (NOT c."convertidaADeuda" AND c."deudorId" IS NOT NULL)`,
   },
@@ -856,7 +866,8 @@ const REVISIONES: Revision[] = [
     consulta: Prisma.sql`
       SELECT u.nombre, cl.nombre, p."fechaPago",
         'Cuota ' || p."numeroCuota" || CASE WHEN p."montoAbonado" < 0 THEN ': abono negativo'
-          WHEN p."fechaPago" IS NULL THEN ': pagada sin fecha' ELSE ': fecha de pago futura' END
+          WHEN p."fechaPago" IS NULL THEN ': pagada sin fecha' ELSE ': fecha de pago futura' END,
+        p.id AS clave
       FROM "Pago" p JOIN "Contrata" c ON c.id = p."contrataId" JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE p."montoAbonado" < 0 OR (p.pagado AND p."fechaPago" IS NULL) OR p."fechaPago" > now() + interval '1 day'`,
   },
@@ -867,20 +878,23 @@ const REVISIONES: Revision[] = [
     severidad: "error",
     consulta: Prisma.sql`
       SELECT u.nombre, d.nombre, d."creadoEn",
-        'Deuda $' || d."deudaInicial" || ' · abonado $' || COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0)
+        'Deuda $' || d."deudaInicial" || ' · abonado $' || COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0),
+        d.id AS clave
       FROM "Deudor" d JOIN "User" u ON u.id = d."ownerId"
       WHERE d."deudaInicial" < COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0) - 0.01`,
   },
   {
     id: "contratas-duplicadas",
     titulo: "Posibles contratas duplicadas",
-    descripcion: "Mismo cliente, mismo monto y tipo, creadas con menos de 30 minutos de diferencia (doble toque o reintento).",
+    descripcion: "Idénticas: mismo cliente, monto, abono, tipo, número de cuotas y fecha de primer pago, creadas con menos de 30 minutos de diferencia (doble toque o reintento).",
     severidad: "aviso",
     consulta: Prisma.sql`
       SELECT u.nombre, cl.nombre, b."creadoEn",
         '$' || a.monto || ' ' || lower(a.tipo::text) || ' · ' ||
-        round(extract(epoch from (b."creadoEn" - a."creadoEn")) / 60) || ' min después de la otra'
+        round(extract(epoch from (b."creadoEn" - a."creadoEn")) / 60) || ' min después de la otra',
+        a.id || ':' || b.id AS clave
       FROM "Contrata" a JOIN "Contrata" b ON b."clienteId" = a."clienteId" AND b.monto = a.monto AND b.tipo = a.tipo
+        AND b.abono = a.abono AND b."numCuotas" = a."numCuotas" AND b."fechaInicio" = a."fechaInicio"
         AND b."creadoEn" > a."creadoEn" AND b."creadoEn" - a."creadoEn" < interval '30 minutes'
       JOIN "User" u ON u.id = a."ownerId" JOIN "Cliente" cl ON cl.id = a."clienteId"`,
   },
@@ -892,7 +906,8 @@ const REVISIONES: Revision[] = [
     consulta: Prisma.sql`
       SELECT u.nombre, MIN(cl.nombre), MAX(cl."creadoEn"),
         COUNT(*) || ' registros' || CASE WHEN COUNT(DISTINCT right(regexp_replace(COALESCE(cl.telefono, ''), '[^0-9]', '', 'g'), 10)) = 1
-          AND MIN(cl.telefono) IS NOT NULL THEN ' con el mismo teléfono' ELSE '' END
+          AND MIN(cl.telefono) IS NOT NULL THEN ' con el mismo teléfono' ELSE '' END,
+        cl."ownerId" || ':' || lower(trim(cl.nombre)) AS clave
       FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
       GROUP BY u.nombre, cl."ownerId", lower(trim(cl.nombre))
       HAVING COUNT(*) > 1`,
@@ -903,7 +918,8 @@ const REVISIONES: Revision[] = [
     descripcion: "No tienen 10 dígitos (o 12 con lada 52): el recibo por WhatsApp no llega.",
     severidad: "aviso",
     consulta: Prisma.sql`
-      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Teléfono: ' || cl.telefono
+      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Teléfono: ' || cl.telefono,
+        cl.id AS clave
       FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
       WHERE cl.telefono IS NOT NULL AND trim(cl.telefono) <> ''
         AND length(regexp_replace(cl.telefono, '[^0-9]', '', 'g')) NOT IN (10, 12, 13)`,
@@ -914,7 +930,8 @@ const REVISIONES: Revision[] = [
     descripcion: "Muy cortos o solo números.",
     severidad: "aviso",
     consulta: Prisma.sql`
-      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Nombre: "' || cl.nombre || '"'
+      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Nombre: "' || cl.nombre || '"',
+        cl.id AS clave
       FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
       WHERE length(trim(cl.nombre)) < 3 OR trim(cl.nombre) ~ '^[0-9 ]+$'`,
   },
@@ -924,7 +941,8 @@ const REVISIONES: Revision[] = [
     descripcion: "Primer pago a más de 90 días: probablemente una fecha mal capturada.",
     severidad: "aviso",
     consulta: Prisma.sql`
-      SELECT u.nombre, cl.nombre, c."fechaInicio", 'Inicia el ' || to_char(c."fechaInicio", 'DD/MM/YYYY')
+      SELECT u.nombre, cl.nombre, c."fechaInicio", 'Inicia el ' || to_char(c."fechaInicio", 'DD/MM/YYYY'),
+        c.id AS clave
       FROM "Contrata" c JOIN "User" u ON u.id = c."ownerId" JOIN "Cliente" cl ON cl.id = c."clienteId"
       WHERE c."fechaInicio" > now() + interval '90 days'`,
   },
@@ -934,7 +952,8 @@ const REVISIONES: Revision[] = [
     descripcion: "No se les puede mandar recibo ni recordatorio por WhatsApp.",
     severidad: "info",
     consulta: Prisma.sql`
-      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Sin teléfono'
+      SELECT u.nombre, cl.nombre, cl."creadoEn", 'Sin teléfono',
+        cl.id AS clave
       FROM "Cliente" cl JOIN "User" u ON u.id = cl."ownerId"
       WHERE cl.telefono IS NULL OR trim(cl.telefono) = ''`,
   },
@@ -945,7 +964,8 @@ const REVISIONES: Revision[] = [
     severidad: "info",
     consulta: Prisma.sql`
       SELECT u.nombre, d.nombre, d."creadoEn",
-        'Debe $' || (d."deudaInicial" - COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0))
+        'Debe $' || (d."deudaInicial" - COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0)),
+        d.id AS clave
       FROM "Deudor" d JOIN "User" u ON u.id = d."ownerId"
       WHERE (d.telefono IS NULL OR trim(d.telefono) = '')
         AND d."deudaInicial" > COALESCE((SELECT SUM(a.monto) FROM "AbonoDeudor" a WHERE a."deudorId" = d.id), 0)`,
@@ -959,10 +979,16 @@ export async function getCalidadDatos() {
     REVISIONES.map(async (r) => {
       // Cada consulta devuelve 4 columnas en este orden; se renombran por
       // posición porque varias traen dos «nombre» (usuario y cliente).
-      const filas = await prisma.$queryRaw<
-        { espacio: string | null; cliente: string | null; fecha: Date | null; detalle: string | null }[]
-      >(Prisma.sql`SELECT * FROM (${r.consulta}) AS q(espacio, cliente, fecha, detalle) LIMIT ${LIMITE_FILAS + 1}`);
-      const lista: FilaCalidad[] = filas.map((f) => ({
+      const [filas, ignoradas] = await Promise.all([
+        prisma.$queryRaw<
+          { espacio: string | null; cliente: string | null; fecha: Date | null; detalle: string | null; clave: string }[]
+        >(Prisma.sql`SELECT * FROM (${r.consulta}) AS q(espacio, cliente, fecha, detalle, clave)`),
+        prisma.calidadIgnorada.findMany({ where: { revision: r.id }, select: { clave: true } }),
+      ]);
+      const ignorada = new Set(ignoradas.map((x) => x.clave));
+      const vigentes = filas.filter((f) => !ignorada.has(String(f.clave)));
+      const lista: FilaCalidad[] = vigentes.map((f) => ({
+        clave: String(f.clave),
         espacio: f.espacio,
         cliente: f.cliente,
         fecha: f.fecha instanceof Date ? f.fecha : null,
@@ -971,6 +997,7 @@ export async function getCalidadDatos() {
       lista.sort((a, b) => (b.fecha?.getTime() ?? 0) - (a.fecha?.getTime() ?? 0));
       return {
         id: r.id,
+        ignorados: filas.length - vigentes.length,
         titulo: r.titulo,
         descripcion: r.descripcion,
         severidad: r.severidad,
@@ -991,4 +1018,19 @@ export async function getResumenCalidad() {
     errores: r.filter((x) => x.severidad === "error").reduce((s, x) => s + x.total, 0),
     avisos: r.filter((x) => x.severidad === "aviso").reduce((s, x) => s + x.total, 0),
   };
+}
+
+/** Marca un caso de Calidad como revisado y correcto: deja de mostrarse. */
+export async function ignorarCaso(revision: string, clave: string, usuario: string) {
+  if (!REVISIONES.some((r) => r.id === revision)) throw new HttpError(400, "Revisión desconocida");
+  await prisma.calidadIgnorada.upsert({
+    where: { revision_clave: { revision, clave } },
+    create: { revision, clave, ignoradoPor: usuario },
+    update: {},
+  });
+}
+
+/** Vuelve a mostrar todos los casos ignorados de una revisión. */
+export async function restaurarIgnorados(revision: string) {
+  await prisma.calidadIgnorada.deleteMany({ where: { revision } });
 }

@@ -389,3 +389,16 @@ model ErrorLog {
   @@index([ownerId, creadoEn])
   @@index([creadoEn])
 }
+
+/// Casos de Monitor → Calidad que alguien revisó y marcó como correctos
+/// (p. ej. dos contratas parecidas que sí eran dos entregas). `clave`
+/// identifica el caso dentro de la revisión (ids de los registros).
+model CalidadIgnorada {
+  id          String   @id @default(cuid())
+  revision    String
+  clave       String
+  ignoradoPor String
+  creadoEn    DateTime @default(now())
+
+  @@unique([revision, clave])
+}
