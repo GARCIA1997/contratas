@@ -18,6 +18,8 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
+import { verificarClienteNuevo, type Verificacion } from "@/lib/offline/verificar-cliente";
+import { AvisoClienteExistente } from "@/components/clientes/aviso-cliente-existente";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
 import { getContratasConVencido } from "@/lib/offline/repo";
@@ -140,6 +142,12 @@ export function ContrataForm({
   const [incluirOtras, setIncluirOtras] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [avisoCliente, setAvisoCliente] = useState<Exclude<Verificacion, { tipo: "nuevo" }> | null>(null);
+  /** El usuario ya confirmó que el cliente nuevo es otra persona. */
+  const clienteNuevoConfirmado = useRef(false);
+  // Candado síncrono contra el doble toque en "Crear contrata" (en producción
+  // hubo contratas duplicadas creadas con 2 segundos de diferencia).
+  const enCurso = useRef(false);
   /** Contrata recién creada: cambia el formulario por el panel de entrega. */
   const [creada, setCreada] = useState<ContrataCreada | null>(null);
 
@@ -240,14 +248,27 @@ export function ContrataForm({
       notas: notas.trim() || null,
     };
     const ownerId = claims.ready ? claims.ownerId : null;
+    if (enCurso.current) return;
+    enCurso.current = true;
     setGuardando(true);
     try {
+      // Cliente nuevo escrito a mano: si ya tienes uno con ese nombre (en el
+      // teléfono, en cola o en el servidor), se ofrece usar ese en vez de
+      // crear un duplicado.
+      if (!editando && clienteMode === "nuevo" && ownerId && !clienteNuevoConfirmado.current) {
+        const v = await verificarClienteNuevo(ownerId, { nombre: clienteNombre.trim() });
+        if (v.tipo !== "nuevo") {
+          setAvisoCliente(v);
+          return;
+        }
+      }
       if (editando) await guardarEdicion(ownerId, input);
       else await guardarEntrega(ownerId, input);
     } catch (e) {
       setError(mensajeDeError(e));
     } finally {
       setGuardando(false);
+      enCurso.current = false;
     }
   }
 
@@ -600,7 +621,24 @@ export function ContrataForm({
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        <Button type="submit" className="w-full" disabled={guardando}>
+        {avisoCliente && claims.ready && claims.ownerId && (
+          <AvisoClienteExistente
+            ownerId={claims.ownerId}
+            verificacion={avisoCliente}
+            onUsarExistente={(c) => {
+              setClienteMode("existente");
+              setClienteId(c.id);
+              setClienteQuery(c.nombre);
+              setAvisoCliente(null);
+            }}
+            onRegistrarDeTodos={() => {
+              clienteNuevoConfirmado.current = true;
+              setAvisoCliente(null);
+            }}
+            onCancelar={() => setAvisoCliente(null)}
+          />
+        )}
+        <Button type="submit" className="w-full" disabled={guardando || !!avisoCliente}>
           {guardando ? "Guardando…" : editando ? "Guardar cambios" : "Crear contrata"}
         </Button>
       </form>
