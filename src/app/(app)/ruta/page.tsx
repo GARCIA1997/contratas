@@ -22,6 +22,8 @@ import {
 import { enqueue, espacioEnCola } from "@/lib/offline/queue";
 import { LimiteOfflineError } from "@/lib/offline/modo-local";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
+import { AvisoReciboAutomatico } from "@/components/whatsapp/aviso-recibo-automatico";
 import {
   mensajeCobro,
   mensajeRecordatorio,
@@ -226,6 +228,7 @@ export default function RutaDelDiaPage() {
   //    haber un modal de cobro abierto a la vez — antes se podían abrir
   //    varios si se tocaba "Cobrado" en más de una tarjeta seguido.
   const [confirmando, setConfirmando] = useState<ParadaRuta | null>(null);
+  const reciboAutomatico = useReciboAutomatico(ownerId);
   const [cobrandoId, setCobrandoId] = useState<string | null>(null);
 
   async function marcarCobrado(parada: ParadaRuta) {
@@ -462,21 +465,30 @@ export default function RutaDelDiaPage() {
                 corre en paralelo por el onClick — esperar a que el cobro
                 termine antes de abrir WhatsApp arriesgaría que el navegador
                 bloquee la apertura por no venir de un click síncrono. */}
-            <Button asChild onClick={() => marcarCobrado(confirmando)}>
-              <a
-                href={linkWhatsApp(
-                  confirmando.telefono,
-                  reciboDeParada(nombreApp, confirmando)
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <MessageCircle className="size-4" /> Cobrar y enviar recibo
-              </a>
-            </Button>
-            <Button variant="outline" onClick={() => marcarCobrado(confirmando)}>
-              Solo cobrar
-            </Button>
+            {reciboAutomatico && confirmando.telefono ? (
+              <>
+                <Button onClick={() => marcarCobrado(confirmando)}>Cobrar</Button>
+                <AvisoReciboAutomatico />
+              </>
+            ) : (
+              <>
+                <Button asChild onClick={() => marcarCobrado(confirmando)}>
+                  <a
+                    href={linkWhatsApp(
+                      confirmando.telefono,
+                      reciboDeParada(nombreApp, confirmando)
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <MessageCircle className="size-4" /> Cobrar y enviar recibo
+                  </a>
+                </Button>
+                <Button variant="outline" onClick={() => marcarCobrado(confirmando)}>
+                  Solo cobrar
+                </Button>
+              </>
+            )}
             <Button variant="ghost" onClick={() => setConfirmando(null)}>
               Cancelar
             </Button>

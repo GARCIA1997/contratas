@@ -5,6 +5,8 @@ import { MessageCircle, Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { recordarReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
 
 type Cuenta = {
   numero: string;
@@ -40,6 +42,8 @@ const formatoTel = (t: string) => (t.length === 12 ? `+${t.slice(0, 2)} ${t.slic
  * vincular o cambiar el número.
  */
 export function WhatsAppAutomatico({ editable }: { editable: boolean }) {
+  const claims = useAuthClaims();
+  const ownerId = claims.ready ? claims.ownerId : null;
   const [cuenta, setCuenta] = useState<Cuenta | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -76,6 +80,8 @@ export function WhatsAppAutomatico({ editable }: { editable: boolean }) {
       const j = await r.json().catch(() => null);
       if (!r.ok) throw new Error(j?.error ?? "No se pudo guardar");
       setCuenta(j);
+      // Las pantallas de cobro dejan de ofrecer (o vuelven a ofrecer) el recibo manual.
+      if (ownerId) recordarReciboAutomatico(ownerId, j);
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo guardar (¿sin señal?)");

@@ -15,6 +15,8 @@ import { getContratasParaAbono } from "@/lib/offline/repo";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
+import { AvisoReciboAutomatico } from "@/components/whatsapp/aviso-recibo-automatico";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import { mensajeDeError } from "@/lib/offline/conexion";
 
@@ -56,6 +58,7 @@ export function AbonarModal({
   className?: string;
 }) {
   const router = useRouter();
+  const reciboAutomatico = useReciboAutomatico(ownerId);
   const [montado, setMontado] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [monto, setMonto] = useState("");
@@ -193,15 +196,19 @@ export function AbonarModal({
                     </li>
                   ))}
                 </ul>
-                <Button className="w-full" asChild>
-                  <a
-                    href={linkWhatsApp(telefono, mensaje ?? "")}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
-                  </a>
-                </Button>
+                {reciboAutomatico && telefono ? (
+                  <AvisoReciboAutomatico />
+                ) : (
+                  <Button className="w-full" asChild>
+                    <a
+                      href={linkWhatsApp(telefono, mensaje ?? "")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
+                    </a>
+                  </Button>
+                )}
                 <Button variant="ghost" className="w-full" onClick={cerrar}>
                   Cerrar
                 </Button>
