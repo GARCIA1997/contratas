@@ -6,7 +6,7 @@ import { Chips, Encabezado, KpiSimple, Tarjeta } from "@/components/monitor/ui";
 import {
   BotonAccion,
   FormCambiarNumero,
-  FormNuevaCuenta,
+  BarraCuentas,
   IniciarCampana,
   RefrescoRapido,
 } from "@/components/monitor/acciones-whatsapp";
@@ -54,12 +54,27 @@ function Insignia({ estado, pausada }: { estado: string; pausada?: boolean }) {
 export default async function WhatsAppPage({
   searchParams,
 }: {
-  searchParams: { cuenta?: string; seccion?: string; estado?: string; tipo?: string; rango?: string };
+  searchParams: { cuenta?: string; seccion?: string; estado?: string; tipo?: string; rango?: string; q?: string; conexion?: string };
 }) {
   const panel = await panelWhatsApp(searchParams.cuenta);
   const d = panel.detalle;
   const seccion = searchParams.seccion ?? "cola";
   const esperando = d?.cuenta.estado === "ESPERANDO_VINCULACION";
+  const q = (searchParams.q ?? "").trim().toLowerCase();
+  const qDigitos = q.replace(/\D/g, "");
+  const conexion = searchParams.conexion ?? "";
+  const cuentasVisibles = panel.cuentas.filter((c) => {
+    if (conexion === "ACTIVO" && !(c.estado === "CONECTADO" && c.activo && !c.pausadaPorAdmin && !c.pausadaPorUsuario)) return false;
+    if (conexion === "PAUSADO" && !(c.pausadaPorAdmin || c.pausadaPorUsuario)) return false;
+    if (conexion && !["ACTIVO", "PAUSADO"].includes(conexion) && c.estado !== conexion) return false;
+    if (!q) return true;
+    return (
+      (c.owner.nombre ?? "").toLowerCase().includes(q) ||
+      c.owner.email.toLowerCase().includes(q) ||
+      (qDigitos.length >= 3 && c.numero.includes(qDigitos))
+    );
+  });
+  const cuenta = (pred: (c: (typeof panel.cuentas)[number]) => boolean) => panel.cuentas.filter(pred).length;
 
   return (
     <>
@@ -96,6 +111,27 @@ export default async function WhatsAppPage({
 
       {/* 7.0 Tabla de números */}
       <Tarjeta className="gap-space-md overflow-x-auto">
+        <BarraCuentas
+          q={searchParams.q ?? ""}
+          lleno={panel.cuentas.length >= MAX_CUENTAS}
+          maximo={MAX_CUENTAS}
+          usuarios={panel.usuariosSinNumero.map((u) => ({ id: u.id, etiqueta: u.nombre ? `${u.nombre} · ${u.email}` : u.email }))}
+        />
+        <Chips
+          base="/monitor/whatsapp"
+          param="conexion"
+          activo={conexion}
+          extra={{ q: searchParams.q, cuenta: searchParams.cuenta }}
+          opciones={[
+            { valor: "", texto: "Todos", cuenta: panel.cuentas.length },
+            { valor: "ACTIVO", texto: "Activos enviando", cuenta: cuenta((c) => c.estado === "CONECTADO" && c.activo && !c.pausadaPorAdmin && !c.pausadaPorUsuario) },
+            { valor: "CONECTADO", texto: "Conectados", cuenta: cuenta((c) => c.estado === "CONECTADO") },
+            { valor: "PAUSADO", texto: "Pausados", cuenta: cuenta((c) => c.pausadaPorAdmin || c.pausadaPorUsuario) },
+            { valor: "ESPERANDO_VINCULACION", texto: "Por vincular", cuenta: cuenta((c) => c.estado === "ESPERANDO_VINCULACION") },
+            { valor: "DESCONECTADO", texto: "Desconectados", cuenta: cuenta((c) => c.estado === "DESCONECTADO") },
+            { valor: "BLOQUEADO", texto: "Bloqueados", cuenta: cuenta((c) => c.estado === "BLOQUEADO") },
+          ]}
+        />
         <table className="w-full min-w-[820px] text-left font-body-sm text-body-sm">
           <thead className="font-label-xs text-label-xs uppercase tracking-wider text-outline">
             <tr>
@@ -109,10 +145,10 @@ export default async function WhatsAppPage({
             </tr>
           </thead>
           <tbody>
-            {panel.cuentas.map((c) => (
+            {cuentasVisibles.map((c) => (
               <tr key={c.id} className={cn("border-t border-outline-variant/30", d?.cuenta.id === c.id && "bg-surface-container")}>
                 <td className="py-2">
-                  <Link className="text-primary hover:underline" href={`/monitor/whatsapp?cuenta=${c.id}`}>
+                  <Link className="text-primary hover:underline" href={`/monitor/whatsapp?cuenta=${c.id}${searchParams.q ? `&q=${encodeURIComponent(searchParams.q)}` : ""}${conexion ? `&conexion=${conexion}` : ""}`}>
                     {c.owner.nombre ?? c.owner.email}
                   </Link>
                   {!c.activo && <span className="ml-1 text-outline">(apagado por el usuario)</span>}
@@ -134,18 +170,15 @@ export default async function WhatsAppPage({
                 </td>
               </tr>
             ))}
-            {panel.cuentas.length === 0 && (
+            {cuentasVisibles.length === 0 && (
               <tr>
                 <td colSpan={7} className="py-3 text-on-surface-variant">
-                  Ningún número asignado todavía.
+                  {panel.cuentas.length === 0 ? "Ningún número asignado todavía. Usa “Ligar número”." : "Ningún número coincide con el filtro."}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
-        {panel.cuentas.length < MAX_CUENTAS && (
-          <FormNuevaCuenta usuarios={panel.usuariosSinNumero.map((u) => ({ id: u.id, etiqueta: u.nombre ? `${u.nombre} · ${u.email}` : u.email }))} />
-        )}
       </Tarjeta>
 
       {d && (

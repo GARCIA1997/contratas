@@ -64,60 +64,158 @@ export function BotonAccion({
   );
 }
 
-/** Alta de número: elegir usuario (dueño de espacio) + capturar número. */
-export function FormNuevaCuenta({ usuarios }: { usuarios: { id: string; etiqueta: string }[] }) {
+/**
+ * Barra de la tabla de números: buscador (usuario, correo o número), y el
+ * botón "Ligar número" que abre el formulario para asignar un WhatsApp a un
+ * usuario dueño de su espacio que todavía no tiene uno.
+ */
+export function BarraCuentas({
+  usuarios,
+  q,
+  lleno,
+  maximo,
+}: {
+  usuarios: { id: string; etiqueta: string }[];
+  q: string;
+  lleno: boolean;
+  maximo: number;
+}) {
   const router = useRouter();
+  const [texto, setTexto] = useState(q);
+  const [abierto, setAbierto] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (texto === q) return;
+      const p = new URLSearchParams(window.location.search);
+      if (texto.trim()) p.set("q", texto.trim());
+      else p.delete("q");
+      router.replace(`/monitor/whatsapp?${p.toString()}`);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [texto, q, router]);
+
+  const motivo = lleno
+    ? `Ya hay ${maximo} números (máximo)`
+    : usuarios.length === 0
+      ? "Todos los usuarios ya tienen número"
+      : null;
+
+  return (
+    <div className="flex flex-col gap-space-sm">
+      <div className="flex flex-wrap items-center gap-space-sm">
+        <label className="flex min-w-[260px] flex-1 items-center gap-space-xs rounded-lg bg-surface-container px-2 py-1.5">
+          <span className="material-symbols-outlined text-[16px] text-outline">search</span>
+          <input
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Buscar por usuario, correo o número de WhatsApp"
+            aria-label="Buscar número o usuario"
+            className="w-full bg-transparent font-body-sm text-body-sm text-on-surface outline-none placeholder:text-outline"
+          />
+        </label>
+        <button
+          type="button"
+          disabled={Boolean(motivo)}
+          title={motivo ?? undefined}
+          className={cn(BOTON, TONOS.primario, "py-1.5")}
+          onClick={() => setAbierto((v) => !v)}
+        >
+          <span className="material-symbols-outlined text-[15px]">add_link</span>
+          Ligar número
+        </button>
+        {motivo && <span className="font-label-sm text-label-sm text-outline">{motivo}</span>}
+      </div>
+      {abierto && !motivo && <FormLigarNumero usuarios={usuarios} alTerminar={() => setAbierto(false)} />}
+    </div>
+  );
+}
+
+function FormLigarNumero({
+  usuarios,
+  alTerminar,
+}: {
+  usuarios: { id: string; etiqueta: string }[];
+  alTerminar: () => void;
+}) {
+  const router = useRouter();
+  const [filtro, setFiltro] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [numero, setNumero] = useState("");
   const [error, setError] = useState<string | null>(null);
-  if (usuarios.length === 0) return null;
+  const [guardando, setGuardando] = useState(false);
+  const visibles = usuarios.filter((u) => u.etiqueta.toLowerCase().includes(filtro.trim().toLowerCase()));
+
   return (
     <form
-      className="flex flex-wrap items-end gap-space-sm"
+      className="flex flex-col gap-space-sm rounded-lg bg-surface-container p-space-md"
       onSubmit={async (e) => {
         e.preventDefault();
         setError(null);
+        setGuardando(true);
         try {
           await enviar({ accion: "crear_cuenta", ownerId, numero });
-          setNumero("");
-          setOwnerId("");
+          alTerminar();
           router.refresh();
         } catch (err) {
           setError(err instanceof Error ? err.message : "Error");
+        } finally {
+          setGuardando(false);
         }
       }}
     >
-      <label className="flex flex-col gap-1 font-label-sm text-label-sm text-on-surface-variant">
-        Usuario
-        <select
-          required
-          value={ownerId}
-          onChange={(e) => setOwnerId(e.target.value)}
-          className="rounded-lg bg-surface-container px-2 py-1.5 text-on-surface"
-        >
-          <option value="">Elegir…</option>
-          {usuarios.map((u) => (
-            <option key={u.id} value={u.id}>
-              {u.etiqueta}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1 font-label-sm text-label-sm text-on-surface-variant">
-        Número de WhatsApp (no tiene que ser el de su cuenta)
-        <input
-          required
-          inputMode="tel"
-          value={numero}
-          onChange={(e) => setNumero(e.target.value)}
-          placeholder="312 112 8425"
-          className="rounded-lg bg-surface-container px-2 py-1.5 text-on-surface"
-        />
-      </label>
-      <button type="submit" className={cn(BOTON, TONOS.primario, "py-1.5")}>
-        Asignar número
-      </button>
-      {error && <span className="font-label-sm text-label-sm text-error">{error}</span>}
+      <span className="font-headline-sm text-headline-sm text-on-surface">Ligar número de WhatsApp a un usuario</span>
+      <span className="font-body-sm text-body-sm text-on-surface-variant">
+        Solo usuarios dueños de su espacio sin número asignado. El número no tiene que ser el de su cuenta; después
+        se vincula con código o QR desde su detalle.
+      </span>
+      <div className="grid gap-space-sm md:grid-cols-2">
+        <label className="flex flex-col gap-1 font-label-sm text-label-sm text-on-surface-variant">
+          Usuario
+          <input
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value)}
+            placeholder="Filtrar por nombre o correo"
+            className="rounded-lg bg-surface-container-high px-2 py-1.5 text-on-surface"
+          />
+          <select
+            required
+            size={Math.min(6, Math.max(2, visibles.length))}
+            value={ownerId}
+            onChange={(e) => setOwnerId(e.target.value)}
+            aria-label="Usuario"
+            className="rounded-lg bg-surface-container-high px-2 py-1 text-on-surface"
+          >
+            {visibles.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.etiqueta}
+              </option>
+            ))}
+          </select>
+          {visibles.length === 0 && <span className="text-outline">Sin coincidencias</span>}
+        </label>
+        <label className="flex flex-col gap-1 font-label-sm text-label-sm text-on-surface-variant">
+          Número de WhatsApp
+          <input
+            required
+            inputMode="tel"
+            value={numero}
+            onChange={(e) => setNumero(e.target.value)}
+            placeholder="312 112 8425"
+            className="rounded-lg bg-surface-container-high px-2 py-1.5 text-on-surface"
+          />
+          <span className="text-outline">10 dígitos (se le agrega +52) o con lada de país.</span>
+        </label>
+      </div>
+      <div className="flex items-center gap-space-xs">
+        <button type="submit" disabled={!ownerId || !numero || guardando} className={cn(BOTON, TONOS.primario, "py-1.5")}>
+          {guardando ? "Guardando…" : "Ligar número"}
+        </button>
+        <button type="button" className={cn(BOTON, TONOS.normal, "py-1.5")} onClick={alTerminar}>
+          Cancelar
+        </button>
+        {error && <span className="font-label-sm text-label-sm text-error">{error}</span>}
+      </div>
     </form>
   );
 }
