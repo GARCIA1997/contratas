@@ -546,6 +546,34 @@ export function mensajeRecordatorioAbono(opts: {
   });
 }
 
+/* ── Recibo de abono de un deudor ───────────────────────────────────────── */
+
+export function mensajeReciboAbonoDeudor(opts: {
+  nombreApp: string;
+  nombre: string;
+  monto: number;
+  restante: number;
+  fecha: Date;
+}): string {
+  return envolver({
+    nombreApp: opts.nombreApp,
+    icono: "✅",
+    titulo: "Recibo de abono",
+    cuerpo: [
+      `👤 *${opts.nombre}*`,
+      `📅 ${fechaLarga(opts.fecha)}`,
+      ``,
+      `💵 *ABONO RECIBIDO: ${formatMoneda(opts.monto)}*`,
+      ``,
+      opts.restante > 0
+        ? `💠 Saldo restante: *${formatMoneda(opts.restante)}*`
+        : `🎉 *¡DEUDA LIQUIDADA!*`,
+      ``,
+    ],
+    cierre: [`🙏 *¡Gracias por tu abono!*`, `💾 Conserva este mensaje como comprobante.`, ``],
+  });
+}
+
 /* ── Detalle de una contrata ────────────────────────────────────────────── */
 
 export function mensajeDetalleContrata(opts: {

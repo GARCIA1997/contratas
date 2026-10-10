@@ -36,12 +36,13 @@ model User {
   suscripciones  PushSubscription[]
   cortesCaja     CorteCaja[]
   citasAgendadas CitaAgendada[]
+  cuentaWhatsApp CuentaWhatsApp?
   creadoEn       DateTime           @default(now())
 
   /// Acceso al monitor de operaciones (/monitor): ve datos de TODOS los
   /// espacios, así que no depende del rol sino de este permiso explícito.
   /// Se otorga con `npx tsx scripts/acceso-monitor.ts <correo>`.
-  accesoMonitor  Boolean            @default(false)
+  accesoMonitor Boolean @default(false)
 
   // Espacio de trabajo: null = dueño de su propio espacio (registro público);
   // con valor = miembro invitado del espacio de ese dueño (creado desde
@@ -196,37 +197,37 @@ enum EstadoCita {
 /// de la fecha real de entrega, el día que se confirma). No afecta saldo,
 /// cartera ni estadísticas hasta que se convierte en una Contrata real.
 model CitaAgendada {
-  id               String           @id @default(cuid())
-  owner            User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  ownerId          String
-  cliente          Cliente          @relation(fields: [clienteId], references: [id])
-  clienteId        String
+  id                   String           @id @default(cuid())
+  owner                User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId              String
+  cliente              Cliente          @relation(fields: [clienteId], references: [id])
+  clienteId            String
   /// Si ya se sabe qué contrata se va a renovar. Opcional: puede decidirse
   /// después, antes de convertir la cita en contrata real.
-  contrataOrigen   Contrata?        @relation("CitaContrataOrigen", fields: [contrataOrigenId], references: [id], onDelete: SetNull)
-  contrataOrigenId String?
+  contrataOrigen       Contrata?        @relation("CitaContrataOrigen", fields: [contrataOrigenId], references: [id], onDelete: SetNull)
+  contrataOrigenId     String?
   /// Solo con tipo UNIFICACION: qué contratas activas del cliente se
   /// planea juntar al entregar. No es una relación formal (a propósito,
   /// igual que `contrataOrigenId` es opcional) — al convertir la cita se
   /// vuelven a validar en vivo contra la base, así que una contrata que
   /// mientras tanto se liquidó o se le agregó otra cuota simplemente ya no
   /// aparece marcable, sin que la cita quede en un estado inconsistente.
-  contratasUnificarIds String[]      @default([])
+  contratasUnificarIds String[]         @default([])
   /// La contrata real generada al confirmar esta cita (si se llegó a dar).
-  contrataCreada   Contrata?        @relation("CitaContrataCreada", fields: [contrataCreadaId], references: [id], onDelete: SetNull)
-  contrataCreadaId String?          @unique
-  tipo             TipoCitaContrata @default(SIN_DEFINIR)
+  contrataCreada       Contrata?        @relation("CitaContrataCreada", fields: [contrataCreadaId], references: [id], onDelete: SetNull)
+  contrataCreadaId     String?          @unique
+  tipo                 TipoCitaContrata @default(SIN_DEFINIR)
   /// Cada cuánto va a pagar la contrata que salga de esta cita. Opcional
   /// porque puede no saberse al agendar (y las citas anteriores a este
   /// campo se quedan en null): la periodicidad real se fija al crear la
   /// contrata. Sirve para agrupar la lista de "por entregar".
-  periodicidad     TipoContrata?
-  montoEstimado    Float
-  fechaEntrega     DateTime
-  notas            String?
-  estado           EstadoCita       @default(PENDIENTE)
-  creadoEn         DateTime         @default(now())
-  actualizadoEn    DateTime         @updatedAt
+  periodicidad         TipoContrata?
+  montoEstimado        Float
+  fechaEntrega         DateTime
+  notas                String?
+  estado               EstadoCita       @default(PENDIENTE)
+  creadoEn             DateTime         @default(now())
+  actualizadoEn        DateTime         @updatedAt
 
   @@index([ownerId, estado, fechaEntrega])
   @@index([clienteId])
@@ -318,16 +319,16 @@ model CorteCaja {
 /// de escritura offline (misma key) no vuelva a aplicar la mutación.
 model ProcessedOperation {
   /// Idempotency key generada por el cliente (uuid).
-  id        String   @id
-  ownerId   String
-  endpoint  String
+  id         String   @id
+  ownerId    String
+  endpoint   String
   /// Null mientras la operación está reservada pero todavía ejecutándose.
-  resultado Json?
+  resultado  Json?
   /// false = reservada y en curso; true = terminada y `resultado` es válido.
   /// Ver `withIdempotency`: la fila se inserta ANTES de ejecutar la mutación
   /// para que dos peticiones con la misma key no puedan ejecutarla las dos.
-  completada Boolean @default(false)
-  creadoEn  DateTime @default(now())
+  completada Boolean  @default(false)
+  creadoEn   DateTime @default(now())
 
   @@index([ownerId])
   @@index([creadoEn])
@@ -401,4 +402,259 @@ model CalidadIgnorada {
   creadoEn    DateTime @default(now())
 
   @@unique([revision, clave])
+}
+
+// ---------------------------------------------------------------------------
+// WhatsApp automático (Baileys). Ver docs/whatsapp.md.
+//
+// Todo cuelga de `CuentaWhatsApp`: un número por espacio (ownerId), y cada
+// mensaje, opt-out y presentación es de una cuenta. El worker
+// (worker/whatsapp) y la app web solo se comunican por estas tablas.
+// ---------------------------------------------------------------------------
+
+enum EstadoCuentaWhatsApp {
+  DESCONECTADO
+  ESPERANDO_VINCULACION
+  CONECTADO
+  /// WhatsApp cerró la sesión o restringió la cuenta. Solo el monitor la saca de aquí.
+  BLOQUEADO
+}
+
+/// Órdenes del monitor al worker (el worker las lee de la BD y las limpia).
+enum SolicitudWhatsApp {
+  NINGUNA
+  VINCULAR_QR
+  VINCULAR_CODIGO
+  DESCONECTAR
+}
+
+enum TipoMensajeWhatsApp {
+  RECIBO
+  POR_VENCER
+  VENCIDA
+  DEUDOR
+  PRESENTACION
+  CONFIRMACION_BAJA
+}
+
+enum EstadoMensajeWhatsApp {
+  PENDIENTE
+  ENVIANDO
+  ENVIADO
+  FALLIDO
+  CANCELADO
+  /// Quedó en ENVIANDO y el worker se cayó: no se sabe si salió, así que no
+  /// se reintenta solo (a lo más una vez). Lo decide el administrador.
+  REVISAR
+}
+
+enum AckWhatsApp {
+  ENVIADO
+  ENTREGADO
+  LEIDO
+}
+
+enum EstadoCampanaWhatsApp {
+  ACTIVA
+  PAUSADA
+  TERMINADA
+}
+
+model CuentaWhatsApp {
+  id                       String               @id @default(cuid())
+  owner                    User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  /// Un número por espacio de trabajo.
+  ownerId                  String               @unique
+  /// Solo dígitos con lada de país (521… se normaliza a 52…). Lo captura el
+  /// monitor; NO es el teléfono ni el correo con que el usuario inicia sesión.
+  numero                   String               @unique
+  estado                   EstadoCuentaWhatsApp @default(DESCONECTADO)
+  solicitud                SolicitudWhatsApp    @default(NINGUNA)
+  solicitudEn              DateTime?
+  qr                       String?
+  codigoVinculacion        String?
+  vinculacionExpira        DateTime?
+  /// Número que WhatsApp reporta al vincular; si no coincide con `numero`, se desconecta.
+  waId                     String?
+  conectadoDesde           DateTime?
+  ultimaConexion           DateTime?
+  ultimoError              String?
+  /// El usuario encendió "WhatsApp automático" en Configuración.
+  activo                   Boolean              @default(false)
+  aceptoRiesgoEn           DateTime?
+  recibos                  Boolean              @default(false)
+  porVencer                Boolean              @default(false)
+  vencidas                 Boolean              @default(false)
+  deudores                 Boolean              @default(false)
+  pausadaPorUsuario        Boolean              @default(false)
+  pausadaPorUsuarioEn      DateTime?
+  pausadaPorAdmin          Boolean              @default(false)
+  pausadaPorAdminEn        DateTime?
+  pausaMotivo              String?
+  /// Solo informativo: desde qué WhatsApp se envía a mano.
+  numeroManual             String?
+  numeroManualConfirmadoEn DateTime?
+  creadoEn                 DateTime             @default(now())
+  actualizadoEn            DateTime             @updatedAt
+
+  llaves         WhatsAppLlave[]
+  mensajes       MensajeWhatsApp[]
+  envios         EnvioWhatsApp[]
+  optOuts        OptOutWhatsApp[]
+  presentaciones PresentacionWhatsApp[]
+  campanas       CampanaWhatsApp[]
+
+  /// Destino de la FK compuesta de MensajeWhatsApp: la BD impide que un
+  /// mensaje de un espacio quede asignado al número de otro.
+  @@unique([id, ownerId])
+}
+
+/// Estado de autenticación de Baileys (credenciales + llaves de Signal),
+/// cifrado con AES-256-GCM (WHATSAPP_SESSION_KEY). Nunca en disco.
+model WhatsAppLlave {
+  cuenta        CuentaWhatsApp @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  cuentaId      String
+  tipo          String
+  llaveId       String
+  valor         String
+  actualizadoEn DateTime       @updatedAt
+
+  @@id([cuentaId, tipo, llaveId])
+}
+
+/// Cola de salida (outbox). Un renglón = un aviso lógico (un recibo, una
+/// cuota por vencer…); varios renglones del mismo destinatario pueden salir
+/// juntos en un solo EnvioWhatsApp.
+model MensajeWhatsApp {
+  id                 String                @id @default(cuid())
+  cuenta             CuentaWhatsApp        @relation(fields: [cuentaId, ownerId], references: [id, ownerId], onDelete: Cascade)
+  cuentaId           String
+  ownerId            String
+  tipo               TipoMensajeWhatsApp
+  /// Menor = sale primero (recibos 0 … presentación 4).
+  prioridad          Int
+  telefono           String
+  destinatarioNombre String
+  clienteId          String?
+  deudorId           String?
+  contrataId         String?
+  numeroCuota        Int?
+  /// Cuotas que cubrió el cobro (para cancelar/marcar el recibo si se revierte).
+  pagoIds            String[]              @default([])
+  abonoDeudorId      String?
+  campanaId          String?
+  /// Orden dentro de la campaña de presentación.
+  orden              Int?
+  /// Nunca dos veces el mismo aviso: recibo:{Idempotency-Key}, vencida:{contrata}:{cuota}…
+  claveDedupe        String                @unique
+  estado             EstadoMensajeWhatsApp @default(PENDIENTE)
+  /// Texto ya armado (recibos: es el comprobante de ese momento). Los
+  /// recordatorios se arman al enviar, con el monto vigente.
+  texto              String?
+  programadoPara     DateTime              @default(now())
+  envio              EnvioWhatsApp?        @relation(fields: [envioId], references: [id], onDelete: SetNull)
+  envioId            String?
+  motivo             String?
+  /// Recibo ya enviado de un cobro que después se revirtió (atender a mano).
+  revertido          Boolean               @default(false)
+  creadoEn           DateTime              @default(now())
+  actualizadoEn      DateTime              @updatedAt
+
+  @@index([cuentaId, estado, programadoPara])
+  @@index([estado, actualizadoEn])
+  @@index([deudorId, tipo])
+  @@index([campanaId])
+}
+
+/// Un mensaje real de WhatsApp (lo que cuenta para el cupo de 100 diarios).
+model EnvioWhatsApp {
+  id              String              @id @default(cuid())
+  cuenta          CuentaWhatsApp      @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  cuentaId        String
+  numeroOrigen    String
+  telefono        String
+  tipo            TipoMensajeWhatsApp
+  texto           String
+  conPresentacion Boolean             @default(false)
+  waMensajeId     String?
+  ack             AckWhatsApp?
+  enviadoEn       DateTime            @default(now())
+  mensajes        MensajeWhatsApp[]
+
+  @@index([cuentaId, enviadoEn])
+  @@index([waMensajeId])
+}
+
+model OptOutWhatsApp {
+  cuenta       CuentaWhatsApp @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  cuentaId     String
+  telefono     String
+  activo       Boolean        @default(true)
+  mensaje      String
+  fecha        DateTime       @default(now())
+  reactivadoEn DateTime?
+
+  @@id([cuentaId, telefono])
+}
+
+model PresentacionWhatsApp {
+  cuenta   CuentaWhatsApp @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  cuentaId String
+  telefono String
+  /// "campana" o "primer_mensaje".
+  via      String
+  fecha    DateTime       @default(now())
+
+  @@id([cuentaId, telefono])
+}
+
+model CampanaWhatsApp {
+  id            String                @id @default(cuid())
+  cuenta        CuentaWhatsApp        @relation(fields: [cuentaId], references: [id], onDelete: Cascade)
+  cuentaId      String
+  estado        EstadoCampanaWhatsApp @default(ACTIVA)
+  total         Int
+  iniciadaPor   String
+  pausaMotivo   String?
+  iniciadaEn    DateTime              @default(now())
+  terminadaEn   DateTime?
+  actualizadoEn DateTime              @updatedAt
+
+  @@index([cuentaId, estado])
+}
+
+/// Renglón único ("global"): paro global y latido del worker.
+model ControlWhatsApp {
+  id         String    @id @default("global")
+  paroGlobal Boolean   @default(false)
+  paroPor    String?
+  paroEn     DateTime?
+  latidoEn   DateTime?
+  latido     Json?
+}
+
+/// Ejecuciones de los procesos periódicos del worker (sección Procesos del monitor).
+model ProcesoWhatsApp {
+  id         String    @id @default(cuid())
+  proceso    String
+  cuentaId   String?
+  inicio     DateTime  @default(now())
+  fin        DateTime?
+  ok         Boolean?
+  procesados Int       @default(0)
+  error      String?
+
+  @@index([proceso, inicio])
+}
+
+model BitacoraWhatsApp {
+  id       String   @id @default(cuid())
+  cuentaId String?
+  tipo     String
+  detalle  Json?
+  actor    String?
+  creadoEn DateTime @default(now())
+
+  @@index([cuentaId, creadoEn])
+  @@index([creadoEn])
 }

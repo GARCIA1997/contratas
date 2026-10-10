@@ -7,6 +7,12 @@ import { getConfig } from "@/lib/config";
 import { calcularFechasPago } from "@/lib/fechas";
 import { saldoPendiente, montoVencidoOVigente, cuotasVencidasOVigentes, errorDeMontos } from "@/lib/contrata";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
+import {
+  cobroDeContrata,
+  enTransaccion,
+  prepararReciboCobro,
+  revertirRecibos,
+} from "@/lib/whatsapp-auto/recibos";
 
 export type ContrataConDatos = Prisma.ContrataGetPayload<{
   include: { cliente: true; pagos: true };
@@ -315,7 +321,7 @@ export async function togglePago(
   if (!pago) throw new HttpError(404, "Cuota no encontrada");
 
   const pagado = !pago.pagado;
-  await prisma.pago.update({
+  const escritura = prisma.pago.update({
     where: { id: pago.id },
     data: {
       pagado,
@@ -323,6 +329,22 @@ export async function togglePago(
       montoAbonado: pagado ? contrata.abono : 0,
     },
   });
+  if (!pagado) {
+    await enTransaccion([escritura, ...revertirRecibos(ownerId, [pago.id])], null);
+    return getContrata(ownerId, contrataId);
+  }
+  const cobrado = Math.round((contrata.abono - pago.montoAbonado) * 100) / 100;
+  const recibo =
+    cobrado > 0
+      ? await prepararReciboCobro({
+          ownerId,
+          cliente: contrata.cliente,
+          pagoIds: [pago.id],
+          total: cobrado,
+          contratas: [cobroDeContrata(contrata, [{ numeroCuota, monto: cobrado, quedaPagada: true }])],
+        })
+      : null;
+  await enTransaccion([escritura], recibo);
   return getContrata(ownerId, contrataId);
 }
 
@@ -347,7 +369,7 @@ export async function abonarPago(
   const nuevoMonto = Math.round((pago.montoAbonado + monto) * 100) / 100;
   const pagado = nuevoMonto >= contrata.abono - EPSILON;
 
-  await prisma.pago.update({
+  const escritura = prisma.pago.update({
     where: { id: pago.id },
     data: {
       montoAbonado: nuevoMonto,
@@ -355,6 +377,14 @@ export async function abonarPago(
       fechaPago: pagado ? new Date() : pago.fechaPago,
     },
   });
+  const recibo = await prepararReciboCobro({
+    ownerId,
+    cliente: contrata.cliente,
+    pagoIds: [pago.id],
+    total: monto,
+    contratas: [cobroDeContrata(contrata, [{ numeroCuota, monto, quedaPagada: pagado }])],
+  });
+  await enTransaccion([escritura], recibo);
   return getContrata(ownerId, contrataId);
 }
 
@@ -368,10 +398,16 @@ export async function limpiarPago(
   const pago = contrata.pagos.find((p) => p.numeroCuota === numeroCuota);
   if (!pago) throw new HttpError(404, "Cuota no encontrada");
 
-  await prisma.pago.update({
-    where: { id: pago.id },
-    data: { montoAbonado: 0, pagado: false, fechaPago: null },
-  });
+  await enTransaccion(
+    [
+      prisma.pago.update({
+        where: { id: pago.id },
+        data: { montoAbonado: 0, pagado: false, fechaPago: null },
+      }),
+      ...revertirRecibos(ownerId, [pago.id]),
+    ],
+    null
+  );
   return getContrata(ownerId, contrataId);
 }
 

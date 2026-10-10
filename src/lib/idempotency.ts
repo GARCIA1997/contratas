@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
+import { conClaveOperacion } from "@/lib/whatsapp-auto/contexto-operacion-servidor";
 
 /**
  * Cuánto se espera a que termine una operación que otra petición ya tomó
@@ -46,6 +47,8 @@ export async function withIdempotency<T>(
 ): Promise<T> {
   const key = req.headers.get("Idempotency-Key");
   if (!key) return run();
+  // El recibo automático de WhatsApp usa esta misma key como clave única.
+  const ejecutar = () => conClaveOperacion(key, run);
 
   try {
     await prisma.processedOperation.create({
@@ -53,10 +56,10 @@ export async function withIdempotency<T>(
     });
   } catch {
     // La key ya existe: o alguien la está ejecutando ahora, o ya terminó.
-    return resolverExistente(key, ownerId, endpoint, run);
+    return resolverExistente(key, ownerId, endpoint, ejecutar);
   }
 
-  return ejecutarYGuardar(key, run);
+  return ejecutarYGuardar(key, ejecutar);
 }
 
 /** Corre la mutación con la reserva ya tomada y guarda su resultado. */

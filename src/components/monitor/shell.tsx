@@ -19,6 +19,7 @@ const NAV = [
   { href: "/monitor/usuarios", icono: "group", texto: "Usuarios" },
   { href: "/monitor/negocio", icono: "payments", texto: "Negocio" },
   { href: "/monitor/calidad", icono: "fact_check", texto: "Calidad" },
+  { href: "/monitor/whatsapp", icono: "chat", texto: "WhatsApp" },
 ];
 
 const RANGOS = [
