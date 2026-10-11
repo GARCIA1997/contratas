@@ -1,5 +1,7 @@
--- WhatsApp automático: SOLO tablas y tipos nuevos. No modifica ni borra
--- columnas, tablas ni datos existentes (seguro sobre la BD de producción).
+-- WhatsApp automático: tablas y tipos nuevos, y UNA columna nueva opcional
+-- en "PushSubscription" (userId, NULL, sin default: en Postgres es un cambio
+-- solo de catálogo, instantáneo, no reescribe la tabla ni toca filas).
+-- No modifica ni borra columnas, tablas ni datos existentes.
 -- CreateEnum
 CREATE TYPE "EstadoCuentaWhatsApp" AS ENUM ('DESCONECTADO', 'ESPERANDO_VINCULACION', 'CONECTADO', 'BLOQUEADO');
 
@@ -250,3 +252,6 @@ ALTER TABLE "PresentacionWhatsApp" ADD CONSTRAINT "PresentacionWhatsApp_cuentaId
 -- AddForeignKey
 ALTER TABLE "CampanaWhatsApp" ADD CONSTRAINT "CampanaWhatsApp_cuentaId_fkey" FOREIGN KEY ("cuentaId") REFERENCES "CuentaWhatsApp"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- Avisos del monitor solo al dispositivo de quien tiene accesoMonitor.
+ALTER TABLE "PushSubscription" ADD COLUMN "userId" TEXT;
+CREATE INDEX "PushSubscription_userId_idx" ON "PushSubscription"("userId");

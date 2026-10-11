@@ -12,3 +12,7 @@
 # 28-31, pero solo hace algo si mañana es día 1 — así cierra el mes
 # correcto sin importar cuántos días tenga (28/29/30/31).
 55 23 28-31 * * [ "$(date -d tomorrow +\%d)" = "01" ] && curl -fsS -H "Authorization: Bearer TU_CRON_SECRET" https://kredired.cloud/api/cron/corte-caja >> /var/log/kredired-cron.log 2>&1
+
+# Avisos push de incidentes de WhatsApp (worker caído, número bloqueado, sesión caída, freno, worker desactualizado).
+# Solo llegan a quien tiene acceso al monitor. Ver docs/whatsapp.md.
+*/5 * * * * curl -fsS -H "Authorization: Bearer TU_CRON_SECRET" https://kredired.cloud/api/cron/whatsapp-alertas >> /var/log/kredired-cron.log 2>&1

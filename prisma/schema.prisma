@@ -59,12 +59,18 @@ model PushSubscription {
   id       String   @id @default(cuid())
   owner    User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   ownerId  String
+  /// Persona que activó las notificaciones en ese dispositivo (ownerId es
+  /// su espacio, compartido con sus cobradores). Null en suscripciones
+  /// anteriores a este campo. Lo usan los avisos del monitor, que son solo
+  /// para quien tiene accesoMonitor.
+  userId   String?
   endpoint String   @unique
   p256dh   String
   auth     String
   creadoEn DateTime @default(now())
 
   @@index([ownerId])
+  @@index([userId])
 }
 
 // NextAuth adapter models (Google OAuth + sessions)

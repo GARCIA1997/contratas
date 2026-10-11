@@ -438,6 +438,21 @@ El deploy automático **no** lo reinicia (a propósito). Para no olvidarlo, la a
 
 Si el worker empieza a importar otro archivo de la app, agrégalo a `ARCHIVOS_DEL_WORKER` en `huella.mjs`.
 
+### Avisos push de incidentes
+
+Cada 5 minutos el crontab del VPS llama `/api/cron/whatsapp-alertas` y, si hay un incidente grave, manda una notificación **solo a los dispositivos de quien tiene acceso al monitor**. No llega a todo su espacio: las suscripciones guardan quién las activó (`PushSubscription.userId`). Incidentes que se avisan, una sola vez cada uno:
+
+- el worker no responde (sin latido);
+- un número quedó restringido o bloqueado;
+- una sesión con sesión guardada lleva más de 10 minutos caída (una cuenta desvinculada a propósito no avisa);
+- el freno pausó una campaña;
+- el worker está desactualizado.
+
+Para activarlo:
+1. Agregar la línea de `deploy/crontab.example` al crontab del VPS (`crontab -e`), con el `CRON_SECRET` real.
+2. En el teléfono de la cuenta con acceso al monitor: Configuración → Notificaciones → activarlas. **Si ya estaban activas antes de esta versión, desactívalas y vuelve a activarlas**: las suscripciones anteriores no guardan de quién son y no reciben estos avisos.
+3. Requiere `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` en `.env` (las mismas de los recordatorios). Sin ellas no se marca nada como avisado: se avisará cuando estén.
+
 ### Emergencias
 
 - **Paro global** (monitor): corta todos los envíos al instante sin desconectar.
