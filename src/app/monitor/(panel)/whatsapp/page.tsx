@@ -356,8 +356,15 @@ export default async function WhatsAppPage({
                             {["PENDIENTE", "FALLIDO", "REVISAR"].includes(m.estado) && (
                               <BotonAccion cuerpo={{ accion: "cancelar_mensaje", mensajeId: m.id }} texto="Cancelar" />
                             )}
-                            {m.estado === "FALLIDO" && (
-                              <BotonAccion cuerpo={{ accion: "reintentar_mensaje", mensajeId: m.id }} texto="Reintentar" confirmar="¿Volver a intentar este mensaje?" />
+                            {m.estado === "FALLIDO" && (m.tipo !== "RECIBO" || m.texto) && (
+                              <BotonAccion
+                                cuerpo={{ accion: "reintentar_mensaje", mensajeId: m.id }}
+                                texto="Reintentar envío"
+                                confirmar={m.tipo === "RECIBO" ? "Solo se vuelve a mandar el recibo por WhatsApp (el cobro ya está registrado). ¿Reintentar?" : "¿Volver a intentar este mensaje?"}
+                              />
+                            )}
+                            {m.estado === "FALLIDO" && m.tipo === "RECIBO" && !m.texto && (
+                              <span className="text-error">Mandar a mano desde la app</span>
                             )}
                             {m.estado === "REVISAR" && (
                               <BotonAccion

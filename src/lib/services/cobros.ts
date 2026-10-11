@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { DIAS_PROXIMO_VENCIMIENTO } from "@/lib/contrata";
-import { enTransaccion, prepararReciboCobro } from "@/lib/whatsapp-auto/recibos";
+import { guardarCobro, prepararReciboCobro } from "@/lib/whatsapp-auto/recibos";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -165,20 +165,20 @@ export async function ejecutarCobroVencidas(
     ownerId,
     cliente,
     pagoIds: items.map((i) => i.pagoId),
-    total,
-    contratas,
+    armar: () => ({ total, contratas }),
   });
-  await enTransaccion(
-    items.map((i) =>
-      prisma.pago.update({
-        where: { id: i.pagoId },
-        data: {
-          montoAbonado: { increment: i.pendiente },
-          pagado: true,
-          fechaPago: ahora,
-        },
-      })
-    ),
+  await guardarCobro(
+    () =>
+      items.map((i) =>
+        prisma.pago.update({
+          where: { id: i.pagoId },
+          data: {
+            montoAbonado: { increment: i.pendiente },
+            pagado: true,
+            fechaPago: ahora,
+          },
+        })
+      ),
     recibo
   );
 

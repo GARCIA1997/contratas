@@ -132,6 +132,11 @@ export async function cancelarMensaje(id: string, actor: string) {
 
 /** Solo FALLIDO o REVISAR (este último: el administrador confirmó que no salió). */
 export async function reintentarMensaje(id: string, actor: string) {
+  // Solo se reenvía el MENSAJE: el cobro ya quedó guardado y no se toca.
+  const m = await prisma.mensajeWhatsApp.findUnique({ where: { id }, select: { tipo: true, texto: true } });
+  if (m?.tipo === "RECIBO" && !m.texto) {
+    throw new HttpError(409, "Este recibo no se pudo preparar, no hay texto que reenviar: mándalo a mano desde la app");
+  }
   const r = await prisma.mensajeWhatsApp.updateMany({
     where: { id, estado: { in: ["FALLIDO", "REVISAR"] } },
     data: { estado: "PENDIENTE", motivo: `Reintento por ${actor}`, programadoPara: new Date() },
@@ -297,14 +302,17 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
 
   const filas = await Promise.all(
     cuentas.map(async (c) => {
-      const [enviadosHoy, pendientes, fallidosHoy, revisar, campana] = await Promise.all([
+      const [enviadosHoy, pendientes, fallidosHoy, revisar, campana, recibosFallidos] = await Promise.all([
         prisma.envioWhatsApp.count({ where: { cuentaId: c.id, enviadoEn: { gte: hoy } } }),
         prisma.mensajeWhatsApp.count({ where: { cuentaId: c.id, estado: "PENDIENTE" } }),
         prisma.mensajeWhatsApp.count({ where: { cuentaId: c.id, estado: "FALLIDO", actualizadoEn: { gte: hoy } } }),
         prisma.mensajeWhatsApp.count({ where: { cuentaId: c.id, estado: "REVISAR" } }),
         prisma.campanaWhatsApp.findFirst({ where: { cuentaId: c.id }, orderBy: { iniciadaEn: "desc" } }),
+        prisma.mensajeWhatsApp.count({
+          where: { cuentaId: c.id, tipo: "RECIBO", estado: "FALLIDO", actualizadoEn: { gte: new Date(Date.now() - 48 * 3600_000) } },
+        }),
       ]);
-      return { ...c, enviadosHoy, pendientes, fallidosHoy, revisar, campana };
+      return { ...c, enviadosHoy, pendientes, fallidosHoy, revisar, campana, recibosFallidos };
     })
   );
 
@@ -331,6 +339,13 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     }
     if (f.campana?.estado === "PAUSADA" && f.campana.pausaMotivo?.startsWith("Freno")) {
       alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.campana.pausaMotivo}` });
+    }
+    if (f.recibosFallidos > 0) {
+      alertas.push({
+        nivel: "error",
+        cuentaId: f.id,
+        texto: `${etq}: ${f.recibosFallidos} recibo(s) automáticos fallaron (los cobros sí quedaron registrados) — reintentar o mandar a mano`,
+      });
     }
     if (f.revisar > 0) alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.revisar} mensaje(s) por revisar` });
     if (f.ultimoError?.startsWith("Se vinculó")) alertas.push({ nivel: "error", cuentaId: f.id, texto: `${etq}: ${f.ultimoError}` });

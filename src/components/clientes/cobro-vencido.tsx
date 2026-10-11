@@ -12,7 +12,7 @@ import { guardarOperacion } from "@/lib/offline/guardar";
 import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
-import { AvisoReciboAutomatico } from "@/components/whatsapp/aviso-recibo-automatico";
+import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { getCobroVencidoDetalle } from "@/lib/offline/repo";
@@ -177,15 +177,18 @@ export function CobroVencido({
               </li>
             ))}
           </ul>
-          {reciboAutomatico && resultado.clienteTelefono ? (
-            <AvisoReciboAutomatico />
-          ) : (
-            <Button className="w-full" asChild>
-              <a href={link} target="_blank" rel="noopener noreferrer">
-                <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
-              </a>
-            </Button>
-          )}
+          <SeguimientoRecibo
+            ownerId={ownerId}
+            telefono={resultado.clienteTelefono}
+            claves={idempotencyKey ? [idempotencyKey] : []}
+            botonManual={
+              <Button className="w-full" asChild>
+                <a href={link} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
+                </a>
+              </Button>
+            }
+          />
           <Button
             variant="ghost"
             className="w-full"

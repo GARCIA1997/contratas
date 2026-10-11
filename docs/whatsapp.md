@@ -156,13 +156,13 @@ Normalizar a E.164 (`+52…`) al guardar y al comparar. Resolver el JID con `onW
   - `pagos/[cuota]/abonar` (abono parcial)
   - `clientes/[id]/abonar` (abono repartido)
   - `clientes/[id]/cobrar-vencidas` (varias cuotas)
-- **Agrupación:** recibos del mismo cliente dentro de una ventana de **2 minutos** se unen en un solo mensaje (al implementar se bajó de 10 a 2: basta para juntar lo que llega de una sincronización y no retrasa el comprobante del cliente que está frente al cobrador).
+- **Agrupación:** recibos del mismo cliente dentro de una ventana de **5 segundos** se unen en un solo mensaje (p. ej. la Ruta manda una operación por cuota). El recibo debe llegar mientras el cobrador sigue con el cliente.
 - **Fecha del recibo:** la de captura en el teléfono (`fechaCaptura`), no la de sincronización. Si llegó tarde: "cobro del día X".
 - **Horario:** cualquier día y hora.
 - **Cupo:** cuentan en los 100 pero **nunca se bloquean** por el cupo.
-- **Ráfagas:** al sincronizar muchas operaciones juntas, los recibos salen en orden con **20–60 s al azar** entre cada uno.
+- **Ráfagas:** los recibos salen con **10–30 s al azar** entre cada uno, con espaciado propio: no esperan detrás de un recordatorio.
 - **Desmarcar una cuota:** si el recibo sigue `pendiente`, se cancela. Si ya salió, no se envía corrección; queda en el monitor como "recibo de cobro revertido".
-- **Abonos al deudor: exactamente igual que los cobros de cuotas.** Mismo interruptor de "recibos automáticos", recibo generado en la transacción de `agregarAbono`, clave `recibo:{Idempotency-Key}`, cualquier día y hora, agrupación de 2 min, espaciado en ráfagas y fecha de captura. Si el abono se elimina antes de que salga el recibo, se cancela; si ya salió, queda en el monitor como revertido. El abono también reinicia el contador de 15 días del recordatorio (5.3).
+- **Abonos al deudor: exactamente igual que los cobros de cuotas.** Mismo interruptor de "recibos automáticos", recibo generado en la transacción de `agregarAbono`, clave `recibo:{Idempotency-Key}`, cualquier día y hora, agrupación de 5 s, espaciado en ráfagas y fecha de captura. Si el abono se elimina antes de que salga el recibo, se cancela; si ya salió, queda en el monitor como revertido. El abono también reinicia el contador de 15 días del recordatorio (5.3).
 
 ### 5.2 Recordatorios de cuota
 
@@ -396,6 +396,23 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 - Un recibo pendiente se revalida al enviarse: si el cobro se revirtió (por cualquier camino, incluso editar o borrar la contrata), si cambió el teléfono o si tiene más de 24 h, se cancela.
 - Si el usuario apaga "WhatsApp automático", tampoco salen los recibos que estaban en cola.
 - Solo la confirmación de baja/alta sale aunque el usuario lo haya apagado (respeta pausas y paro global).
+
+### El cobro tiene prioridad (v4.14.0, revisión)
+
+- El recibo **nunca** puede hacer fallar un cobro. Todo lo que se prepara antes de guardar va en try/catch; si el INSERT del recibo es lo que falla, el cobro se guarda sin él (solo se reintenta ante errores del recibo: P2002/P2003 sobre `MensajeWhatsApp`, para no cobrar dos veces).
+- Sin WhatsApp automático activo, el cobro se escribe exactamente como antes (misma escritura, sin transacción extra, sin id pre-generado).
+- Si falla la preparación: renglón `FALLIDO` ("No se pudo preparar…") + `ErrorLog` (origen `whatsapp-recibo`) + alerta en el monitor.
+- La app avisa al worker con `pg_notify('whatsapp_salida')`; el worker escucha (`LISTEN`) y despacha al cerrar la ventana de 5 s. Si la escucha se cae, sigue la revisión cada 5 s.
+
+### Pantalla del cobro
+
+- `SeguimientoRecibo` (Ruta, Cobrar pendiente, Abonar) consulta `/api/whatsapp/recibos?claves=` por la Idempotency-Key del cobro:
+  - en el teléfono (sin señal) → "se enviará al sincronizar";
+  - enviado → "✓ Recibo enviado por WhatsApp";
+  - falló, o sin confirmación en **60 s** → "Falló el envío automático del recibo. El cobro sí quedó registrado." + botón manual.
+- Al agotarse el tiempo NO se cancela el automático: si sale después, el cliente recibe el mismo recibo dos veces (riesgo aceptado).
+- Sin automático o cliente sin teléfono: la pantalla es la de siempre.
+- **Reintentar** (monitor) solo vuelve a mandar el mensaje; el cobro ya está registrado. Un recibo que no se pudo preparar no tiene texto: el monitor pide mandarlo a mano.
 
 ## 13. Operación
 

@@ -84,3 +84,25 @@ export async function actualizarCuentaUsuario(ownerId: string, cambio: CambioCue
   await prisma.cuentaWhatsApp.update({ where: { id: cuenta.id }, data });
   await registrarBitacora({ cuentaId: cuenta.id, tipo: "config_usuario", detalle: JSON.parse(JSON.stringify(cambio)), actor });
 }
+
+export type EstadoRecibo = "enviando" | "enviado" | "fallo" | null;
+
+/**
+ * Resumen para la pantalla del cobro. `null` = el servidor todavía no tiene
+ * recibo para esos cobros (aún no llegan, o no aplica).
+ */
+export async function estadoDeRecibos(
+  ownerId: string,
+  claves: string[]
+): Promise<{ estado: EstadoRecibo; motivo: string | null }> {
+  if (claves.length === 0) return { estado: null, motivo: null };
+  const filas = await prisma.mensajeWhatsApp.findMany({
+    where: { ownerId, tipo: "RECIBO", claveDedupe: { in: claves.map((c) => `recibo:${c}`) } },
+    select: { estado: true, motivo: true },
+  });
+  if (filas.length === 0) return { estado: null, motivo: null };
+  const fallo = filas.find((f) => ["FALLIDO", "CANCELADO", "REVISAR"].includes(f.estado));
+  if (fallo) return { estado: "fallo", motivo: fallo.motivo };
+  if (filas.every((f) => f.estado === "ENVIADO")) return { estado: "enviado", motivo: null };
+  return { estado: "enviando", motivo: null };
+}

@@ -41,11 +41,12 @@ export function siguienteApertura(ahora: Date): Date {
 }
 
 /**
- * Recibos del mismo cliente que llegan juntos (p. ej. al sincronizar la cola
- * offline) se esperan este tiempo para salir en un solo mensaje. Corto a
- * propósito: el cliente que está frente al cobrador espera su comprobante.
+ * Un cobro de varias cuotas (la Ruta manda una operación por cuota) o una
+ * sincronización traen varios recibos del mismo cliente en segundos: se
+ * esperan estos segundos para mandarlos en un solo mensaje. Corto a
+ * propósito: el recibo debe llegar mientras el cobrador sigue ahí.
  */
-export const VENTANA_AGRUPACION_RECIBOS_MS = 2 * 60 * 1000;
+export const VENTANA_AGRUPACION_RECIBOS_MS = 5_000;
 
 /** Pausa aleatoria entre un mensaje y el siguiente del mismo número, en ms. */
 export function espaciadoMs(tipo: TipoMensajeWhatsApp, azar: () => number = Math.random): number {
@@ -53,7 +54,7 @@ export function espaciadoMs(tipo: TipoMensajeWhatsApp, azar: () => number = Math
     tipo === "PRESENTACION"
       ? [4 * 60_000, 10 * 60_000]
       : esTransaccional(tipo)
-        ? [20_000, 60_000]
+        ? [10_000, 30_000]
         : [30_000, 3 * 60_000];
   return Math.round(min + azar() * (max - min));
 }

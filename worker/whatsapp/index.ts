@@ -1,6 +1,7 @@
+import { Client } from "pg";
 import { prisma } from "@/lib/prisma";
 import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
-import { ENVIANDO_ABANDONADO_MS } from "@/lib/whatsapp-auto/reglas";
+import { ENVIANDO_ABANDONADO_MS, VENTANA_AGRUPACION_RECIBOS_MS } from "@/lib/whatsapp-auto/reglas";
 import { borrarSesion, tieneSesion } from "./auth-bd";
 import { verificarLlave } from "./cifrado";
 import { despacharCuenta } from "./despachador";
@@ -105,7 +106,53 @@ async function arrancarEscalonado() {
   }
 }
 
+/** Una sola vuelta de despacho a la vez (la periódica y la que despierta un recibo). */
+let despachando = false;
+let otraVuelta = false;
+
 async function despachar() {
+  if (despachando) {
+    otraVuelta = true;
+    return;
+  }
+  despachando = true;
+  try {
+    do {
+      otraVuelta = false;
+      await vueltaDeDespacho();
+    } while (otraVuelta);
+  } finally {
+    despachando = false;
+  }
+}
+
+/**
+ * La app avisa (pg_notify) en cuanto guarda un cobro con recibo: se
+ * despacha al cerrar la ventana de agrupación, sin esperar la revisión
+ * periódica. Si la escucha se cae, la revisión cada 5 s sigue funcionando.
+ */
+async function escucharRecibos() {
+  while (!detenido) {
+    const cliente = new Client({ connectionString: process.env.DATABASE_URL });
+    try {
+      await cliente.connect();
+      await cliente.query("LISTEN whatsapp_salida");
+      cliente.on("notification", () => {
+        setTimeout(() => void despachar(), VENTANA_AGRUPACION_RECIBOS_MS + 500);
+      });
+      await new Promise<void>((resolve) => {
+        cliente.on("error", () => resolve());
+        cliente.on("end", () => resolve());
+      });
+    } catch {
+      // Se reintenta abajo.
+    }
+    await cliente.end().catch(() => undefined);
+    await dormir(5_000);
+  }
+}
+
+async function vueltaDeDespacho() {
   const control = await prisma.controlWhatsApp.findUnique({ where: { id: "global" } });
   const paro = control?.paroGlobal ?? false;
   await Promise.all(
@@ -171,6 +218,7 @@ async function main() {
   await registrarBitacora({ tipo: "worker_iniciado" });
 
   void arrancarEscalonado();
+  void escucharRecibos();
   cada(3_000, reconciliar);
   cada(5_000, despachar);
   cada(30_000, latido);

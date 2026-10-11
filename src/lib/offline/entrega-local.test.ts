@@ -188,8 +188,9 @@ describe("modo local", () => {
         attempts: 1,
       }))
     );
+    // No lanza LimiteOfflineError (devuelve la clave con la que subirá).
     await expect(
       enqueue(OWNER, "contrata.pago.toggle", { contrataId: "vieja", numeroCuota: 2 })
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual(expect.any(String));
   });
 });

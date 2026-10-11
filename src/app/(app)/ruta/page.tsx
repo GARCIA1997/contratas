@@ -24,6 +24,7 @@ import { LimiteOfflineError } from "@/lib/offline/modo-local";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
 import { AvisoReciboAutomatico } from "@/components/whatsapp/aviso-recibo-automatico";
+import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
 import {
   mensajeCobro,
   mensajeRecordatorio,
@@ -229,6 +230,9 @@ export default function RutaDelDiaPage() {
   //    varios si se tocaba "Cobrado" en más de una tarjeta seguido.
   const [confirmando, setConfirmando] = useState<ParadaRuta | null>(null);
   const reciboAutomatico = useReciboAutomatico(ownerId);
+  // Último cobro hecho con recibo automático: se sigue su envío en un aviso
+  // flotante (el popup ya se cerró).
+  const [seguimiento, setSeguimiento] = useState<{ parada: ParadaRuta; claves: string[] } | null>(null);
   const [cobrandoId, setCobrandoId] = useState<string | null>(null);
 
   async function marcarCobrado(parada: ParadaRuta) {
@@ -241,13 +245,16 @@ export default function RutaDelDiaPage() {
         alert(new LimiteOfflineError().message);
         return;
       }
+      const claves: string[] = [];
       for (const cuota of parada.cuotas) {
-        await enqueue(ownerId as string, "contrata.pago.abonar", {
+        const clave = await enqueue(ownerId as string, "contrata.pago.abonar", {
           contrataId: cuota.contrataId,
           numeroCuota: cuota.numeroCuota,
           monto: cuota.pendiente,
         });
+        if (clave) claves.push(clave);
       }
+      if (reciboAutomatico && parada.telefono) setSeguimiento({ parada, claves });
     } finally {
       setCobrandoId(null);
     }
@@ -450,6 +457,35 @@ export default function RutaDelDiaPage() {
             </p>
           )}
         </>
+      )}
+
+      {seguimiento && (
+        <div className="fixed inset-x-3 bottom-24 z-40 mx-auto max-w-md space-y-2 rounded-2xl border bg-background/95 p-3 shadow-lg backdrop-blur">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm">
+              <span className="font-semibold text-pagado">Cobro registrado</span> · {seguimiento.parada.nombre}
+            </p>
+            <Button variant="ghost" size="sm" onClick={() => setSeguimiento(null)}>
+              Cerrar
+            </Button>
+          </div>
+          <SeguimientoRecibo
+            ownerId={ownerId}
+            telefono={seguimiento.parada.telefono}
+            claves={seguimiento.claves}
+            botonManual={
+              <Button className="w-full" size="sm" asChild>
+                <a
+                  href={linkWhatsApp(seguimiento.parada.telefono, reciboDeParada(nombreApp, seguimiento.parada))}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageCircle className="size-4" /> Enviar recibo manualmente
+                </a>
+              </Button>
+            }
+          />
+        </div>
       )}
 
       {confirmando && (

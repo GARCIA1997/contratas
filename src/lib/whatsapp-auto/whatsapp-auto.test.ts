@@ -73,8 +73,8 @@ describe("reglas de envío", () => {
     expect(CUPO_DIARIO).toBe(100);
   });
   it("espaciado dentro de los rangos acordados", () => {
-    expect(espaciadoMs("RECIBO", () => 0)).toBe(20_000);
-    expect(espaciadoMs("RECIBO", () => 1)).toBe(60_000);
+    expect(espaciadoMs("RECIBO", () => 0)).toBe(10_000);
+    expect(espaciadoMs("RECIBO", () => 1)).toBe(30_000);
     expect(espaciadoMs("VENCIDA", () => 1)).toBe(180_000);
     expect(espaciadoMs("PRESENTACION", () => 0)).toBe(240_000);
     expect(espaciadoMs("PRESENTACION", () => 1)).toBe(600_000);

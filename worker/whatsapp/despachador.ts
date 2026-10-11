@@ -34,8 +34,16 @@ import { marcarRestringida, SinWhatsApp, type Sesion } from "./sesion";
 
 type Cuenta = NonNullable<Awaited<ReturnType<typeof cargarCuenta>>>;
 
+/**
+ * Tiempos por número. Los recibos llevan su propio espaciado y NO esperan
+ * detrás de un recordatorio (30 s–3 min): el cobrador está viendo en su
+ * pantalla si el recibo salió. Entre dos mensajes cualesquiera siempre hay
+ * al menos MIN_ENTRE_MENSAJES_MS.
+ */
 const proximoEnvio = new Map<string, number>();
+const proximoRecibo = new Map<string, number>();
 const proximaPresentacion = new Map<string, number>();
+const MIN_ENTRE_MENSAJES_MS = 10_000;
 
 function cargarCuenta(cuentaId: string) {
   return prisma.cuentaWhatsApp.findUnique({
@@ -47,7 +55,7 @@ function cargarCuenta(cuentaId: string) {
 export async function despacharCuenta(sesion: Sesion, paroGlobal: boolean): Promise<void> {
   if (paroGlobal || !sesion.conectada) return;
   const ahora = Date.now();
-  if ((proximoEnvio.get(sesion.cuentaId) ?? 0) > ahora) return;
+  if ((proximoEnvio.get(sesion.cuentaId) ?? 0) > ahora && (proximoRecibo.get(sesion.cuentaId) ?? 0) > ahora) return;
   const cuenta = await cargarCuenta(sesion.cuentaId);
   if (!cuenta || cuenta.estado !== "CONECTADO" || cuenta.pausadaPorAdmin || cuenta.pausadaPorUsuario) return;
 
@@ -70,7 +78,7 @@ async function intentarUno(
 
   const campana = await prisma.campanaWhatsApp.findFirst({ where: { cuentaId: cuenta.id, estado: "ACTIVA" } });
   let presentacionPermitida = false;
-  if (campana && hayCupo && horario && (proximaPresentacion.get(cuenta.id) ?? 0) <= ahora.getTime()) {
+  if (campana && hayCupo && horario && (proximaPresentacion.get(cuenta.id) ?? 0) <= Date.now()) {
     const tope = cupoPresentacion(await diasConEnvioDeCampana(campana.id));
     presentacionPermitida = (await presentacionesHoy(campana.id, hoy)) < tope;
   }
@@ -81,7 +89,12 @@ async function intentarUno(
     take: 200,
   });
 
+  const ahoraMs = Date.now();
+  const reciboLibre = (proximoRecibo.get(cuenta.id) ?? 0) <= ahoraMs;
+  const generalLibre = (proximoEnvio.get(cuenta.id) ?? 0) <= ahoraMs;
   const elegible = (m: MensajeWhatsApp) => {
+    if (esTransaccional(m.tipo) && !reciboLibre) return false;
+    if (!esTransaccional(m.tipo) && !generalLibre) return false;
     if (m.tipo === "RECIBO")
       return cuenta.activo && m.creadoEn.getTime() <= ahora.getTime() - VENTANA_AGRUPACION_RECIBOS_MS;
     if (esTransaccional(m.tipo)) return true;
@@ -133,7 +146,16 @@ async function intentarUno(
       )
     );
   }
-  if (!armado.texto || armado.validos.length === 0) return "nada_enviado_reintentar";
+  if (!armado.texto || armado.validos.length === 0) {
+    // Nada que mandar: lo tomado no puede quedarse en ENVIANDO.
+    if (armado.validos.length > 0) {
+      await prisma.mensajeWhatsApp.updateMany({
+        where: { id: { in: armado.validos.map((m) => m.id) } },
+        data: { estado: "CANCELADO", motivo: "Sin texto para enviar: mandarlo a mano" },
+      });
+    }
+    return "nada_enviado_reintentar";
+  }
 
   // Primer mensaje a alguien que aún no conoce el número: lleva la presentación.
   const telefono = primero.telefono;
@@ -183,7 +205,15 @@ async function intentarUno(
     }
   });
 
-  proximoEnvio.set(cuenta.id, Date.now() + espaciadoMs(esTransaccional(primero.tipo) ? "RECIBO" : "POR_VENCER"));
+  const t = Date.now();
+  const masTarde = (m: Map<string, number>, hasta: number) => m.set(cuenta.id, Math.max(m.get(cuenta.id) ?? 0, hasta));
+  if (esTransaccional(primero.tipo)) {
+    proximoRecibo.set(cuenta.id, t + espaciadoMs("RECIBO"));
+    masTarde(proximoEnvio, t + MIN_ENTRE_MENSAJES_MS);
+  } else {
+    proximoEnvio.set(cuenta.id, t + espaciadoMs("POR_VENCER"));
+    masTarde(proximoRecibo, t + MIN_ENTRE_MENSAJES_MS);
+  }
   if (esPresentacion) proximaPresentacion.set(cuenta.id, Date.now() + espaciadoMs("PRESENTACION"));
   return "enviado";
 }
@@ -322,6 +352,7 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
 
 /** El recibo ya no corresponde: el cobro se revirtió, cambió el teléfono o esperó demasiado. */
 async function motivoCancelarRecibo(ownerId: string, m: MensajeWhatsApp, ahora: Date): Promise<string | null> {
+  if (!m.texto) return "El recibo no se pudo preparar: mandarlo a mano";
   if (ahora.getTime() - m.creadoEn.getTime() > RECIBO_VIGENCIA_MS) {
     return "Recibo con más de 24 h sin enviarse: mandarlo a mano";
   }
