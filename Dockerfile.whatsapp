@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1
+#
+# Worker de WhatsApp (Baileys). Imagen aparte de la app web: Baileys y su
+# dependencia libsignal (que se instala desde GitHub) nunca entran a la
+# imagen de Next.js. Ver docs/whatsapp.md.
+
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+ENV SENTRYCLI_SKIP_DOWNLOAD=1
+# Misma zona horaria que la app: horario 9–19 y "hoy" de los recordatorios.
+ENV TZ=America/Mexico_City
+
+# libsignal viene de GitHub: git para clonarlo, por https (sin llaves SSH).
+RUN apk add --no-cache git \
+  && git config --system url."https://github.com/".insteadOf "ssh://git@github.com/"
+
+# Dependencias de la app (Prisma Client, date-fns… que usa src/lib) + tsx.
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+RUN npm ci && npx prisma generate
+
+# Dependencias propias del worker.
+COPY worker/whatsapp/package.json worker/whatsapp/package-lock.json ./worker/whatsapp/
+RUN cd worker/whatsapp && npm ci
+
+COPY tsconfig.json ./
+COPY src ./src
+COPY worker/whatsapp ./worker/whatsapp
+
+RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 worker
+USER worker
+
+CMD ["node_modules/.bin/tsx", "--tsconfig", "worker/whatsapp/tsconfig.json", "worker/whatsapp/index.ts"]

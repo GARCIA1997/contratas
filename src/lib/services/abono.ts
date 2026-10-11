@@ -5,6 +5,7 @@ import { HttpError } from "@/lib/session";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { DIAS_PROXIMO_VENCIMIENTO } from "@/lib/contrata";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
+import { guardarCobro, prepararReciboCobro } from "@/lib/whatsapp-auto/recibos";
 
 /**
  * Reparto de un abono parcial entre las contratas de un cliente.
@@ -298,16 +299,32 @@ export async function ejecutarAbonoParcial(
   }
 
   const ahora = new Date();
-  await prisma.$transaction(
-    resultado.aplicaciones.map((a) =>
-      prisma.pago.update({
-        where: { id: a.pagoId },
-        data: {
-          montoAbonado: { increment: a.montoAplicado },
-          ...(a.quedaPagada ? { pagado: true, fechaPago: ahora } : {}),
-        },
-      })
-    )
+  const recibo = await prepararReciboCobro({
+    ownerId,
+    cliente,
+    pagoIds: resultado.aplicaciones.map((a) => a.pagoId),
+    armar: () => ({
+      total: resultado.totalAplicado,
+      contratas: resultado.contratas.map((c) => ({
+        tipo: c.tipo,
+        numCuotas: c.numCuotas,
+        cuotas: c.cuotas,
+        subtotal: c.subtotal,
+      })),
+    }),
+  });
+  await guardarCobro(
+    () =>
+      resultado.aplicaciones.map((a) =>
+        prisma.pago.update({
+          where: { id: a.pagoId },
+          data: {
+            montoAbonado: { increment: a.montoAplicado },
+            ...(a.quedaPagada ? { pagado: true, fechaPago: ahora } : {}),
+          },
+        })
+      ),
+    recibo
   );
 
   return {

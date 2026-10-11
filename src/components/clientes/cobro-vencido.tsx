@@ -11,6 +11,8 @@ import type { ResultadoCobroVencidas } from "@/lib/services/cobros";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
+import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { getCobroVencidoDetalle } from "@/lib/offline/repo";
@@ -58,6 +60,7 @@ export function CobroVencido({
   enFila?: boolean;
 }) {
   const router = useRouter();
+  const reciboAutomatico = useReciboAutomatico(ownerId);
   const [total, setTotal] = useState(totalInicial);
   const [cuotas, setCuotas] = useState(cuotasInicial);
   const [cargando, setCargando] = useState(false);
@@ -123,8 +126,10 @@ export function CobroVencido({
           <p className="font-medium text-pagado">Cobro guardado en el teléfono</p>
           <p className="text-xs text-muted-foreground">
             Se aplicó localmente y se sincronizará con el servidor en cuanto
-            haya conexión. El recibo de WhatsApp se podrá enviar después,
-            desde el detalle de cada contrata.
+            haya conexión.{" "}
+            {reciboAutomatico
+              ? "El recibo se enviará solo por WhatsApp al sincronizar."
+              : "El recibo de WhatsApp se podrá enviar después, desde el detalle de cada contrata."}
           </p>
         </CardContent>
       </Card>
@@ -147,8 +152,8 @@ export function CobroVencido({
             </p>
             {offlinePendiente && (
               <p className="text-xs text-muted-foreground">
-                Se sube al servidor al sincronizar. El recibo ya se puede
-                enviar.
+                Se sube al servidor al sincronizar.
+                {!reciboAutomatico && " El recibo ya se puede enviar."}
               </p>
             )}
           </div>
@@ -172,11 +177,18 @@ export function CobroVencido({
               </li>
             ))}
           </ul>
-          <Button className="w-full" asChild>
-            <a href={link} target="_blank" rel="noopener noreferrer">
-              <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
-            </a>
-          </Button>
+          <SeguimientoRecibo
+            ownerId={ownerId}
+            telefono={resultado.clienteTelefono}
+            claves={idempotencyKey ? [idempotencyKey] : []}
+            botonManual={
+              <Button className="w-full" asChild>
+                <a href={link} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
+                </a>
+              </Button>
+            }
+          />
           <Button
             variant="ghost"
             className="w-full"

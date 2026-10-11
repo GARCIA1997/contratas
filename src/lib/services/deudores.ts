@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import type { AbonoInput, DeudorInput } from "@/lib/validaciones";
+import { guardarCobro, prepararReciboAbonoDeudor } from "@/lib/whatsapp-auto/recibos";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -116,14 +117,25 @@ export async function agregarAbono(
   const deudor = await getDeudor(ownerId, deudorId);
   const restante = round(saldoActual(deudor) - input.monto);
 
-  await prisma.abonoDeudor.create({
-    data: {
-      deudorId,
-      fecha: new Date(input.fecha),
-      monto: input.monto,
-      restante,
-      notas: input.notas ?? null,
-    },
+  const id = globalThis.crypto.randomUUID();
+  const fecha = new Date(input.fecha);
+  const recibo = await prepararReciboAbonoDeudor({
+    ownerId,
+    deudor,
+    abonoId: id,
+    monto: input.monto,
+    restante,
+    fecha,
   });
+  await guardarCobro(
+    () => [
+      prisma.abonoDeudor.create({
+        // El id solo se fija si hay recibo (lo necesita para referirlo); sin
+        // WhatsApp automático el abono se crea exactamente como antes.
+        data: { ...(recibo ? { id } : {}), deudorId, fecha, monto: input.monto, restante, notas: input.notas ?? null },
+      }),
+    ],
+    recibo
+  );
   return getDeudor(ownerId, deudorId);
 }

@@ -7,6 +7,12 @@ import { getConfig } from "@/lib/config";
 import { calcularFechasPago } from "@/lib/fechas";
 import { saldoPendiente, montoVencidoOVigente, cuotasVencidasOVigentes, errorDeMontos } from "@/lib/contrata";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
+import {
+  cobroDeContrata,
+  guardarCobro,
+  prepararReciboCobro,
+  revertirRecibos,
+} from "@/lib/whatsapp-auto/recibos";
 
 export type ContrataConDatos = Prisma.ContrataGetPayload<{
   include: { cliente: true; pagos: true };
@@ -315,14 +321,35 @@ export async function togglePago(
   if (!pago) throw new HttpError(404, "Cuota no encontrada");
 
   const pagado = !pago.pagado;
-  await prisma.pago.update({
-    where: { id: pago.id },
-    data: {
-      pagado,
-      fechaPago: pagado ? new Date() : null,
-      montoAbonado: pagado ? contrata.abono : 0,
-    },
-  });
+  const escritura = () => [
+    prisma.pago.update({
+      where: { id: pago.id },
+      data: {
+        pagado,
+        fechaPago: pagado ? new Date() : null,
+        montoAbonado: pagado ? contrata.abono : 0,
+      },
+    }),
+  ];
+  if (!pagado) {
+    await guardarCobro(escritura, null);
+    await revertirRecibos(ownerId, [pago.id]);
+    return getContrata(ownerId, contrataId);
+  }
+  const cobrado = Math.round((contrata.abono - pago.montoAbonado) * 100) / 100;
+  const recibo =
+    cobrado > 0
+      ? await prepararReciboCobro({
+          ownerId,
+          cliente: contrata.cliente,
+          pagoIds: [pago.id],
+          armar: () => ({
+            total: cobrado,
+            contratas: [cobroDeContrata(contrata, [{ numeroCuota, monto: cobrado, quedaPagada: true }])],
+          }),
+        })
+      : null;
+  await guardarCobro(escritura, recibo);
   return getContrata(ownerId, contrataId);
 }
 
@@ -347,14 +374,28 @@ export async function abonarPago(
   const nuevoMonto = Math.round((pago.montoAbonado + monto) * 100) / 100;
   const pagado = nuevoMonto >= contrata.abono - EPSILON;
 
-  await prisma.pago.update({
-    where: { id: pago.id },
-    data: {
-      montoAbonado: nuevoMonto,
-      pagado,
-      fechaPago: pagado ? new Date() : pago.fechaPago,
-    },
+  const recibo = await prepararReciboCobro({
+    ownerId,
+    cliente: contrata.cliente,
+    pagoIds: [pago.id],
+    armar: () => ({
+      total: monto,
+      contratas: [cobroDeContrata(contrata, [{ numeroCuota, monto, quedaPagada: pagado }])],
+    }),
   });
+  await guardarCobro(
+    () => [
+      prisma.pago.update({
+        where: { id: pago.id },
+        data: {
+          montoAbonado: nuevoMonto,
+          pagado,
+          fechaPago: pagado ? new Date() : pago.fechaPago,
+        },
+      }),
+    ],
+    recibo
+  );
   return getContrata(ownerId, contrataId);
 }
 
@@ -372,6 +413,7 @@ export async function limpiarPago(
     where: { id: pago.id },
     data: { montoAbonado: 0, pagado: false, fechaPago: null },
   });
+  await revertirRecibos(ownerId, [pago.id]);
   return getContrata(ownerId, contrataId);
 }
 

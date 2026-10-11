@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { DIAS_PROXIMO_VENCIMIENTO } from "@/lib/contrata";
+import { guardarCobro, prepararReciboCobro } from "@/lib/whatsapp-auto/recibos";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -158,23 +159,33 @@ export async function ejecutarCobroVencidas(
   }
 
   const ahora = new Date();
-  await prisma.$transaction(
-    items.map((i) =>
-      prisma.pago.update({
-        where: { id: i.pagoId },
-        data: {
-          montoAbonado: { increment: i.pendiente },
-          pagado: true,
-          fechaPago: ahora,
-        },
-      })
-    )
+  const total = round(items.reduce((s, i) => s + i.pendiente, 0));
+  const contratas = agruparCobroPorContrata(items);
+  const recibo = await prepararReciboCobro({
+    ownerId,
+    cliente,
+    pagoIds: items.map((i) => i.pagoId),
+    armar: () => ({ total, contratas }),
+  });
+  await guardarCobro(
+    () =>
+      items.map((i) =>
+        prisma.pago.update({
+          where: { id: i.pagoId },
+          data: {
+            montoAbonado: { increment: i.pendiente },
+            pagado: true,
+            fechaPago: ahora,
+          },
+        })
+      ),
+    recibo
   );
 
   return {
-    total: round(items.reduce((s, i) => s + i.pendiente, 0)),
+    total,
     clienteNombre: cliente.nombre,
     clienteTelefono: cliente.telefono,
-    contratas: agruparCobroPorContrata(items),
+    contratas,
   };
 }

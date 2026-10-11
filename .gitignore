@@ -52,3 +52,6 @@ next-env.d.ts
 # Override local de compose (ej. exponer el puerto de la BD para migrar
 # desde el host) — nunca debe ir a git, ver comentario en docker-compose.yml.
 docker-compose.override.yml
+
+# worker de WhatsApp (paquete aparte)
+/worker/whatsapp/node_modules

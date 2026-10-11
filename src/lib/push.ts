@@ -25,9 +25,25 @@ type Payload = {
 
 /** Envía una notificación a todas las suscripciones de un usuario. */
 export async function enviarAOwner(ownerId: string, payload: Payload) {
+  return enviarASuscripciones({ ownerId }, payload);
+}
+
+/**
+ * Solo a los dispositivos de estas personas (no a todo su espacio): las
+ * suscripciones guardan quién las activó en `userId`.
+ */
+export async function enviarAUsuarios(userIds: string[], payload: Payload) {
+  if (userIds.length === 0) return { enviadas: 0, deshabilitado: !pushEnabled };
+  return enviarASuscripciones({ userId: { in: userIds } }, payload);
+}
+
+async function enviarASuscripciones(
+  where: { ownerId: string } | { userId: { in: string[] } },
+  payload: Payload
+) {
   if (!pushEnabled) return { enviadas: 0, deshabilitado: true };
 
-  const subs = await prisma.pushSubscription.findMany({ where: { ownerId } });
+  const subs = await prisma.pushSubscription.findMany({ where });
   let enviadas = 0;
 
   await Promise.all(

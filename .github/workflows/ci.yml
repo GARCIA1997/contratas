@@ -39,6 +39,14 @@ jobs:
       - name: Tipos (service worker)
         run: npx tsc --noEmit -p tsconfig.sw.json
 
+      - name: Tipos (worker de WhatsApp)
+        # libsignal (dependencia de Baileys) viene de GitHub por ssh en el
+        # lockfile; en CI se baja por https.
+        run: |
+          git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+          npm ci --prefix worker/whatsapp
+          npx tsc -p worker/whatsapp/tsconfig.json --noEmit
+
       - name: Lint
         run: npx next lint
 

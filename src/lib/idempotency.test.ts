@@ -69,6 +69,7 @@ vi.mock("@/lib/prisma", () => ({
 // `withIdempotency` ya recibe el prisma simulado.
 import { withIdempotency } from "@/lib/idempotency";
 import { HttpError } from "@/lib/session";
+import { claveOperacionActual } from "@/lib/whatsapp-auto/contexto-operacion";
 
 function req(key: string | null) {
   return {
@@ -81,6 +82,23 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 describe("withIdempotency", () => {
   beforeEach(() => tabla.clear());
+
+  it("la mutación ve su Idempotency-Key (clave del recibo automático de WhatsApp)", async () => {
+    let vista: string | null = "sin-correr";
+    await withIdempotency(req("k-recibo"), "o1", "cobrar", async () => {
+      await tick();
+      vista = claveOperacionActual();
+      return { ok: 1 };
+    });
+    expect(vista).toBe("k-recibo");
+    expect(claveOperacionActual()).toBeNull();
+    let sinKey: string | null = "sin-correr";
+    await withIdempotency(req(null), "o1", "cobrar", async () => {
+      sinKey = claveOperacionActual();
+      return {};
+    });
+    expect(sinKey).toBeNull();
+  });
 
   it("sin key no memoriza nada y siempre ejecuta", async () => {
     const run = vi.fn().mockResolvedValue({ ok: 1 });

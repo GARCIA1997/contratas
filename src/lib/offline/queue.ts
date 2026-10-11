@@ -38,8 +38,9 @@ export async function enqueue(
   ownerId: string,
   type: QueueOpType,
   payload: Record<string, unknown>
-): Promise<void> {
-  await enqueueLote(ownerId, [{ type, payload }]);
+): Promise<string | null> {
+  const [clave] = await enqueueLote(ownerId, [{ type, payload }]);
+  return clave ?? null;
 }
 
 /**
@@ -59,10 +60,13 @@ export async function enqueueLote(
   ownerId: string,
   ops: OperacionCola[],
   opciones: { clave?: string } = {}
-): Promise<void> {
+): Promise<string[]> {
   const database = db;
-  if (!database || ops.length === 0) return;
+  if (!database || ops.length === 0) return [];
   const base = Date.now();
+  // La Idempotency-Key con la que sube cada operación (ver peticiones.ts): la
+  // pantalla la usa para consultar si su recibo de WhatsApp salió.
+  const claves: string[] = [];
   await database.transaction(
     "rw",
     // Toda tabla que `applyLocalEffect` pueda tocar tiene que estar en el
@@ -88,9 +92,12 @@ export async function enqueueLote(
       if (acumuladas + ops.length > LIMITE_OPERACIONES_LOCALES) throw new LimiteOfflineError();
       for (let i = 0; i < ops.length; i++) {
         const { type, payload } = ops[i];
+        const id = crypto.randomUUID();
+        const clave = i === 0 ? opciones.clave ?? null : null;
+        claves.push(clave ?? id);
         await database.writeQueue.add({
-          id: crypto.randomUUID(),
-          clave: i === 0 ? opciones.clave ?? null : null,
+          id,
+          clave,
           ownerId,
           type,
           payload,
@@ -105,6 +112,7 @@ export async function enqueueLote(
     }
   );
   void flushQueue(ownerId);
+  return claves;
 }
 
 /* ── Vaciar ──────────────────────────────────────────────────────────── */

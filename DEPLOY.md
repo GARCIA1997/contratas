@@ -161,3 +161,7 @@ ssh deploy@187.127.248.213 "cd ~/kredired && sudo docker compose exec -T db psql
 ```
 
 En local: `npx tsx scripts/acceso-monitor.ts <correo>` (`--quitar` para revocar).
+
+## WhatsApp automático (worker)
+
+El worker de WhatsApp es un servicio aparte con perfil `whatsapp` en `docker-compose.yml`: el deploy normal no lo levanta ni lo reinicia. Necesita `WHATSAPP_SESSION_KEY` en `.env`. Puesta en marcha, actualización y emergencias: ver `docs/whatsapp.md` (sección 13).

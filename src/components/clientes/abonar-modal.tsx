@@ -15,6 +15,8 @@ import { getContratasParaAbono } from "@/lib/offline/repo";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
+import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import { mensajeDeError } from "@/lib/offline/conexion";
 
@@ -56,6 +58,7 @@ export function AbonarModal({
   className?: string;
 }) {
   const router = useRouter();
+  const reciboAutomatico = useReciboAutomatico(ownerId);
   const [montado, setMontado] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [monto, setMonto] = useState("");
@@ -162,8 +165,8 @@ export function AbonarModal({
                   </p>
                   {offlinePendiente && (
                     <p className="text-xs text-muted-foreground">
-                      Se sube al servidor al sincronizar. El recibo ya se puede
-                      enviar.
+                      Se sube al servidor al sincronizar.
+                      {!reciboAutomatico && " El recibo ya se puede enviar."}
                     </p>
                   )}
                 </div>
@@ -193,15 +196,22 @@ export function AbonarModal({
                     </li>
                   ))}
                 </ul>
-                <Button className="w-full" asChild>
-                  <a
-                    href={linkWhatsApp(telefono, mensaje ?? "")}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
-                  </a>
-                </Button>
+                <SeguimientoRecibo
+                  ownerId={ownerId}
+                  telefono={telefono}
+                  claves={idempotencyKey ? [idempotencyKey] : []}
+                  botonManual={
+                    <Button className="w-full" asChild>
+                      <a
+                        href={linkWhatsApp(telefono, mensaje ?? "")}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <MessageCircle className="size-4" /> Enviar recibo por WhatsApp
+                      </a>
+                    </Button>
+                  }
+                />
                 <Button variant="ghost" className="w-full" onClick={cerrar}>
                   Cerrar
                 </Button>
