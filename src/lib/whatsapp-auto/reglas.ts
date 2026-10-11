@@ -11,6 +11,7 @@ export const CUPO_DIARIO = 100;
 /** Menor = sale primero. */
 export const PRIORIDAD: Record<TipoMensajeWhatsApp, number> = {
   CONFIRMACION_BAJA: 0,
+  PRUEBA: 0,
   RECIBO: 0,
   POR_VENCER: 1,
   VENCIDA: 1,
@@ -18,9 +19,12 @@ export const PRIORIDAD: Record<TipoMensajeWhatsApp, number> = {
   PRESENTACION: 3,
 };
 
-/** Respuesta a quien pidió la baja y los recibos: salen a cualquier hora y aunque se pase del cupo. */
+/**
+ * Recibos, respuesta a quien pidió la baja y pruebas del monitor: salen a
+ * cualquier hora y aunque se pase del cupo.
+ */
 export function esTransaccional(tipo: TipoMensajeWhatsApp): boolean {
-  return tipo === "RECIBO" || tipo === "CONFIRMACION_BAJA";
+  return tipo === "RECIBO" || tipo === "CONFIRMACION_BAJA" || tipo === "PRUEBA";
 }
 
 /** Ventana para recordatorios, deudores y presentación (hora local del worker: America/Mexico_City). */

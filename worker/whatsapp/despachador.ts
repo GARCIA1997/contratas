@@ -163,7 +163,9 @@ async function intentarUno(
     where: { cuentaId_telefono: { cuentaId: cuenta.id, telefono } },
   });
   const esPresentacion = primero.tipo === "PRESENTACION";
-  const conPresentacion = !yaPresentado && !esPresentacion && primero.tipo !== "CONFIRMACION_BAJA";
+  // La confirmación de baja y la prueba del monitor no llevan la presentación.
+  const conPresentacion =
+    !yaPresentado && !esPresentacion && primero.tipo !== "CONFIRMACION_BAJA" && primero.tipo !== "PRUEBA";
   const texto = conPresentacion
     ? `${lineaPresentacion(nombreApp, cuenta.owner.nombre)}\n\n${armado.texto}`
     : armado.texto;
@@ -247,7 +249,7 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
     return { texto: null, validos, cancelados: mensajes.map((m) => ({ id: m.id, motivo: "Opt-out" })) };
   }
 
-  if (tipo0 === "CONFIRMACION_BAJA") {
+  if (tipo0 === "CONFIRMACION_BAJA" || tipo0 === "PRUEBA") {
     return { texto: mensajes[0].texto, validos: [mensajes[0]], cancelados };
   }
 

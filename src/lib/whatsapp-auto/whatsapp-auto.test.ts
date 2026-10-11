@@ -69,6 +69,8 @@ describe("reglas de envío", () => {
     expect(PRIORIDAD.DEUDOR).toBeLessThan(PRIORIDAD.PRESENTACION);
     expect(esTransaccional("RECIBO")).toBe(true);
     expect(esTransaccional("CONFIRMACION_BAJA")).toBe(true);
+    expect(esTransaccional("PRUEBA")).toBe(true);
+    expect(PRIORIDAD.PRUEBA).toBe(0);
     expect(esTransaccional("VENCIDA")).toBe(false);
     expect(CUPO_DIARIO).toBe(100);
   });
