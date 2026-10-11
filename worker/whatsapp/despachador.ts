@@ -48,7 +48,7 @@ const MIN_ENTRE_MENSAJES_MS = 10_000;
 function cargarCuenta(cuentaId: string) {
   return prisma.cuentaWhatsApp.findUnique({
     where: { id: cuentaId },
-    include: { owner: { select: { configuracion: { select: { nombreApp: true } } } } },
+    include: { owner: { select: { nombre: true, configuracion: { select: { nombreApp: true } } } } },
   });
 }
 
@@ -164,7 +164,9 @@ async function intentarUno(
   });
   const esPresentacion = primero.tipo === "PRESENTACION";
   const conPresentacion = !yaPresentado && !esPresentacion && primero.tipo !== "CONFIRMACION_BAJA";
-  const texto = conPresentacion ? `${lineaPresentacion(nombreApp)}\n\n${armado.texto}` : armado.texto;
+  const texto = conPresentacion
+    ? `${lineaPresentacion(nombreApp, cuenta.owner.nombre)}\n\n${armado.texto}`
+    : armado.texto;
 
   let waMensajeId: string | null;
   try {
@@ -344,7 +346,11 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
       where: { cuentaId_telefono: { cuentaId: cuenta.id, telefono } },
     });
     if (ya) return { texto: null, validos, cancelados: [{ id: m.id, motivo: "Ya se presentó" }] };
-    return { texto: textoPresentacion(m.destinatarioNombre, nombreApp, m.orden ?? 0), validos: [m], cancelados };
+    return {
+      texto: textoPresentacion(m.destinatarioNombre, nombreApp, m.orden ?? 0, cuenta.owner.nombre),
+      validos: [m],
+      cancelados,
+    };
   }
 
   return { texto: null, validos, cancelados: [{ id: m.id, motivo: `Tipo desconocido ${tipo0}` }] };

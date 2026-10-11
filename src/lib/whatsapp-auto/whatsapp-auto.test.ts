@@ -12,7 +12,7 @@ import {
   umbralFreno,
 } from "./reglas";
 import { claveDeudor, deudorTocaRecordatorio, recordatoriosDeCuotas, type CuotaParaPlan } from "./planificar";
-import { textoPresentacion } from "./textos";
+import { lineaPresentacion, nombreRemitente, textoPresentacion } from "./textos";
 import { cobroDeContrata } from "./recibos";
 
 /** Fecha "solo día" como la guarda la BD (medianoche UTC). */
@@ -165,6 +165,30 @@ describe("textos", () => {
     expect(a).not.toBe(b);
     expect(a).toContain("Juan");
     expect(a).toContain("NO");
+  });
+});
+
+describe("presentación firmada por el usuario", () => {
+  it("incluye el primer nombre del dueño en todas las versiones", () => {
+    for (let i = 0; i < 4; i++) {
+      const t = textoPresentacion("juan pérez", "Kredired", i, "ALEJANDRO García");
+      expect(t).toMatch(/Alejandro,? de Kredired/);
+      expect(t).toContain("Juan");
+      expect(t).toContain("NO");
+    }
+    expect(textoPresentacion("Juan", "Kredired", 0, "Alejandro")).toBe(
+      "Hola Juan, le escribe Alejandro de Kredired. A partir de hoy recibirá sus recordatorios y comprobantes de pago desde este número. Si no desea recibir mensajes, responda NO y no le volveremos a escribir."
+    );
+  });
+  it("la línea del primer mensaje también lo firma", () => {
+    expect(lineaPresentacion("Kredired", "Alejandro")).toMatch(/^👋 Le escribe Alejandro de \*Kredired\*\./);
+  });
+  it("sin nombre (o si es un correo o número) habla en nombre del negocio", () => {
+    expect(nombreRemitente(null)).toBeNull();
+    expect(nombreRemitente("alejandro@gmail.com")).toBeNull();
+    expect(nombreRemitente("3131128425")).toBeNull();
+    expect(textoPresentacion("Juan", "Kredired", 0, null)).toContain("le escribimos de Kredired");
+    expect(lineaPresentacion("Kredired", "  ")).toMatch(/^👋 Le escribimos de \*Kredired\*/);
   });
 });
 
