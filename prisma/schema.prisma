@@ -441,6 +441,8 @@ enum TipoMensajeWhatsApp {
   DEUDOR
   PRESENTACION
   CONFIRMACION_BAJA
+  /// Enviado a mano desde el monitor para comprobar que el número funciona.
+  PRUEBA
 }
 
 enum EstadoMensajeWhatsApp {

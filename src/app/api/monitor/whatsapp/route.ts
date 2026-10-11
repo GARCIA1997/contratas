@@ -12,6 +12,7 @@ import {
   crearCuenta,
   destinatariosPresentacion,
   eliminarCuenta,
+  enviarPrueba,
   iniciarCampana,
   panelWhatsApp,
   paroGlobal,
@@ -50,6 +51,7 @@ const schema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("atender_revertido"), mensajeId: id }),
   z.object({ accion: z.literal("reactivar_optout"), cuentaId: id, telefono: z.string().max(20) }),
   z.object({ accion: z.literal("iniciar_campana"), cuentaId: id, total: z.number().int().min(1) }),
+  z.object({ accion: z.literal("prueba"), cuentaId: id, telefono: z.string().max(30), texto: z.string().max(1000).nullable().optional() }),
   z.object({ accion: z.literal("campana"), campanaId: id, operacion: z.enum(["pausar", "reanudar", "terminar"]) }),
 ]);
 
@@ -97,6 +99,9 @@ export async function POST(req: NextRequest) {
         break;
       case "iniciar_campana":
         await iniciarCampana(a.cuentaId, a.total, actor);
+        break;
+      case "prueba":
+        await enviarPrueba(a.cuentaId, a.telefono, a.texto ?? null, actor);
         break;
       case "campana":
         await cambiarEstadoCampana(a.campanaId, a.operacion, actor);

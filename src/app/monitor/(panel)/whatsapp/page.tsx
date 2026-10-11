@@ -6,6 +6,7 @@ import { Chips, Encabezado, KpiSimple, Tarjeta } from "@/components/monitor/ui";
 import {
   BotonAccion,
   FormCambiarNumero,
+  FormPrueba,
   BarraCuentas,
   IniciarCampana,
   RefrescoRapido,
@@ -28,6 +29,7 @@ const TIPO: Record<string, string> = {
   DEUDOR: "Deudor",
   PRESENTACION: "Presentación",
   CONFIRMACION_BAJA: "Confirmación",
+  PRUEBA: "Prueba",
 };
 
 const ESTADO_MSG: Record<string, string> = {
@@ -60,6 +62,7 @@ export default async function WhatsAppPage({
   const d = panel.detalle;
   const seccion = searchParams.seccion ?? "cola";
   const esperando = d?.cuenta.estado === "ESPERANDO_VINCULACION";
+  const pruebaEnCurso = Boolean(d?.pruebas.some((p) => p.estado === "PENDIENTE" || p.estado === "ENVIANDO"));
   const q = (searchParams.q ?? "").trim().toLowerCase();
   const qDigitos = q.replace(/\D/g, "");
   const conexion = searchParams.conexion ?? "";
@@ -78,12 +81,12 @@ export default async function WhatsAppPage({
 
   return (
     <>
-      <RefrescoRapido activo={esperando} />
+      <RefrescoRapido activo={esperando || pruebaEnCurso} />
       <Encabezado
         titulo="WhatsApp automático"
         subtitulo={`${panel.cuentas.length}/${MAX_CUENTAS} números · worker ${
           panel.workerVivo ? `vivo (latido ${haceCuanto(iso(panel.latidoEn))})` : "SIN LATIDO"
-        }${panel.latido ? ` · ${panel.latido.rssMb} MB · CPU ${panel.latido.cpuPct}% · Baileys ${panel.latido.versionBaileys}` : ""} · código app ${
+        }${panel.latido?.rssMb != null ? ` · ${panel.latido.rssMb} MB · CPU ${panel.latido.cpuPct}% · Baileys ${panel.latido.versionBaileys}` : ""} · código app ${
           panel.huellaApp ?? "?"
         } · worker ${panel.huellaWorker ?? "?"}${
           panel.huellaApp && panel.huellaWorker && panel.huellaApp !== panel.huellaWorker ? " ⚠ desactualizado" : ""
@@ -275,6 +278,53 @@ export default async function WhatsAppPage({
                 pie={[d.cuenta.recibos && "recibos", d.cuenta.porVencer && "por vencer", d.cuenta.vencidas && "vencidas", d.cuenta.deudores && "deudores"].filter(Boolean).join(" · ") || "Ningún tipo activo"}
               />
             </div>
+          </Tarjeta>
+
+          {/* Mensaje de prueba */}
+          <Tarjeta className="gap-space-sm">
+            <span className="font-headline-sm text-headline-sm text-on-surface">Mensaje de prueba</span>
+            <span className="font-body-sm text-body-sm text-on-surface-variant">
+              Sale por la cola normal (worker → WhatsApp → acuse), así que comprueba el envío completo. Funciona aunque el
+              usuario no haya encendido el automático. Máximo 5 por hora.
+            </span>
+            <FormPrueba
+              cuentaId={d.cuenta.id}
+              aviso={
+                d.cuenta.estado !== "CONECTADO"
+                  ? "El número no está conectado: vincúlalo antes de mandar la prueba."
+                  : panel.paroGlobal
+                    ? "Hay paro global: la prueba se quedará en cola hasta quitarlo."
+                    : d.cuenta.pausadaPorAdmin || d.cuenta.pausadaPorUsuario
+                      ? "El número está pausado: la prueba se quedará en cola hasta reanudarlo."
+                      : !panel.workerVivo
+                        ? "El worker no está corriendo: la prueba se quedará en cola."
+                        : null
+              }
+            />
+            {d.pruebas.length > 0 && (
+              <div className="flex flex-col gap-1 border-t border-outline-variant/30 pt-space-sm font-body-sm text-body-sm">
+                {d.pruebas.map((p) => (
+                  <div key={p.id} className="flex flex-wrap items-center gap-space-sm">
+                    <span className="font-code-sm text-code-sm">{p.telefono}</span>
+                    <span
+                      className={cn(
+                        "rounded px-2 py-0.5 font-label-sm text-label-sm",
+                        p.estado === "ENVIADO"
+                          ? "bg-secondary/20 text-secondary"
+                          : ["FALLIDO", "CANCELADO", "REVISAR"].includes(p.estado)
+                            ? "bg-error-container/40 text-error"
+                            : "bg-surface-container-high text-on-surface-variant"
+                      )}
+                    >
+                      {ESTADO_MSG[p.estado]}
+                      {p.envio?.ack ? ` · ${p.envio.ack.toLowerCase()}` : ""}
+                    </span>
+                    <span className="text-outline">{fechaHora(p.creadoEn.toISOString())}</span>
+                    {p.motivo && <span className="text-error">{p.motivo}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </Tarjeta>
 
           <Chips

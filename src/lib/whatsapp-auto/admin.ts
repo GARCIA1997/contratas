@@ -156,6 +156,50 @@ export async function reactivarOptOut(cuentaId: string, telefono: string, actor:
   await registrarBitacora({ cuentaId, tipo: "opt_out_reactivado", detalle: { telefono }, actor });
 }
 
+/* ── Mensaje de prueba ───────────────────────────────────────────────── */
+
+export const MAX_PRUEBAS_POR_HORA = 5;
+
+/**
+ * Encola un mensaje de prueba a cualquier teléfono: sale por la cola normal
+ * (worker → WhatsApp → acuse), así que comprueba el camino completo. No
+ * depende de que el usuario haya encendido el automático, pero sí respeta
+ * pausas, paro global y bajas. Límite por hora para no quemar el número.
+ */
+export async function enviarPrueba(cuentaId: string, telefono: string, texto: string | null, actor: string) {
+  const tel = normalizarTelefono(telefono);
+  if (!tel) throw new HttpError(400, "Teléfono inválido (10 dígitos o con lada de país)");
+  const cuenta = await prisma.cuentaWhatsApp.findUniqueOrThrow({
+    where: { id: cuentaId },
+    include: { owner: { select: { configuracion: { select: { nombreApp: true } } } } },
+  });
+  if (cuenta.estado !== "CONECTADO") throw new HttpError(400, "El número debe estar conectado para mandar la prueba");
+  const recientes = await prisma.mensajeWhatsApp.count({
+    where: { cuentaId, tipo: "PRUEBA", creadoEn: { gte: new Date(Date.now() - 60 * 60_000) } },
+  });
+  if (recientes >= MAX_PRUEBAS_POR_HORA) {
+    throw new HttpError(429, `Máximo ${MAX_PRUEBAS_POR_HORA} mensajes de prueba por hora por número`);
+  }
+  const app = cuenta.owner.configuracion?.nombreApp ?? "Kredired";
+  const hora = new Date().toLocaleString("es-MX", { timeZone: "America/Mexico_City", dateStyle: "short", timeStyle: "short" });
+  const cuerpo = texto?.trim() || `✅ Mensaje de prueba de ${app}, enviado desde el monitor (${hora}). Si lo recibiste, el envío automático funciona.`;
+  const m = await prisma.mensajeWhatsApp.create({
+    data: {
+      cuentaId,
+      ownerId: cuenta.ownerId,
+      tipo: "PRUEBA",
+      prioridad: PRIORIDAD.PRUEBA,
+      telefono: tel,
+      destinatarioNombre: `Prueba ${tel}`,
+      claveDedupe: `prueba:${cuentaId}:${globalThis.crypto.randomUUID()}`,
+      texto: cuerpo.slice(0, 1000),
+    },
+  });
+  await prisma.$executeRaw`SELECT pg_notify('whatsapp_salida', '')`.catch(() => undefined);
+  await registrarBitacora({ cuentaId, tipo: "prueba_encolada", detalle: { telefono: tel, mensajeId: m.id }, actor });
+  return m;
+}
+
 /* ── Campaña de presentación ─────────────────────────────────────────── */
 
 export type DestinatarioPresentacion = {
@@ -529,6 +573,12 @@ async function detalleCuenta(cuentaId: string) {
     ]);
 
   const reconexionesHoy = await prisma.bitacoraWhatsApp.count({ where: { cuentaId, tipo: "conectado", creadoEn: { gte: hoy } } });
+  const pruebas = await prisma.mensajeWhatsApp.findMany({
+    where: { cuentaId, tipo: "PRUEBA" },
+    orderBy: { creadoEn: "desc" },
+    take: 5,
+    include: { envio: { select: { ack: true, enviadoEn: true } } },
+  });
 
   let campanaInfo = null;
   if (campana) {
@@ -558,5 +608,6 @@ async function detalleCuenta(cuentaId: string) {
     reconexiones7d: reconexiones[0]?._count ?? 0,
     reconexionesHoy,
     proximo,
+    pruebas,
   };
 }

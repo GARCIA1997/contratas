@@ -343,3 +343,65 @@ export function RefrescoRapido({ activo }: { activo: boolean }) {
   }, [activo, router]);
   return null;
 }
+
+/** Manda un mensaje de prueba por la cola normal a cualquier teléfono. */
+export function FormPrueba({ cuentaId, aviso }: { cuentaId: string; aviso: string | null }) {
+  const router = useRouter();
+  const [telefono, setTelefono] = useState("");
+  const [texto, setTexto] = useState("");
+  const [estado, setEstado] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  return (
+    <form
+      className="flex flex-col gap-space-sm"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!confirm(`Se enviará un mensaje real de WhatsApp a ${telefono}. ¿Continuar?`)) return;
+        setEnviando(true);
+        setEstado(null);
+        try {
+          await enviar({ accion: "prueba", cuentaId, telefono, texto: texto.trim() || null });
+          setEstado({ tipo: "ok", texto: "En cola: el estado aparece abajo en unos segundos." });
+          setTexto("");
+          router.refresh();
+        } catch (err) {
+          setEstado({ tipo: "error", texto: err instanceof Error ? err.message : "Error" });
+        } finally {
+          setEnviando(false);
+        }
+      }}
+    >
+      <div className="grid gap-space-sm md:grid-cols-[220px_1fr_auto] md:items-end">
+        <label className="flex flex-col gap-1 font-label-sm text-label-sm text-on-surface-variant">
+          Teléfono destino
+          <input
+            required
+            inputMode="tel"
+            value={telefono}
+            onChange={(e) => setTelefono(e.target.value)}
+            placeholder="312 112 8425"
+            className="rounded-lg bg-surface-container px-2 py-1.5 text-on-surface"
+          />
+        </label>
+        <label className="flex flex-col gap-1 font-label-sm text-label-sm text-on-surface-variant">
+          Texto (opcional)
+          <input
+            value={texto}
+            maxLength={1000}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Si lo dejas vacío se manda un texto de prueba estándar"
+            className="rounded-lg bg-surface-container px-2 py-1.5 text-on-surface"
+          />
+        </label>
+        <button type="submit" disabled={enviando || !telefono} className={cn(BOTON, TONOS.primario, "py-1.5")}>
+          <span className="material-symbols-outlined text-[15px]">send</span>
+          {enviando ? "Enviando…" : "Enviar prueba"}
+        </button>
+      </div>
+      {aviso && <span className="font-label-sm text-label-sm text-tertiary">{aviso}</span>}
+      {estado && (
+        <span className={cn("font-label-sm text-label-sm", estado.tipo === "ok" ? "text-secondary" : "text-error")}>{estado.texto}</span>
+      )}
+    </form>
+  );
+}

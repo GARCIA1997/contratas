@@ -453,6 +453,10 @@ Para activarlo:
 2. En el teléfono de la cuenta con acceso al monitor: Configuración → Notificaciones → activarlas. **Si ya estaban activas antes de esta versión, desactívalas y vuelve a activarlas**: las suscripciones anteriores no guardan de quién son y no reciben estos avisos.
 3. Requiere `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` en `.env` (las mismas de los recordatorios). Sin ellas no se marca nada como avisado: se avisará cuando estén.
 
+### Mensaje de prueba
+
+En el detalle de cada número (Monitor → WhatsApp) está **Mensaje de prueba**: teléfono destino y texto opcional. Sale por la cola normal (worker → WhatsApp → acuse), así que comprueba el envío completo; el estado (pendiente → enviado → entregado/leído) se actualiza solo. No depende de que el usuario haya encendido el automático (útil en la fase 2), pero respeta pausas, paro global y bajas. Máximo 5 por hora por número. No lleva la línea de presentación ni cuenta como presentación del destinatario.
+
 ### Emergencias
 
 - **Paro global** (monitor): corta todos los envíos al instante sin desconectar.

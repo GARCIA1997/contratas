@@ -48,7 +48,7 @@ const MIN_ENTRE_MENSAJES_MS = 10_000;
 function cargarCuenta(cuentaId: string) {
   return prisma.cuentaWhatsApp.findUnique({
     where: { id: cuentaId },
-    include: { owner: { select: { configuracion: { select: { nombreApp: true } } } } },
+    include: { owner: { select: { nombre: true, configuracion: { select: { nombreApp: true } } } } },
   });
 }
 
@@ -163,8 +163,12 @@ async function intentarUno(
     where: { cuentaId_telefono: { cuentaId: cuenta.id, telefono } },
   });
   const esPresentacion = primero.tipo === "PRESENTACION";
-  const conPresentacion = !yaPresentado && !esPresentacion && primero.tipo !== "CONFIRMACION_BAJA";
-  const texto = conPresentacion ? `${lineaPresentacion(nombreApp)}\n\n${armado.texto}` : armado.texto;
+  // La confirmación de baja y la prueba del monitor no llevan la presentación.
+  const conPresentacion =
+    !yaPresentado && !esPresentacion && primero.tipo !== "CONFIRMACION_BAJA" && primero.tipo !== "PRUEBA";
+  const texto = conPresentacion
+    ? `${lineaPresentacion(nombreApp, cuenta.owner.nombre)}\n\n${armado.texto}`
+    : armado.texto;
 
   let waMensajeId: string | null;
   try {
@@ -245,7 +249,7 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
     return { texto: null, validos, cancelados: mensajes.map((m) => ({ id: m.id, motivo: "Opt-out" })) };
   }
 
-  if (tipo0 === "CONFIRMACION_BAJA") {
+  if (tipo0 === "CONFIRMACION_BAJA" || tipo0 === "PRUEBA") {
     return { texto: mensajes[0].texto, validos: [mensajes[0]], cancelados };
   }
 
@@ -344,7 +348,11 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
       where: { cuentaId_telefono: { cuentaId: cuenta.id, telefono } },
     });
     if (ya) return { texto: null, validos, cancelados: [{ id: m.id, motivo: "Ya se presentó" }] };
-    return { texto: textoPresentacion(m.destinatarioNombre, nombreApp, m.orden ?? 0), validos: [m], cancelados };
+    return {
+      texto: textoPresentacion(m.destinatarioNombre, nombreApp, m.orden ?? 0, cuenta.owner.nombre),
+      validos: [m],
+      cancelados,
+    };
   }
 
   return { texto: null, validos, cancelados: [{ id: m.id, motivo: `Tipo desconocido ${tipo0}` }] };
