@@ -27,6 +27,9 @@ const ESCALON_MIN_MS = 20_000;
 const ESCALON_MAX_MS = 40_000;
 
 const VERSION_BAILEYS = "6.7.24";
+/** Se calcula al arrancar: es la del código con que corre este proceso. */
+let HUELLA = "?";
+const INICIADO = new Date().toISOString();
 let cpuPrevio = process.cpuUsage();
 let cpuPrevioEn = Date.now();
 let detenido = false;
@@ -177,6 +180,8 @@ async function latido() {
     cpuPct: Math.round(cpuPct * 10) / 10,
     uptimeS: Math.round(process.uptime()),
     versionBaileys: VERSION_BAILEYS,
+    huella: HUELLA,
+    iniciado: INICIADO,
     sesiones: Array.from(sesiones.values()).map((s) => ({ cuentaId: s.cuentaId, conectada: s.conectada })),
   };
   await prisma.controlWhatsApp.upsert({
@@ -213,9 +218,12 @@ const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   verificarLlave();
+  // import() y no import: huella.mjs es ESM (la comparte next.config.mjs) y
+  // en Node 20 un módulo CommonJS no puede hacer require() de un .mjs.
+  HUELLA = (await import("./huella.mjs")).calcularHuella();
   await prisma.controlWhatsApp.upsert({ where: { id: "global" }, create: { id: "global" }, update: {} });
   await conProceso("limpieza", null, () => limpieza(true));
-  await registrarBitacora({ tipo: "worker_iniciado" });
+  await registrarBitacora({ tipo: "worker_iniciado", detalle: { huella: HUELLA } });
 
   void arrancarEscalonado();
   void escucharRecibos();

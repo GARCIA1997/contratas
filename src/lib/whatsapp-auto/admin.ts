@@ -296,8 +296,12 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     }),
   ]);
   const latido = control?.latido as
-    | { rssMb: number; heapMb: number; cpuPct: number; uptimeS: number; versionBaileys: string }
+    | { rssMb: number; heapMb: number; cpuPct: number; uptimeS: number; versionBaileys: string; huella?: string; iniciado?: string }
     | undefined;
+  // Huella del código que usa el worker: la de esta app (al construirse) contra
+  // la que reporta el worker (al arrancar). Ver worker/whatsapp/huella.mjs.
+  const huellaApp = process.env.WHATSAPP_HUELLA_APP ?? null;
+  const huellaWorker = latido?.huella ?? null;
   const workerVivo = Boolean(control?.latidoEn && ahora - control.latidoEn.getTime() < LATIDO_MAX_MS);
 
   const filas = await Promise.all(
@@ -320,6 +324,14 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
   if (control?.paroGlobal) alertas.push({ nivel: "error", texto: `Paro global activo (${control.paroPor ?? "?"})` });
   if (cuentas.length > 0 && !workerVivo) {
     alertas.push({ nivel: "error", texto: "Worker caído: sin latido en más de 2 minutos" });
+  }
+  if (workerVivo && huellaApp && huellaWorker !== huellaApp) {
+    alertas.push({
+      nivel: "error",
+      texto:
+        `El worker de WhatsApp está desactualizado respecto a la app (cambió código que usa: app ${huellaApp} · worker ${huellaWorker ?? "?"}). ` +
+        "Reconstrúyelo en el VPS: sudo docker compose --profile whatsapp build whatsapp && sudo docker compose --profile whatsapp up -d whatsapp",
+    });
   }
   if (latido && latido.rssMb > MEMORIA_ALTA_MB * Math.max(1, cuentas.length)) {
     alertas.push({ nivel: "aviso", texto: `Memoria alta del worker: ${latido.rssMb} MB` });
@@ -369,6 +381,8 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     workerVivo,
     latidoEn: control?.latidoEn ?? null,
     latido: latido ?? null,
+    huellaApp,
+    huellaWorker,
     cuentas: filas,
     usuariosSinNumero: usuarios,
     alertas,

@@ -83,7 +83,11 @@ export default async function WhatsAppPage({
         titulo="WhatsApp automático"
         subtitulo={`${panel.cuentas.length}/${MAX_CUENTAS} números · worker ${
           panel.workerVivo ? `vivo (latido ${haceCuanto(iso(panel.latidoEn))})` : "SIN LATIDO"
-        }${panel.latido ? ` · ${panel.latido.rssMb} MB · CPU ${panel.latido.cpuPct}% · Baileys ${panel.latido.versionBaileys}` : ""}`}
+        }${panel.latido ? ` · ${panel.latido.rssMb} MB · CPU ${panel.latido.cpuPct}% · Baileys ${panel.latido.versionBaileys}` : ""} · código app ${
+          panel.huellaApp ?? "?"
+        } · worker ${panel.huellaWorker ?? "?"}${
+          panel.huellaApp && panel.huellaWorker && panel.huellaApp !== panel.huellaWorker ? " ⚠ desactualizado" : ""
+        }`}
       >
         {panel.paroGlobal ? (
           <BotonAccion cuerpo={{ accion: "paro_global", activo: false }} texto="Quitar paro global" icono="play_arrow" tono="primario" confirmar="¿Reanudar los envíos de todos los números?" />

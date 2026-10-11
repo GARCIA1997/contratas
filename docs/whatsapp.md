@@ -434,7 +434,9 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 
 ### Actualizar el worker
 
-El deploy automático **no** lo reinicia (a propósito). Cuando cambie `worker/whatsapp/` o `src/lib/whatsapp-auto/`, repetir el paso 4. La sesión queda en la BD: reconecta sola, sin volver a vincular.
+El deploy automático **no** lo reinicia (a propósito). Para no olvidarlo, la app y el worker calculan una **huella** del código que usa el worker (lista única en `worker/whatsapp/huella.mjs`): la app al construirse, el worker al arrancar. El encabezado del monitor muestra las dos (`código app … · worker …`) y, si no coinciden, aparece una alerta roja con el comando. Ahí se repite el paso 4. La sesión queda en la BD: reconecta sola, sin volver a vincular.
+
+Si el worker empieza a importar otro archivo de la app, agrégalo a `ARCHIVOS_DEL_WORKER` en `huella.mjs`.
 
 ### Emergencias
 
