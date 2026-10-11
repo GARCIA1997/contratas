@@ -464,6 +464,8 @@ enum EstadoCampanaWhatsApp {
   ACTIVA
   PAUSADA
   TERMINADA
+  /// Tenía destinatarios pero no se pudo encolar ningún mensaje. El motivo va en pausaMotivo.
+  ERROR
 }
 
 model CuentaWhatsApp {

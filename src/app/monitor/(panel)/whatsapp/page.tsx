@@ -407,7 +407,12 @@ export default async function WhatsAppPage({
           {/* 7.5 Campaña de presentación */}
           {seccion === "campana" && (
             <Tarjeta className="gap-space-md">
-              {d.campana && d.campana.estado !== "TERMINADA" ? (
+              {d.campana?.estado === "ERROR" && (
+                <span className="font-body-sm text-body-sm text-error">
+                  La última campaña ({fechaHora(d.campana.iniciadaEn.toISOString())}) quedó con error: {d.campana.pausaMotivo}. Revisa la bitácora.
+                </span>
+              )}
+              {d.campana && (d.campana.estado === "ACTIVA" || d.campana.estado === "PAUSADA") ? (
                 <>
                   <div className="grid grid-cols-2 gap-space-sm md:grid-cols-4">
                     <KpiSimple titulo="Estado" icono="campaign" valor={d.campana.estado.toLowerCase()} pie={d.campana.pausaMotivo ?? `iniciada ${fechaHora(d.campana.iniciadaEn.toISOString())} por ${d.campana.iniciadaPor}`} />
@@ -426,7 +431,7 @@ export default async function WhatsAppPage({
                 </>
               ) : (
                 <>
-                  {d.campana && (
+                  {d.campana?.estado === "TERMINADA" && (
                     <span className="font-body-sm text-body-sm text-on-surface-variant">
                       Última campaña terminada {fechaHora((d.campana.terminadaEn ?? d.campana.actualizadoEn).toISOString())}: {d.campana.enviados}/{d.campana.total} enviados, {d.campana.bajas} bajas.
                     </span>

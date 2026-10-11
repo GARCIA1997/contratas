@@ -228,26 +228,118 @@ export async function iniciarCampana(cuentaId: string, totalConfirmado: number, 
     throw new HttpError(409, `La lista cambió (${lista.length} destinatarios). Revísala de nuevo.`);
   }
   if (lista.length === 0) throw new HttpError(400, "No hay destinatarios");
-  const campana = await prisma.campanaWhatsApp.create({
-    data: { cuentaId, total: lista.length, iniciadaPor: actor },
+  return encolarCampana({ cuentaId, ownerId: cuenta.ownerId, lista, actor });
+}
+
+const claveDePresentacion = (cuentaId: string, telefono: string) => `presentacion:${cuentaId}:${telefono}`;
+
+/**
+ * Crea la campaña y encola un mensaje por destinatario.
+ *
+ * La clave `presentacion:{cuenta}:{teléfono}` es única, así que un mensaje
+ * de una campaña anterior que se terminó (CANCELADO) seguiría ocupándola y
+ * `createMany` lo omitiría en silencio: la campaña nueva se quedaba sin
+ * mensajes y terminaba en segundos. Por eso:
+ *  - los CANCELADO de esos teléfonos se reactivan (vuelven a PENDIENTE en
+ *    esta campaña);
+ *  - ENVIADO, ENVIANDO, REVISAR y FALLIDO no se tocan (no repetir algo que
+ *    pudo haber llegado, ni reintentar solo un número sin WhatsApp);
+ *  - si con destinatarios no entra ninguno a la cola, la campaña queda en
+ *    ERROR y en la bitácora, nunca TERMINADA en silencio.
+ */
+export async function encolarCampana(opts: {
+  cuentaId: string;
+  ownerId: string;
+  lista: DestinatarioPresentacion[];
+  actor: string;
+}) {
+  const { cuentaId, ownerId, lista, actor } = opts;
+  const resultado = await prisma.$transaction(async (tx) => {
+    const campana = await tx.campanaWhatsApp.create({
+      data: { cuentaId, total: lista.length, iniciadaPor: actor },
+    });
+    const claves = lista.map((d) => claveDePresentacion(cuentaId, d.telefono));
+    const previos = await tx.mensajeWhatsApp.findMany({
+      where: { cuentaId, tipo: "PRESENTACION", claveDedupe: { in: claves } },
+      select: { id: true, claveDedupe: true, estado: true },
+    });
+    const porClave = new Map(previos.map((m) => [m.claveDedupe, m]));
+
+    let reactivados = 0;
+    const nuevos = [];
+    const omitidos: { telefono: string; estado: string }[] = [];
+    for (let i = 0; i < lista.length; i++) {
+      const d = lista[i];
+      const clave = claveDePresentacion(cuentaId, d.telefono);
+      const previo = porClave.get(clave);
+      if (!previo) {
+        nuevos.push({
+          cuentaId,
+          ownerId,
+          tipo: "PRESENTACION" as const,
+          prioridad: PRIORIDAD.PRESENTACION,
+          telefono: d.telefono,
+          destinatarioNombre: d.nombre,
+          clienteId: d.clienteId ?? null,
+          deudorId: d.deudorId ?? null,
+          campanaId: campana.id,
+          orden: i,
+          claveDedupe: clave,
+        });
+      } else if (previo.estado === "CANCELADO") {
+        await tx.mensajeWhatsApp.update({
+          where: { id: previo.id },
+          data: {
+            estado: "PENDIENTE",
+            campanaId: campana.id,
+            orden: i,
+            destinatarioNombre: d.nombre,
+            clienteId: d.clienteId ?? null,
+            deudorId: d.deudorId ?? null,
+            motivo: null,
+            envioId: null,
+            programadoPara: new Date(),
+          },
+        });
+        reactivados++;
+      } else {
+        omitidos.push({ telefono: d.telefono, estado: previo.estado });
+      }
+    }
+    const creados = nuevos.length
+      ? (await tx.mensajeWhatsApp.createMany({ data: nuevos, skipDuplicates: true })).count
+      : 0;
+    const encolados = creados + reactivados;
+
+    if (encolados === 0) {
+      const motivo = `Error: ${lista.length} destinatario(s) pero no se encoló ningún mensaje`;
+      await tx.campanaWhatsApp.update({
+        where: { id: campana.id },
+        data: { estado: "ERROR", pausaMotivo: motivo, terminadaEn: new Date() },
+      });
+      return { campanaId: campana.id, estado: "ERROR" as const, encolados, creados, reactivados, omitidos, motivo };
+    }
+    // El total es lo que de verdad quedó en la cola: así "enviados / total" cuadra.
+    if (encolados !== lista.length) {
+      await tx.campanaWhatsApp.update({ where: { id: campana.id }, data: { total: encolados } });
+    }
+    return { campanaId: campana.id, estado: "ACTIVA" as const, encolados, creados, reactivados, omitidos, motivo: null };
   });
-  await prisma.mensajeWhatsApp.createMany({
-    data: lista.map((d, i) => ({
-      cuentaId,
-      ownerId: cuenta.ownerId,
-      tipo: "PRESENTACION" as const,
-      prioridad: PRIORIDAD.PRESENTACION,
-      telefono: d.telefono,
-      destinatarioNombre: d.nombre,
-      clienteId: d.clienteId ?? null,
-      deudorId: d.deudorId ?? null,
-      campanaId: campana.id,
-      orden: i,
-      claveDedupe: `presentacion:${cuentaId}:${d.telefono}`,
-    })),
-    skipDuplicates: true,
-  });
-  await registrarBitacora({ cuentaId, tipo: "campana_iniciada", detalle: { total: lista.length }, actor });
+
+  const detalle = {
+    campanaId: resultado.campanaId,
+    destinatarios: lista.length,
+    encolados: resultado.encolados,
+    nuevos: resultado.creados,
+    reactivados: resultado.reactivados,
+    omitidos: resultado.omitidos.length,
+  };
+  if (resultado.estado === "ERROR") {
+    await registrarBitacora({ cuentaId, tipo: "alerta_campana_sin_mensajes", detalle: { ...detalle, motivo: resultado.motivo }, actor });
+    throw new HttpError(409, `${resultado.motivo}. Revisa la bitácora del número.`);
+  }
+  await registrarBitacora({ cuentaId, tipo: "campana_iniciada", detalle, actor });
+  return resultado;
 }
 
 export async function cambiarEstadoCampana(campanaId: string, accion: "pausar" | "reanudar" | "terminar", actor: string) {
@@ -348,6 +440,9 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     const totalHoy = f.enviadosHoy + f.fallidosHoy;
     if (totalHoy >= 10 && f.fallidosHoy / totalHoy > 0.02) {
       alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.fallidosHoy} fallidos hoy (>2 %)` });
+    }
+    if (f.campana?.estado === "ERROR") {
+      alertas.push({ nivel: "error", cuentaId: f.id, texto: `${etq}: campaña de presentación con error — ${f.campana.pausaMotivo ?? ""}` });
     }
     if (f.campana?.estado === "PAUSADA" && f.campana.pausaMotivo?.startsWith("Freno")) {
       alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.campana.pausaMotivo}` });
