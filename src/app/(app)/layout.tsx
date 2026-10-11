@@ -11,6 +11,7 @@ import { CalculadoraBasicaBoton } from "@/components/calculadora/calculadora-bas
 import { OfflineToast } from "@/components/offline/offline-toast";
 import { InstalarAndroidBanner } from "@/components/pwa/instalar-android-banner";
 import { VersionBadge } from "@/components/version-badge";
+import { AbrirEnAppElegida } from "@/components/whatsapp/abrir-en-app-elegida";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 
 export default function AppLayout({
@@ -46,6 +47,7 @@ export default function AppLayout({
       <OfflineToast />
       <InstalarAndroidBanner />
       <OfflineBootstrap ownerId={ownerId} />
+      <AbrirEnAppElegida />
       <SidebarNav />
       <div className="min-w-0 flex-1">
         <AppHeader />

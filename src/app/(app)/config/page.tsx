@@ -17,6 +17,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { NotificacionesPanel } from "@/components/pwa/notificaciones-panel";
 import { DiagnosticoSync } from "@/components/offline/diagnostico-sync";
 import { WhatsAppAutomatico } from "@/components/config/whatsapp-automatico";
+import { AppWhatsAppSelector } from "@/components/config/app-whatsapp";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { getConfiguracion } from "@/lib/offline/repo";
 import { CONFIG_DEFAULTS } from "@/lib/config";
@@ -94,6 +95,7 @@ export default function ConfigPage() {
         </h2>
         <InstallButton />
         <ThemeToggle />
+        <AppWhatsAppSelector />
       </div>
 
       <WhatsAppAutomatico editable={esAdmin} />
