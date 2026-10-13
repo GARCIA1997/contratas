@@ -473,6 +473,7 @@ export default function RutaDelDiaPage() {
             ownerId={ownerId}
             telefono={seguimiento.parada.telefono}
             claves={seguimiento.claves}
+            onOcultar={() => setSeguimiento(null)}
             botonManual={
               <Button className="w-full" size="sm" asChild>
                 <a

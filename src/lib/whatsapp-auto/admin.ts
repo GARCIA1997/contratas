@@ -5,7 +5,8 @@ import { HttpError } from "@/lib/session";
 import { saldoActual } from "@/lib/services/deudores";
 import { registrarBitacora } from "./bitacora";
 import { normalizarTelefono } from "./telefono";
-import { CUPO_DIARIO, PRIORIDAD } from "./reglas";
+import { CUPO_DIARIO, LATIDO_MAX_MS, PRIORIDAD } from "./reglas";
+import { RECONEXIONES_ALERTA, eventosDeSesion } from "./sesion-alertas";
 
 /**
  * Acciones y datos del monitor (solo administrador de la plataforma). El
@@ -410,7 +411,6 @@ export async function cambiarEstadoCampana(campanaId: string, accion: "pausar" |
 
 /* ── Datos del panel ─────────────────────────────────────────────────── */
 
-const LATIDO_MAX_MS = 2 * 60_000;
 const SESION_CAIDA_MS = 10 * 60_000;
 const MEMORIA_ALTA_MB = 300;
 
@@ -457,6 +457,7 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
   );
 
   const alertas: Alerta[] = [];
+  const { cerradas, reconexiones } = await eventosDeSesion(new Date(ahora));
   if (control?.paroGlobal) alertas.push({ nivel: "error", texto: `Paro global activo (${control.paroPor ?? "?"})` });
   if (cuentas.length > 0 && !workerVivo) {
     alertas.push({ nivel: "error", texto: "Worker caído: sin latido en más de 2 minutos" });
@@ -477,6 +478,18 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     if (f.estado === "BLOQUEADO") alertas.push({ nivel: "error", cuentaId: f.id, texto: `${etq}: número restringido — ${f.ultimoError ?? ""}` });
     if (f.estado === "DESCONECTADO" && f.ultimaConexion && ahora - f.ultimaConexion.getTime() > SESION_CAIDA_MS) {
       alertas.push({ nivel: "error", cuentaId: f.id, texto: `${etq}: sesión caída hace más de 10 min` });
+    }
+    const cerrada = cerradas.find((x) => x.cuentaId === f.id);
+    if (cerrada) {
+      alertas.push({
+        nivel: "error",
+        cuentaId: f.id,
+        texto: `${etq}: WhatsApp cerró la sesión${cerrada.motivo ? ` (${cerrada.motivo})` : ""}. Hay que volver a vincular`,
+      });
+    }
+    const nReconex = reconexiones.get(f.id) ?? 0;
+    if (nReconex >= RECONEXIONES_ALERTA) {
+      alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${nReconex} desconexiones en la última hora` });
     }
     if (f.enviadosHoy > CUPO_DIARIO) {
       alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.enviadosHoy} mensajes hoy (tope ${CUPO_DIARIO}, por recibos)` });

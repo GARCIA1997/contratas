@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { mensajeCobro, mensajeReciboAbonoDeudor, type CobroContrata } from "@/lib/mensajes-whatsapp";
+import type { DatosRecibo } from "./unir-recibos";
 import { claveOperacionActual } from "./contexto-operacion";
 import { normalizarTelefono } from "./telefono";
 import { PRIORIDAD } from "./reglas";
@@ -68,6 +69,8 @@ async function prepararRecibo(opts: {
   pagoIds?: string[];
   abonoDeudorId?: string;
   texto: (nombreApp: string) => string;
+  /** Datos estructurados del recibo; se leen DESPUÉS de `texto`. */
+  datos?: () => Prisma.InputJsonValue | undefined;
 }): Promise<ReciboPreparado | null> {
   const clave = claveOperacionActual() ?? globalThis.crypto.randomUUID();
   const claveDedupe = `recibo:${clave}`;
@@ -133,6 +136,7 @@ async function prepararRecibo(opts: {
       abonoDeudorId: opts.abonoDeudorId ?? null,
       claveDedupe,
       texto,
+      datos: opts.datos?.(),
     };
     return {
       listo: true,
@@ -152,14 +156,17 @@ export function prepararReciboCobro(opts: {
   /** Se evalúa dentro del try: un error calculando el recibo no tumba el cobro. */
   armar: () => { total: number; contratas: CobroContrata[] };
 }): Promise<ReciboPreparado | null> {
+  let datos: DatosRecibo | undefined;
   return prepararRecibo({
     ownerId: opts.ownerId,
     destinatario: { clienteId: opts.cliente.id, nombre: opts.cliente.nombre, telefono: opts.cliente.telefono },
     pagoIds: opts.pagoIds,
     texto: (nombreApp) => {
       const { total, contratas } = opts.armar();
+      datos = { total, contratas };
       return mensajeCobro({ nombreApp, clienteNombre: opts.cliente.nombre, total, contratas });
     },
+    datos: () => (datos ? (JSON.parse(JSON.stringify(datos)) as Prisma.InputJsonValue) : undefined),
   });
 }
 
