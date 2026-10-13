@@ -12,14 +12,27 @@ import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
  * cual: la pantalla queda exactamente como antes. Con automático:
  *  - cobro aún en el teléfono (sin señal) → "se enviará al sincronizar";
  *  - en el servidor → consulta el estado hasta TIEMPO_MAX_MS:
- *      enviado → ✓;  falló o no se confirmó a tiempo → ✗ + botón manual.
+ *      enviado → ✓ (se oculta a los pocos segundos);
+ *      falló, no se confirmó a tiempo o el servicio está caído/desconectado
+ *      → ✗ + botón manual (y se cancela el automático pendiente).
  * El cobro ya quedó registrado en todos los casos; esto es solo el recibo.
  * Si el automático sale después de haberlo mandado a mano, al cliente le
  * llega dos veces el mismo recibo (riesgo aceptado).
  */
 
-const TIEMPO_MAX_MS = 60_000;
+const TIEMPO_MAX_MS = 40_000;
 const CADA_MS = 2_000;
+/** El "enviado" es solo una confirmación: se quita solo. */
+const OCULTAR_ENVIADO_MS = 4_000;
+
+/** Se cancela el automático pendiente: el usuario lo va a mandar a mano. */
+function avisarEnvioManual(claves: string[]) {
+  void fetch("/api/whatsapp/recibos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ claves }),
+  }).catch(() => undefined);
+}
 
 type Fase =
   | { tipo: "en_telefono" }
@@ -41,6 +54,7 @@ export function SeguimientoRecibo({
   telefono,
   claves,
   botonManual,
+  onOcultar,
 }: {
   ownerId: string | null | undefined;
   telefono: string | null | undefined;
@@ -48,15 +62,19 @@ export function SeguimientoRecibo({
   claves: string[];
   /** El botón de "Enviar recibo por WhatsApp" que la pantalla mostraba antes. */
   botonManual: React.ReactNode;
+  /** Se llama cuando el "enviado" se oculta solo (la Ruta cierra su tarjeta entera). */
+  onOcultar?: () => void;
 }) {
   const automatico = useReciboAutomatico(ownerId);
   const aplica = automatico && Boolean(telefono) && claves.length > 0;
   const [fase, setFase] = useState<Fase>({ tipo: "enviando" });
+  const [oculto, setOculto] = useState(false);
   const claveDeps = claves.join(",");
 
   useEffect(() => {
     if (!aplica) return;
     let vivo = true;
+    setOculto(false);
     let desde: number | null = null;
     let t: ReturnType<typeof setTimeout>;
     const lista = claveDeps.split(",");
@@ -73,14 +91,25 @@ export function SeguimientoRecibo({
       setFase((f) => (f.tipo === "en_telefono" ? { tipo: "enviando" } : f));
       try {
         const r = await fetch(`/api/whatsapp/recibos?claves=${encodeURIComponent(lista.join(","))}`, { cache: "no-store" });
-        const j = r.ok ? ((await r.json()) as { estado: "enviando" | "enviado" | "fallo" | null; motivo: string | null }) : null;
+        const j = r.ok
+          ? ((await r.json()) as {
+              estado: "enviando" | "enviado" | "fallo" | null;
+              motivo: string | null;
+              canalCaido?: string | null;
+            })
+          : null;
         if (!vivo) return;
         if (j?.estado === "enviado") return setFase({ tipo: "enviado" });
         if (j?.estado === "fallo") return setFase({ tipo: "fallo", motivo: j.motivo });
+        if (j?.canalCaido) {
+          avisarEnvioManual(lista);
+          return setFase({ tipo: "fallo", motivo: j.canalCaido });
+        }
       } catch {
         // Sin respuesta: cuenta contra el tiempo máximo.
       }
       if (Date.now() - desde >= TIEMPO_MAX_MS) {
+        avisarEnvioManual(lista);
         setFase({ tipo: "fallo", motivo: "No se confirmó el envío a tiempo" });
         return;
       }
@@ -93,7 +122,18 @@ export function SeguimientoRecibo({
     };
   }, [aplica, claveDeps]);
 
+  useEffect(() => {
+    if (fase.tipo !== "enviado") return;
+    const t = setTimeout(() => {
+      setOculto(true);
+      onOcultar?.();
+    }, OCULTAR_ENVIADO_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fase.tipo]);
+
   if (!aplica) return <>{botonManual}</>;
+  if (fase.tipo === "enviado" && oculto) return null;
 
   if (fase.tipo === "en_telefono") {
     return (

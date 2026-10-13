@@ -1046,3 +1046,66 @@ export async function ignorarCaso(revision: string, clave: string, usuario: stri
 export async function restaurarIgnorados(revision: string) {
   await prisma.calidadIgnorada.deleteMany({ where: { revision } });
 }
+
+/* ── Comparativa de contratas duplicadas ─────────────────────────────── */
+
+export type ContrataComparada = {
+  id: string;
+  espacio: string | null;
+  cliente: string;
+  telefono: string | null;
+  tipo: string;
+  monto: number;
+  abono: number;
+  numCuotas: number;
+  fechaInicio: string;
+  notas: string | null;
+  creadoEn: string;
+  cuotasPagadas: number;
+  cuotasTotal: number;
+  totalAbonado: number;
+  convertidaADeuda: boolean;
+  /** Tiene cobros registrados: no es la que conviene borrar. */
+  tienePagos: boolean;
+};
+
+/** Las dos contratas de un caso de "posibles duplicadas", lado a lado. Null si falta alguna. */
+export async function getComparacionContratas(a: string, b: string): Promise<{ a: ContrataComparada; b: ContrataComparada; minutosEntreCreacion: number } | null> {
+  const filas = await prisma.contrata.findMany({
+    where: { id: { in: [a, b] } },
+    include: {
+      cliente: { select: { nombre: true, telefono: true } },
+      owner: { select: { nombre: true, email: true } },
+      pagos: { select: { pagado: true, montoAbonado: true } },
+    },
+  });
+  const de = (id: string): ContrataComparada | null => {
+    const c = filas.find((f) => f.id === id);
+    if (!c) return null;
+    const totalAbonado = c.pagos.reduce((s, p) => s + p.montoAbonado, 0);
+    const cuotasPagadas = c.pagos.filter((p) => p.pagado).length;
+    return {
+      id: c.id,
+      espacio: c.owner.nombre ?? c.owner.email,
+      cliente: c.cliente.nombre,
+      telefono: c.cliente.telefono,
+      tipo: c.tipo,
+      monto: c.monto,
+      abono: c.abono,
+      numCuotas: c.numCuotas,
+      fechaInicio: c.fechaInicio.toISOString(),
+      notas: c.notas,
+      creadoEn: c.creadoEn.toISOString(),
+      cuotasPagadas,
+      cuotasTotal: c.pagos.length,
+      totalAbonado: Math.round(totalAbonado * 100) / 100,
+      convertidaADeuda: c.convertidaADeuda,
+      tienePagos: totalAbonado > 0 || cuotasPagadas > 0,
+    };
+  };
+  const ca = de(a);
+  const cb = de(b);
+  if (!ca || !cb) return null;
+  const minutos = Math.round(Math.abs(new Date(cb.creadoEn).getTime() - new Date(ca.creadoEn).getTime()) / 60_000);
+  return { a: ca, b: cb, minutosEntreCreacion: minutos };
+}

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import { registrarBitacora } from "./bitacora";
 import { normalizarTelefono } from "./telefono";
-import { CUPO_DIARIO } from "./reglas";
+import { CUPO_DIARIO, LATIDO_MAX_MS } from "./reglas";
 
 /**
  * Lo que el usuario ve y controla de SU número en Configuración: estado,
@@ -88,21 +88,51 @@ export async function actualizarCuentaUsuario(ownerId: string, cambio: CambioCue
 export type EstadoRecibo = "enviando" | "enviado" | "fallo" | null;
 
 /**
+ * Por qué el recibo automático no va a salir ahora mismo (worker caído,
+ * número desconectado o en pausa). `null` = el canal funciona.
+ */
+async function canalCaido(ownerId: string): Promise<string | null> {
+  const [cuenta, control] = await Promise.all([
+    prisma.cuentaWhatsApp.findUnique({ where: { ownerId }, select: { estado: true, pausadaPorAdmin: true, pausadaPorUsuario: true } }),
+    prisma.controlWhatsApp.findUnique({ where: { id: "global" }, select: { latidoEn: true, paroGlobal: true } }),
+  ]);
+  if (!cuenta) return null;
+  if (!control?.latidoEn || Date.now() - control.latidoEn.getTime() > LATIDO_MAX_MS) return "El servicio de WhatsApp no responde";
+  if (control.paroGlobal || cuenta.pausadaPorAdmin || cuenta.pausadaPorUsuario) return "El envío automático está en pausa";
+  if (cuenta.estado !== "CONECTADO") return "El WhatsApp del negocio está desconectado";
+  return null;
+}
+
+/**
  * Resumen para la pantalla del cobro. `null` = el servidor todavía no tiene
- * recibo para esos cobros (aún no llegan, o no aplica).
+ * recibo para esos cobros (aún no llegan, o no aplica). `canalCaido` avisa a
+ * la pantalla que conviene ofrecer el envío manual sin esperar.
  */
 export async function estadoDeRecibos(
   ownerId: string,
   claves: string[]
-): Promise<{ estado: EstadoRecibo; motivo: string | null }> {
-  if (claves.length === 0) return { estado: null, motivo: null };
+): Promise<{ estado: EstadoRecibo; motivo: string | null; canalCaido: string | null }> {
+  if (claves.length === 0) return { estado: null, motivo: null, canalCaido: null };
   const filas = await prisma.mensajeWhatsApp.findMany({
     where: { ownerId, tipo: "RECIBO", claveDedupe: { in: claves.map((c) => `recibo:${c}`) } },
     select: { estado: true, motivo: true },
   });
-  if (filas.length === 0) return { estado: null, motivo: null };
+  if (filas.length === 0) return { estado: null, motivo: null, canalCaido: null };
   const fallo = filas.find((f) => ["FALLIDO", "CANCELADO", "REVISAR"].includes(f.estado));
-  if (fallo) return { estado: "fallo", motivo: fallo.motivo };
-  if (filas.every((f) => f.estado === "ENVIADO")) return { estado: "enviado", motivo: null };
-  return { estado: "enviando", motivo: null };
+  if (fallo) return { estado: "fallo", motivo: fallo.motivo, canalCaido: null };
+  if (filas.every((f) => f.estado === "ENVIADO")) return { estado: "enviado", motivo: null, canalCaido: null };
+  return { estado: "enviando", motivo: null, canalCaido: await canalCaido(ownerId) };
+}
+
+/**
+ * El usuario va a mandar el recibo a mano: el automático que sigue pendiente
+ * se cancela para que al cliente no le llegue dos veces.
+ */
+export async function cancelarRecibosParaEnvioManual(ownerId: string, claves: string[]): Promise<number> {
+  if (claves.length === 0) return 0;
+  const r = await prisma.mensajeWhatsApp.updateMany({
+    where: { ownerId, tipo: "RECIBO", estado: "PENDIENTE", claveDedupe: { in: claves.map((c) => `recibo:${c}`) } },
+    data: { estado: "CANCELADO", motivo: "Se envió a mano desde la app" },
+  });
+  return r.count;
 }

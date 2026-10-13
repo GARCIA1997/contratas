@@ -111,3 +111,6 @@ export const RECIBO_VIGENCIA_MS = 24 * 60 * 60 * 1000;
 
 /** Un ENVIANDO más viejo que esto significa que el worker murió a medio envío. */
 export const ENVIANDO_ABANDONADO_MS = 5 * 60 * 1000;
+
+/** Sin latido del worker por más que esto se considera caído (monitor, push y aviso de la app). */
+export const LATIDO_MAX_MS = 2 * 60 * 1000;

@@ -2,6 +2,7 @@ import { getCalidadDatos, type Severidad } from "@/lib/monitor/datos";
 import { fechaHora, numero } from "@/components/monitor/formato";
 import { Chips, Encabezado, KpiSimple } from "@/components/monitor/ui";
 import { cn } from "@/lib/utils";
+import { ComparaContratas } from "@/components/monitor/comparar-contratas";
 import { BotonIgnorar, RestaurarIgnorados } from "@/components/monitor/acciones-calidad";
 
 export const dynamic = "force-dynamic";
@@ -127,7 +128,10 @@ export default async function CalidadPage({
                             {f.fecha ? fechaHora(f.fecha) : "—"}
                           </td>
                           <td className="px-2.5 py-1.5 text-right">
-                            <BotonIgnorar revision={r.id} clave={f.clave} />
+                            <div className="flex justify-end gap-1.5">
+                              {r.id === "contratas-duplicadas" && <ComparaContratas revision={r.id} clave={f.clave} />}
+                              <BotonIgnorar revision={r.id} clave={f.clave} />
+                            </div>
                           </td>
                         </tr>
                       ))}

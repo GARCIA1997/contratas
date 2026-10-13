@@ -561,6 +561,9 @@ model MensajeWhatsApp {
   /// Texto ya armado (recibos: es el comprobante de ese momento). Los
   /// recordatorios se arman al enviar, con el monto vigente.
   texto              String?
+  /// Datos del recibo de cobro (total + contratas) para juntar varios recibos
+  /// del mismo cliente en un solo comprobante al enviar.
+  datos              Json?
   programadoPara     DateTime              @default(now())
   envio              EnvioWhatsApp?        @relation(fields: [envioId], references: [id], onDelete: SetNull)
   envioId            String?

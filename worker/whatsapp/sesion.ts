@@ -26,6 +26,39 @@ const CODIGOS_CUENTA_RESTRINGIDA = new Set([403, 402]);
 
 export class SinWhatsApp extends Error {}
 
+/** La conexión debe llevar abierta esto para considerarla estable y reiniciar el backoff. */
+const CONEXION_ESTABLE_MS = 60_000;
+
+/** La versión de WhatsApp Web se pide una vez por hora, no en cada reconexión. */
+let versionCache: { version: [number, number, number]; hasta: number } | null = null;
+async function versionWhatsApp(): Promise<[number, number, number] | undefined> {
+  if (versionCache && versionCache.hasta > Date.now()) return versionCache.version;
+  const v = await fetchLatestBaileysVersion().catch(() => null);
+  if (!v) return versionCache?.version;
+  versionCache = { version: v.version as [number, number, number], hasta: Date.now() + 60 * 60_000 };
+  return versionCache.version;
+}
+
+/** Caché mínima de reintentos de descifrado (misma forma que NodeCache). */
+function cacheReintentos() {
+  const m = new Map<string, number>();
+  return {
+    get: <T>(k: string) => m.get(k) as T | undefined,
+    set: <T>(k: string, v: T) => void m.set(k, v as number),
+    del: (k: string) => void m.delete(k),
+    flushAll: () => m.clear(),
+  };
+}
+
+/** Motivo legible del cierre: el conflicto (`device_removed`, `replaced`…) viene dentro de `data`. */
+function motivoCierre(error: Error | undefined): string | null {
+  if (!error) return null;
+  const data = (error as Boom).data as { tag?: string; content?: { tag?: string; attrs?: { type?: string } }[] } | undefined;
+  const hijo = Array.isArray(data?.content) ? data.content[0] : undefined;
+  const detalle = hijo?.attrs?.type ?? hijo?.tag;
+  return [error.message, detalle].filter(Boolean).join(" · ") || null;
+}
+
 /**
  * Una conexión de Baileys para una CuentaWhatsApp. Aislada a propósito: un
  * error aquí (excepción, bloqueo, caída) no toca a las demás cuentas.
@@ -34,6 +67,7 @@ export class Sesion {
   sock: WASocket | null = null;
   conectada = false;
   private intentos = 0;
+  private abiertaDesde: number | null = null;
   private reconexion: NodeJS.Timeout | null = null;
   private detenida = false;
   private iniciando = false;
@@ -58,15 +92,25 @@ export class Sesion {
 
   private async conectar(modo: ModoInicio) {
     const { state, guardarCreds } = await authDesdeBD(this.cuentaId);
-    const version = await fetchLatestBaileysVersion()
-      .then((v) => v.version)
-      .catch(() => undefined);
+    const version = await versionWhatsApp();
 
     const sock = makeWASocket({
       ...(version ? { version } : {}),
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
       logger,
-      browser: Browsers.ubuntu("Kredired"),
+      browser: Browsers.macOS("Desktop"),
+      connectTimeoutMs: 60_000,
+      defaultQueryTimeoutMs: 120_000,
+      msgRetryCounterCache: cacheReintentos(),
+      // Si el cliente pide reenviar (falló descifrar), se responde con lo que ya mandamos.
+      getMessage: async (key) => {
+        if (!key.id) return undefined;
+        const envio = await prisma.envioWhatsApp.findFirst({
+          where: { cuentaId: this.cuentaId, waMensajeId: key.id },
+          select: { texto: true },
+        });
+        return envio ? { conversation: envio.texto } : undefined;
+      },
       markOnlineOnConnect: false,
       syncFullHistory: false,
       generateHighQualityLinkPreview: false,
@@ -94,6 +138,8 @@ export class Sesion {
     modo: ModoInicio,
     u: Partial<{ connection: string; qr: string; lastDisconnect: { error?: Error } }>
   ) {
+    // Un socket viejo que se cierra tarde no debe tumbar al nuevo.
+    if (this.sock !== sock) return;
     if (u.qr) {
       if (modo === "qr") {
         await prisma.cuentaWhatsApp.update({
@@ -149,7 +195,7 @@ export class Sesion {
         return;
       }
       this.conectada = true;
-      this.intentos = 0;
+      this.abiertaDesde = Date.now();
       await prisma.cuentaWhatsApp.update({
         where: { id: this.cuentaId },
         data: {
@@ -171,11 +217,24 @@ export class Sesion {
     if (u.connection === "close") {
       this.conectada = false;
       this.sock = null;
+      if (this.abiertaDesde && Date.now() - this.abiertaDesde > CONEXION_ESTABLE_MS) this.intentos = 0;
+      this.abiertaDesde = null;
       const codigo = (u.lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
-      await registrarBitacora({ cuentaId: this.cuentaId, tipo: "desconectado", detalle: { codigo: codigo ?? null } });
+      const motivo = motivoCierre(u.lastDisconnect?.error);
+      await registrarBitacora({
+        cuentaId: this.cuentaId,
+        tipo: "desconectado",
+        detalle: { codigo: codigo ?? null, motivo, intentos: this.intentos },
+      });
       if (this.detenida) return;
 
       if (codigo === DisconnectReason.loggedOut) {
+        // WhatsApp cerró la sesión (no fuimos nosotros): queda constancia para el aviso al monitor.
+        await registrarBitacora({
+          cuentaId: this.cuentaId,
+          tipo: "sesion_cerrada_por_whatsapp",
+          detalle: { codigo, motivo },
+        });
         await borrarSesion(this.cuentaId);
         await prisma.cuentaWhatsApp.update({
           where: { id: this.cuentaId },
@@ -183,6 +242,15 @@ export class Sesion {
             estado: "DESCONECTADO",
             ultimoError: "WhatsApp cerró la sesión (dispositivo desvinculado). Vuelve a vincular desde el monitor.",
           },
+        });
+        return;
+      }
+      if (codigo === DisconnectReason.connectionReplaced) {
+        // Otra instancia usa la misma sesión: reconectar solo las expulsaría en bucle.
+        await registrarBitacora({ cuentaId: this.cuentaId, tipo: "sesion_cerrada_por_whatsapp", detalle: { codigo, motivo } });
+        await prisma.cuentaWhatsApp.update({
+          where: { id: this.cuentaId },
+          data: { estado: "DESCONECTADO", ultimoError: "La sesión se abrió en otro lugar (conexión reemplazada). Revisa que no haya dos workers." },
         });
         return;
       }
@@ -244,6 +312,17 @@ export class Sesion {
         data: { ack },
       });
     }
+  }
+
+  /** La bandera dice conectada pero el WebSocket ya no está abierto (socket "zombi"). */
+  get zombi(): boolean {
+    const ws = this.sock?.ws as { isOpen?: boolean } | undefined;
+    return this.conectada && ws?.isOpen === false;
+  }
+
+  /** Cierra el socket para que el evento `close` dispare la reconexión normal. */
+  forzarCierre(motivo: string) {
+    this.sock?.end(new Error(motivo));
   }
 
   /** Sin conexión ni reconexión programada (bloqueada, desvinculada o detenida). */

@@ -14,6 +14,7 @@ import {
   espaciadoMs,
   esTransaccional,
 } from "@/lib/whatsapp-auto/reglas";
+import { unirRecibos } from "@/lib/whatsapp-auto/unir-recibos";
 import { lineaPresentacion, textoPresentacion } from "@/lib/whatsapp-auto/textos";
 import { normalizarTelefono } from "@/lib/whatsapp-auto/telefono";
 import { diasConEnvioDeCampana, presentacionesHoy } from "./campana";
@@ -92,11 +93,22 @@ async function intentarUno(
   const ahoraMs = Date.now();
   const reciboLibre = (proximoRecibo.get(cuenta.id) ?? 0) <= ahoraMs;
   const generalLibre = (proximoEnvio.get(cuenta.id) ?? 0) <= ahoraMs;
+  // Ventana deslizante: el último recibo PENDIENTE de cada teléfono decide
+  // cuándo salen todos (un cobro de varias contratas llega en milisegundos).
+  const ultimoReciboPor = new Map<string, number>();
+  for (const m of candidatos) {
+    if (m.tipo === "RECIBO") {
+      ultimoReciboPor.set(m.telefono, Math.max(ultimoReciboPor.get(m.telefono) ?? 0, m.creadoEn.getTime()));
+    }
+  }
   const elegible = (m: MensajeWhatsApp) => {
     if (esTransaccional(m.tipo) && !reciboLibre) return false;
     if (!esTransaccional(m.tipo) && !generalLibre) return false;
     if (m.tipo === "RECIBO")
-      return cuenta.activo && m.creadoEn.getTime() <= ahora.getTime() - VENTANA_AGRUPACION_RECIBOS_MS;
+      return (
+        cuenta.activo &&
+        (ultimoReciboPor.get(m.telefono) ?? m.creadoEn.getTime()) <= ahora.getTime() - VENTANA_AGRUPACION_RECIBOS_MS
+      );
     if (esTransaccional(m.tipo)) return true;
     if (!hayCupo || !horario) return false;
     if (m.tipo === "POR_VENCER") return cuenta.activo && cuenta.porVencer;
@@ -259,7 +271,20 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
       if (motivo) cancelados.push({ id: m.id, motivo });
       else validos.push(m);
     }
-    return { texto: validos.map((m) => m.texto).filter(Boolean).join("\n\n") || null, validos, cancelados };
+    // Un cobro de varias contratas llega como varios recibos: un solo comprobante.
+    const unido =
+      validos.length > 1
+        ? unirRecibos({
+            nombreApp,
+            clienteNombre: validos[0].destinatarioNombre,
+            datos: validos.map((m) => m.datos),
+          })
+        : null;
+    return {
+      texto: unido ?? (validos.map((m) => m.texto).filter(Boolean).join("\n\n") || null),
+      validos,
+      cancelados,
+    };
   }
 
   // Un recordatorio que esperó días (número desconectado o pausado) ya no

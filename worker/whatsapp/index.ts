@@ -182,8 +182,14 @@ async function latido() {
     versionBaileys: VERSION_BAILEYS,
     huella: HUELLA,
     iniciado: INICIADO,
-    sesiones: Array.from(sesiones.values()).map((s) => ({ cuentaId: s.cuentaId, conectada: s.conectada })),
+    sesiones: Array.from(sesiones.values()).map((s) => ({ cuentaId: s.cuentaId, conectada: s.conectada && !s.zombi })),
   };
+  for (const s of Array.from(sesiones.values())) {
+    if (s.zombi) {
+      void registrarBitacora({ cuentaId: s.cuentaId, tipo: "socket_zombi" });
+      s.forzarCierre("Socket sin conexión con la sesión marcada como conectada");
+    }
+  }
   await prisma.controlWhatsApp.upsert({
     where: { id: "global" },
     create: { id: "global", latidoEn: new Date(), latido },

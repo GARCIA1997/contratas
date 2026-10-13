@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { enviarAUsuarios } from "@/lib/push";
 import { registrarBitacora } from "./bitacora";
+import { LATIDO_MAX_MS } from "./reglas";
+import { RECONEXIONES_ALERTA, eventosDeSesion } from "./sesion-alertas";
 
 /**
  * Avisos push de incidentes graves de WhatsApp, solo a quien tiene acceso al
@@ -16,7 +18,6 @@ import { registrarBitacora } from "./bitacora";
 
 export type Incidente = { clave: string; titulo: string; cuerpo: string };
 
-const LATIDO_MAX_MS = 3 * 60_000;
 const SESION_CAIDA_MS = 10 * 60_000;
 
 export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]> {
@@ -33,6 +34,7 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
   if (cuentas.length === 0) return [];
   const fuera: Incidente[] = [];
   const t = ahora.getTime();
+  const { cerradas, reconexiones } = await eventosDeSesion(ahora);
 
   const latidoEn = control?.latidoEn ?? null;
   const workerVivo = Boolean(latidoEn && t - latidoEn.getTime() < LATIDO_MAX_MS);
@@ -61,6 +63,24 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
         clave: `bloqueado:${c.id}:${(c.pausadaPorAdminEn ?? c.actualizadoEn).toISOString()}`,
         titulo: `WhatsApp: número de ${quien} restringido`,
         cuerpo: `${c.numero} quedó pausado. ${c.ultimoError ?? ""}`.trim(),
+      });
+    }
+    // WhatsApp cerró la sesión (dispositivo quitado, conexión reemplazada): aviso inmediato.
+    // El borrado de llaves del 401 ya no lo esconde, porque se lee de la bitácora.
+    const cerrada = cerradas.find((x) => x.cuentaId === c.id);
+    if (cerrada) {
+      fuera.push({
+        clave: `sesion_cerrada:${cerrada.id}`,
+        titulo: `WhatsApp: ${quien} se desvinculó`,
+        cuerpo: `WhatsApp cerró la sesión de ${c.numero}${cerrada.motivo ? ` (${cerrada.motivo})` : ""}. Hay que volver a vincularla desde el monitor.`,
+      });
+    }
+    const nReconex = reconexiones.get(c.id) ?? 0;
+    if (nReconex >= RECONEXIONES_ALERTA) {
+      fuera.push({
+        clave: `reconexiones:${c.id}:${new Date(t).toISOString().slice(0, 13)}`,
+        titulo: `WhatsApp: ${quien} se reconecta mucho`,
+        cuerpo: `${nReconex} desconexiones en la última hora en ${c.numero}. Puede terminar en una desvinculación.`,
       });
     }
     // Solo si tenía sesión guardada: una cuenta que desvinculaste a propósito no es un incidente.
