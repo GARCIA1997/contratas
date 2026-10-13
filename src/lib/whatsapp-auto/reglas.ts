@@ -109,6 +109,12 @@ export function umbralFreno(diasConEnvio: number): number {
 /** Al reanudar, los recibos que esperaron más que esto se cancelan (se mandan a mano). */
 export const RECIBO_VIGENCIA_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * WhatsApp confirma cada mensaje en segundos. Uno "enviado" que pasó este
+ * tiempo sin acuse probablemente no salió: se aparta para revisarlo.
+ */
+export const SIN_ACUSE_MS = 3 * 60 * 1000;
+
 /** Un ENVIANDO más viejo que esto significa que el worker murió a medio envío. */
 export const ENVIANDO_ABANDONADO_MS = 5 * 60 * 1000;
 

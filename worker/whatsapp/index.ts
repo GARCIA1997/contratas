@@ -1,7 +1,7 @@
 import { Client } from "pg";
 import { prisma } from "@/lib/prisma";
 import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
-import { ENVIANDO_ABANDONADO_MS, VENTANA_AGRUPACION_RECIBOS_MS } from "@/lib/whatsapp-auto/reglas";
+import { ENVIANDO_ABANDONADO_MS, SIN_ACUSE_MS, VENTANA_AGRUPACION_RECIBOS_MS } from "@/lib/whatsapp-auto/reglas";
 import { borrarSesion, tieneSesion } from "./auth-bd";
 import { verificarLlave } from "./cifrado";
 import { despacharCuenta } from "./despachador";
@@ -197,6 +197,19 @@ async function latido() {
   });
 }
 
+/** "Enviado" que WhatsApp nunca confirmó: se aparta para revisión (reenviable desde el monitor). */
+async function revisarSinAcuse() {
+  const ahora = Date.now();
+  const r = await prisma.mensajeWhatsApp.updateMany({
+    where: {
+      estado: "ENVIADO",
+      envio: { ack: null, enviadoEn: { lt: new Date(ahora - SIN_ACUSE_MS), gt: new Date(ahora - 24 * 60 * 60_000) } },
+    },
+    data: { estado: "REVISAR", motivo: "WhatsApp no confirmó la recepción: revisa el chat antes de reenviar" },
+  });
+  if (r.count > 0) await registrarBitacora({ tipo: "sin_acuse", detalle: { mensajes: r.count } });
+}
+
 /** Lo que quedó ENVIANDO no se sabe si salió: se aparta para revisión, nunca se reintenta solo. */
 async function limpieza(alArrancar: boolean): Promise<number> {
   const limite = alArrancar ? new Date() : new Date(Date.now() - ENVIANDO_ABANDONADO_MS);
@@ -236,6 +249,7 @@ async function main() {
   cada(3_000, reconciliar);
   cada(5_000, despachar);
   cada(30_000, latido);
+  cada(60_000, revisarSinAcuse);
   cada(60 * 60_000, () => programarRecordatorios());
   let ultimaLimpieza = new Date().getDate();
   cada(10 * 60_000, async () => {
