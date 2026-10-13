@@ -701,6 +701,8 @@ async function itemsCobroVencido(
         numCuotas: todosLosPagos.length,
         fechaProgramada: p.fechaProgramada,
         pendiente,
+        montoContrata: c.monto,
+        saldoContrata: Math.round(todosLosPagos.reduce((s, p) => s + (p.pagado ? 0 : Math.max(c.abono - p.montoAbonado, 0)), 0) * 100) / 100,
       });
     }
   }

@@ -85,6 +85,8 @@ function atendio(hechoPor?: string | null) {
 /* ── Recibo de pago ─────────────────────────────────────────────────────── */
 
 export type CobroContrata = {
+  /** Para juntar en un bloque dos cobros de la MISMA contrata (recibo automático). */
+  contrataId?: string;
   /**
    * Opcional porque Ruta cobra cuotas sueltas y no arrastra el tipo de cada
    * contrata. Sin él simplemente no se pone encabezado de grupo — mejor eso
@@ -161,6 +163,16 @@ export function mensajeCobro(opts: {
       );
     }
     detalle.push(``);
+  }
+
+  // Con varias contratas cada bloque trae su propio "te resta"; además se
+  // suma, para que el cliente vea de un vistazo cuánto debe en total de ellas.
+  const conSaldo = opts.contratas.filter((c) => c.saldoTrasCobro !== undefined);
+  if (opts.contratas.length > 1 && conSaldo.length === opts.contratas.length) {
+    const saldoTotal = Math.round(conSaldo.reduce((s, c) => s + (c.saldoTrasCobro ?? 0), 0) * 100) / 100;
+    if (saldoTotal > 0) {
+      detalle.push(`💠 *Saldo total de estas ${opts.contratas.length} contratas: ${formatMoneda(saldoTotal)}*`, ``);
+    }
   }
 
   // Si alguna cuota quedó a medias, se dice con todas sus letras. El

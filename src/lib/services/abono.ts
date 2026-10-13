@@ -233,6 +233,14 @@ export function distribuirAbono(
     }
   }
 
+  // Lo que le queda a cada contrata tras el abono (todas sus cuotas, no solo las tocadas).
+  for (const r of Array.from(porContrata.values())) {
+    const c = contratas.find((x) => x.contrataId === r.contrataId);
+    if (!c) continue;
+    const antes = c.pagos.reduce((s, p) => s + (p.pagado ? 0 : Math.max(c.abono - p.montoAbonado, 0)), 0);
+    r.saldoTrasCobro = Math.max(0, round(antes - r.subtotal));
+  }
+
   return {
     aplicaciones,
     totalAplicado: round(aplicaciones.reduce((s, a) => s + a.montoAplicado, 0)),
@@ -305,12 +313,7 @@ export async function ejecutarAbonoParcial(
     pagoIds: resultado.aplicaciones.map((a) => a.pagoId),
     armar: () => ({
       total: resultado.totalAplicado,
-      contratas: resultado.contratas.map((c) => ({
-        tipo: c.tipo,
-        numCuotas: c.numCuotas,
-        cuotas: c.cuotas,
-        subtotal: c.subtotal,
-      })),
+      contratas: resultado.contratas,
     }),
   });
   await guardarCobro(

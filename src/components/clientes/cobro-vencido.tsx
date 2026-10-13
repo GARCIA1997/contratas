@@ -28,12 +28,7 @@ function construirMensaje(nombreApp: string, r: ResultadoCobroVencidas) {
     nombreApp,
     clienteNombre: r.clienteNombre,
     total: r.total,
-    contratas: r.contratas.map((c) => ({
-      tipo: c.tipo,
-      numCuotas: c.numCuotas,
-      cuotas: c.cuotas,
-      subtotal: c.subtotal,
-    })),
+    contratas: r.contratas,
   });
 }
 

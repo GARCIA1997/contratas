@@ -260,6 +260,7 @@ export async function guardarCobro(escrituras: Escrituras, recibo: ReciboPrepara
 /** Recibo de una cuota de una contrata, con el saldo que queda tras el cobro. */
 export function cobroDeContrata(
   contrata: {
+    id?: string;
     tipo: CobroContrata["tipo"];
     monto: number;
     abono: number;
@@ -274,6 +275,7 @@ export function cobroDeContrata(
     0
   );
   return {
+    ...(contrata.id ? { contrataId: contrata.id } : {}),
     tipo: contrata.tipo,
     numCuotas: contrata.pagos.length,
     montoContrata: contrata.monto,
