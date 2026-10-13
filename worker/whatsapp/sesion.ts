@@ -26,6 +26,9 @@ const CODIGOS_CUENTA_RESTRINGIDA = new Set([403, 402]);
 
 export class SinWhatsApp extends Error {}
 
+/** Rechazos seguidos de WhatsApp tras los que la cuenta se pausa sola. */
+const RECHAZOS_PARA_PAUSAR = 3;
+
 /** La conexión debe llevar abierta esto para considerarla estable y reiniciar el backoff. */
 const CONEXION_ESTABLE_MS = 60_000;
 
@@ -68,6 +71,8 @@ export class Sesion {
   conectada = false;
   private intentos = 0;
   private abiertaDesde: number | null = null;
+  private rechazados = new Map<string, string>();
+  private rechazosSeguidos = 0;
   private reconexion: NodeJS.Timeout | null = null;
   private detenida = false;
   private iniciando = false;
@@ -302,9 +307,43 @@ export class Sesion {
     await procesarEntrante(this.cuentaId, telefono, texto);
   }
 
-  private async alActualizarMensajes(updates: { key: { id?: string | null }; update: { status?: number | null } }[]) {
+  /** WhatsApp devolvió error para ese mensaje (el acuse llegó antes de guardar el envío). */
+  rechazoDe(waMensajeId: string | null): string | null {
+    return waMensajeId ? (this.rechazados.get(waMensajeId) ?? null) : null;
+  }
+
+  /**
+   * El servidor de WhatsApp NO aceptó el mensaje: no le llegó a nadie. Se
+   * marca FALLIDO (reintentable desde el monitor) en vez de dejarlo como
+   * enviado. Varios seguidos = la cuenta está limitada: se pausa sola para no
+   * seguir insistiendo, que es lo que termina en un bloqueo.
+   */
+  private async alRechazar(waMensajeId: string, error: string) {
+    const motivo = `WhatsApp rechazó el mensaje (error ${error}): no se entregó`;
+    this.rechazados.set(waMensajeId, motivo);
+    if (this.rechazados.size > 200) this.rechazados.delete(this.rechazados.keys().next().value as string);
+    await marcarEnvioRechazado(this.cuentaId, waMensajeId, motivo);
+    await registrarBitacora({ cuentaId: this.cuentaId, tipo: "mensaje_rechazado", detalle: { waMensajeId, error } });
+    this.rechazosSeguidos++;
+    if (this.rechazosSeguidos >= RECHAZOS_PARA_PAUSAR) {
+      this.rechazosSeguidos = 0;
+      await marcarRestringida(
+        this.cuentaId,
+        `WhatsApp rechazó ${RECHAZOS_PARA_PAUSAR} mensajes seguidos (error ${error}): el número parece limitado. Revisa WhatsApp en el teléfono antes de reanudar.`
+      );
+    }
+  }
+
+  private async alActualizarMensajes(
+    updates: { key: { id?: string | null }; update: { status?: number | null; messageStubParameters?: unknown[] | null } }[]
+  ) {
     for (const { key, update } of updates) {
       if (!key.id || update.status == null) continue;
+      if (update.status === 0) {
+        await this.alRechazar(key.id, String(update.messageStubParameters?.[0] ?? "?"));
+        continue;
+      }
+      if (update.status >= 2) this.rechazosSeguidos = 0;
       const ack = update.status >= 4 ? "LEIDO" : update.status === 3 ? "ENTREGADO" : update.status === 2 ? "ENVIADO" : null;
       if (!ack) continue;
       await prisma.envioWhatsApp.updateMany({
@@ -363,6 +402,14 @@ export class Sesion {
     if (cerrarSesion) await sock.logout().catch(() => undefined);
     else sock.end(undefined);
   }
+}
+
+/** El envío ya guardado resultó rechazado por WhatsApp: sus mensajes pasan a FALLIDO. */
+export async function marcarEnvioRechazado(cuentaId: string, waMensajeId: string, motivo: string) {
+  await prisma.mensajeWhatsApp.updateMany({
+    where: { cuentaId, estado: "ENVIADO", envio: { waMensajeId } },
+    data: { estado: "FALLIDO", motivo },
+  });
 }
 
 /** Pausa la cuenta y su campaña: solo el administrador la reanuda. */

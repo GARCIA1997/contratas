@@ -18,7 +18,7 @@ import { unirRecibos } from "@/lib/whatsapp-auto/unir-recibos";
 import { lineaPresentacion, textoPresentacion } from "@/lib/whatsapp-auto/textos";
 import { normalizarTelefono } from "@/lib/whatsapp-auto/telefono";
 import { diasConEnvioDeCampana, presentacionesHoy } from "./campana";
-import { marcarRestringida, SinWhatsApp, type Sesion } from "./sesion";
+import { marcarEnvioRechazado, marcarRestringida, SinWhatsApp, type Sesion } from "./sesion";
 
 /**
  * Despachador (P3). Por cada cuenta conectada y sin pausa, en cada vuelta
@@ -220,6 +220,10 @@ async function intentarUno(
       });
     }
   });
+
+  // El rechazo de WhatsApp pudo llegar antes de que el envío quedara guardado.
+  const rechazo = sesion.rechazoDe(waMensajeId);
+  if (rechazo && waMensajeId) await marcarEnvioRechazado(cuenta.id, waMensajeId, rechazo);
 
   const t = Date.now();
   const masTarde = (m: Map<string, number>, hasta: number) => m.set(cuenta.id, Math.max(m.get(cuenta.id) ?? 0, hasta));

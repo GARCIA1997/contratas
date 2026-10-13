@@ -301,30 +301,9 @@ export default async function WhatsAppPage({
                         : null
               }
             />
-            {d.pruebas.length > 0 && (
-              <div className="flex flex-col gap-1 border-t border-outline-variant/30 pt-space-sm font-body-sm text-body-sm">
-                {d.pruebas.map((p) => (
-                  <div key={p.id} className="flex flex-wrap items-center gap-space-sm">
-                    <span className="font-code-sm text-code-sm">{p.telefono}</span>
-                    <span
-                      className={cn(
-                        "rounded px-2 py-0.5 font-label-sm text-label-sm",
-                        p.estado === "ENVIADO"
-                          ? "bg-secondary/20 text-secondary"
-                          : ["FALLIDO", "CANCELADO", "REVISAR"].includes(p.estado)
-                            ? "bg-error-container/40 text-error"
-                            : "bg-surface-container-high text-on-surface-variant"
-                      )}
-                    >
-                      {ESTADO_MSG[p.estado]}
-                      {p.envio?.ack ? ` · ${p.envio.ack.toLowerCase()}` : ""}
-                    </span>
-                    <span className="text-outline">{fechaHora(p.creadoEn.toISOString())}</span>
-                    {p.motivo && <span className="text-error">{p.motivo}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
+            <span className="font-label-sm text-label-sm text-outline">
+              El resultado queda en la Cola de abajo (filtra por tipo «Prueba»): ahí se ve si falló y se puede reintentar.
+            </span>
           </Tarjeta>
 
           <Chips
@@ -395,7 +374,7 @@ export default async function WhatsAppPage({
                           {m.envio?.conPresentacion && <div className="text-outline">con presentación</div>}
                         </td>
                         <td>{fechaHora((m.envio?.enviadoEn ?? m.programadoPara).toISOString())}</td>
-                        <td>{m.envio?.ack?.toLowerCase() ?? "—"}</td>
+                        <td>{["FALLIDO", "REVISAR"].includes(m.estado) ? "no entregado" : (m.envio?.ack?.toLowerCase() ?? "—")}</td>
                         <td className="max-w-[240px] text-on-surface-variant">{m.motivo ?? ""}</td>
                         <td className="whitespace-nowrap">
                           {(m.texto || m.envio?.texto) && (
@@ -413,7 +392,7 @@ export default async function WhatsAppPage({
                             {m.estado === "FALLIDO" && (m.tipo !== "RECIBO" || m.texto) && (
                               <BotonAccion
                                 cuerpo={{ accion: "reintentar_mensaje", mensajeId: m.id }}
-                                texto="Reintentar envío"
+                                texto="Volver a enviar"
                                 confirmar={m.tipo === "RECIBO" ? "Solo se vuelve a mandar el recibo por WhatsApp (el cobro ya está registrado). ¿Reintentar?" : "¿Volver a intentar este mensaje?"}
                               />
                             )}

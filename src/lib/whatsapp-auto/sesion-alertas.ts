@@ -9,12 +9,13 @@ export type SesionCerrada = { id: string; cuentaId: string; motivo: string | nul
  * Lo que el monitor y el push comparten sobre la salud de la sesión:
  *  - `cerradas`: WhatsApp cerró la sesión (401/device_removed, conexión
  *    reemplazada) en las últimas 24 h y la cuenta sigue sin conectarse;
- *  - `reconexiones`: cierres de conexión de la última hora por cuenta.
+ *  - `reconexiones`: cierres de conexión de la última hora por cuenta;
+ *  - `sinEntregar`: mensajes que WhatsApp rechazó o no confirmó en la última hora.
  */
 export async function eventosDeSesion(ahora = new Date()) {
   const hace24h = new Date(ahora.getTime() - 24 * 60 * 60_000);
   const haceUnaHora = new Date(ahora.getTime() - 60 * 60_000);
-  const [filas, cierres, sinConexion] = await Promise.all([
+  const [filas, cierres, sinConexion, noEntregados] = await Promise.all([
     prisma.bitacoraWhatsApp.findMany({
       where: { tipo: "sesion_cerrada_por_whatsapp", creadoEn: { gte: hace24h } },
       orderBy: { creadoEn: "desc" },
@@ -26,6 +27,18 @@ export async function eventosDeSesion(ahora = new Date()) {
       _count: { _all: true },
     }),
     prisma.cuentaWhatsApp.findMany({ where: { estado: { not: "CONECTADO" } }, select: { id: true } }),
+    // Rechazados por WhatsApp o sin acuse en la última hora (siguen sin resolverse).
+    prisma.mensajeWhatsApp.groupBy({
+      by: ["cuentaId"],
+      where: {
+        actualizadoEn: { gte: haceUnaHora },
+        OR: [
+          { estado: "FALLIDO", motivo: { startsWith: "WhatsApp rechazó" } },
+          { estado: "REVISAR", motivo: { startsWith: "WhatsApp no confirmó" } },
+        ],
+      },
+      _count: { _all: true },
+    }),
   ]);
   const sinConexionIds = new Set(sinConexion.map((c) => c.id));
   const cerradas: SesionCerrada[] = [];
@@ -38,5 +51,7 @@ export async function eventosDeSesion(ahora = new Date()) {
   }
   const reconexiones = new Map<string, number>();
   for (const c of cierres) if (c.cuentaId) reconexiones.set(c.cuentaId, c._count._all);
-  return { cerradas, reconexiones };
+  const sinEntregar = new Map<string, number>();
+  for (const c of noEntregados) sinEntregar.set(c.cuentaId, c._count._all);
+  return { cerradas, reconexiones, sinEntregar };
 }

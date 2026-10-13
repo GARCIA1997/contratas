@@ -34,7 +34,7 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
   if (cuentas.length === 0) return [];
   const fuera: Incidente[] = [];
   const t = ahora.getTime();
-  const { cerradas, reconexiones } = await eventosDeSesion(ahora);
+  const { cerradas, reconexiones, sinEntregar } = await eventosDeSesion(ahora);
 
   const latidoEn = control?.latidoEn ?? null;
   const workerVivo = Boolean(latidoEn && t - latidoEn.getTime() < LATIDO_MAX_MS);
@@ -81,6 +81,14 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
         clave: `reconexiones:${c.id}:${new Date(t).toISOString().slice(0, 13)}`,
         titulo: `WhatsApp: ${quien} se reconecta mucho`,
         cuerpo: `${nReconex} desconexiones en la última hora en ${c.numero}. Puede terminar en una desvinculación.`,
+      });
+    }
+    const nSinEntregar = sinEntregar.get(c.id) ?? 0;
+    if (nSinEntregar > 0) {
+      fuera.push({
+        clave: `sin_entregar:${c.id}:${new Date(t).toISOString().slice(0, 13)}`,
+        titulo: `WhatsApp: mensajes de ${quien} no se entregaron`,
+        cuerpo: `${nSinEntregar} mensaje(s) de ${c.numero} fueron rechazados o no confirmados por WhatsApp. Revisa la cola en el monitor.`,
       });
     }
     // Solo si tenía sesión guardada: una cuenta que desvinculaste a propósito no es un incidente.

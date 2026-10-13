@@ -457,7 +457,7 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
   );
 
   const alertas: Alerta[] = [];
-  const { cerradas, reconexiones } = await eventosDeSesion(new Date(ahora));
+  const { cerradas, reconexiones, sinEntregar } = await eventosDeSesion(new Date(ahora));
   if (control?.paroGlobal) alertas.push({ nivel: "error", texto: `Paro global activo (${control.paroPor ?? "?"})` });
   if (cuentas.length > 0 && !workerVivo) {
     alertas.push({ nivel: "error", texto: "Worker caído: sin latido en más de 2 minutos" });
@@ -490,6 +490,14 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     const nReconex = reconexiones.get(f.id) ?? 0;
     if (nReconex >= RECONEXIONES_ALERTA) {
       alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${nReconex} desconexiones en la última hora` });
+    }
+    const nSinEntregar = sinEntregar.get(f.id) ?? 0;
+    if (nSinEntregar > 0) {
+      alertas.push({
+        nivel: "error",
+        cuentaId: f.id,
+        texto: `${etq}: ${nSinEntregar} mensaje(s) rechazados o sin confirmar por WhatsApp en la última hora — ver Cola`,
+      });
     }
     if (f.enviadosHoy > CUPO_DIARIO) {
       alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.enviadosHoy} mensajes hoy (tope ${CUPO_DIARIO}, por recibos)` });
