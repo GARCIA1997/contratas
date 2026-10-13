@@ -3,7 +3,7 @@ import type { TipoContrata } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import { anclarFechaCliente } from "@/lib/fechas";
-import { DIAS_PROXIMO_VENCIMIENTO } from "@/lib/contrata";
+import { DIAS_PROXIMO_VENCIMIENTO, saldoPendiente } from "@/lib/contrata";
 import { guardarCobro, prepararReciboCobro } from "@/lib/whatsapp-auto/recibos";
 
 function round(n: number) {
@@ -19,6 +19,11 @@ export type CuotaVencidaItem = {
   numCuotas: number;
   fechaProgramada: string;
   pendiente: number;
+  /** Capital de la contrata y todo lo que debía ANTES de este cobro: con eso
+   *  el recibo dice de cuánto es el préstamo y cuánto le resta. Opcionales
+   *  para no romper cobros encolados por una versión anterior. */
+  montoContrata?: number;
+  saldoContrata?: number;
 };
 
 export type PreviewCobroVencidas = {
@@ -63,6 +68,8 @@ export async function previewCobroVencidas(
         numCuotas: c.pagos.length,
         fechaProgramada: p.fechaProgramada.toISOString(),
         pendiente,
+        montoContrata: c.monto,
+        saldoContrata: saldoPendiente(c.pagos, c.abono),
       });
     }
   }
@@ -98,6 +105,8 @@ export type ContrataResumenCobro = {
    *  los llamadores tienen este dato a mano (p. ej. Ruta, que solo conoce
    *  la cuota suelta, no la contrata completa). */
   montoContrata?: number;
+  /** Lo que le queda por pagar a ESTA contrata después del cobro. */
+  saldoTrasCobro?: number;
   cuotas: CuotaCobrada[];
   subtotal: number;
 };
@@ -125,11 +134,14 @@ export function agruparCobroPorContrata(
     if (actual) {
       actual.cuotas.push({ numeroCuota: i.numeroCuota, monto: i.pendiente });
       actual.subtotal = round(actual.subtotal + i.pendiente);
+      if (actual.saldoTrasCobro !== undefined) actual.saldoTrasCobro = Math.max(0, round(actual.saldoTrasCobro - i.pendiente));
     } else {
       porContrata.set(i.contrataId, {
         contrataId: i.contrataId,
         tipo: i.tipo,
         numCuotas: i.numCuotas,
+        ...(i.montoContrata !== undefined ? { montoContrata: i.montoContrata } : {}),
+        ...(i.saldoContrata !== undefined ? { saldoTrasCobro: Math.max(0, round(i.saldoContrata - i.pendiente)) } : {}),
         cuotas: [{ numeroCuota: i.numeroCuota, monto: i.pendiente }],
         subtotal: i.pendiente,
       });

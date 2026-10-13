@@ -178,6 +178,10 @@ export async function prepararEntregaLocal(
       tipo: c.tipo,
       numCuotas: c.numCuotas,
       montoContrata: c.monto,
+      saldoTrasCobro: Math.max(
+        0,
+        round2(ps.reduce((s, p) => s + (p.pagado ? 0 : Math.max(c.abono - p.montoAbonado, 0)), 0) - detalle.reduce((s, d) => s + d.monto, 0))
+      ),
       cuotas: detalle,
       subtotal: round2(detalle.reduce((s, d) => s + d.monto, 0)),
     });

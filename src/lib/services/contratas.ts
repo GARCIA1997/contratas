@@ -567,6 +567,7 @@ function desgloseOtrasLiquidadas(
     tipo: c.tipo,
     numCuotas: c.numCuotas,
     montoContrata: c.monto,
+    saldoTrasCobro: Math.max(0, round2(saldoPendiente(c.pagos, c.abono) - c.saldo)),
     cuotas: cuotasVencidasOVigentes(c.pagos, hoy).map((p) => ({
       numeroCuota: p.numeroCuota,
       monto: round2(c.abono - p.montoAbonado),

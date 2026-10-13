@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import { unirRecibos } from "./unir-recibos";
 import { esTransaccional, enHorario } from "./reglas";
 
-const uno = (monto: number, cuota: number, abono: number) => ({
+const uno = (monto: number, cuota: number, abono: number, contrataId = `c${monto}`) => ({
   total: abono,
   contratas: [
     {
+      contrataId,
       numCuotas: 10,
       montoContrata: monto,
       saldoTrasCobro: monto - abono * cuota,
@@ -33,6 +34,17 @@ describe("unirRecibos", () => {
     expect(t.match(/préstamo de/g)).toHaveLength(1);
     expect(t).toContain("Cuota 5 de 10");
     expect(t).toContain("Cuota 6 de 10");
+  });
+  it("no mezcla dos contratas distintas aunque sean idénticas en monto y cuotas", () => {
+    const t = unirRecibos({ nombreApp: "K", clienteNombre: "A", datos: [uno(7000, 5, 875, "a"), uno(7000, 6, 875, "b")] })!;
+    expect(t.match(/préstamo de/g)).toHaveLength(2);
+    expect(t.match(/Te resta por pagar/g)).toHaveLength(2);
+  });
+  it("cada contrata lleva su saldo y se suma el total de todas", () => {
+    const t = unirRecibos({ nombreApp: "K", clienteNombre: "A", datos: [uno(7000, 6, 875), uno(10000, 4, 1250)] })!;
+    expect(t).toContain("Te resta por pagar: *$1,750.00*");
+    expect(t).toContain("Te resta por pagar: *$5,000.00*");
+    expect(t).toContain("Saldo total de estas 2 contratas: $6,750.00");
   });
   it("devuelve null si algún recibo no trae datos", () => {
     expect(unirRecibos({ nombreApp: "K", clienteNombre: "A", datos: [uno(7000, 5, 875), null] })).toBeNull();

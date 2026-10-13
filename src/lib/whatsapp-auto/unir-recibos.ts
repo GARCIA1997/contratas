@@ -10,11 +10,12 @@ function esDatos(d: unknown): d is DatosRecibo {
   return !!x && typeof x.total === "number" && Array.isArray(x.contratas);
 }
 
-/** Dos bloques son la misma contrata (mismo tipo, monto y cuotas) sin cuotas repetidas. */
+/**
+ * Solo por id: dos contratas distintas del mismo cliente pueden tener el
+ * mismo tipo, monto y cuotas, y juntarlas mostraría un solo saldo.
+ */
 function mismaContrata(a: CobroContrata, b: CobroContrata): boolean {
-  if (a.montoContrata === undefined || b.montoContrata === undefined) return false;
-  if (a.tipo !== b.tipo || a.montoContrata !== b.montoContrata || a.numCuotas !== b.numCuotas) return false;
-  return !a.cuotas.some((q) => b.cuotas.some((p) => p.numeroCuota === q.numeroCuota));
+  return Boolean(a.contrataId) && a.contrataId === b.contrataId;
 }
 
 /**

@@ -126,12 +126,7 @@ export function AbonarModal({
         nombreApp,
         clienteNombre,
         total: resultado.totalAplicado,
-        contratas: resultado.contratas.map((c) => ({
-          tipo: c.tipo,
-          numCuotas: c.numCuotas,
-          cuotas: c.cuotas,
-          subtotal: c.subtotal,
-        })),
+        contratas: resultado.contratas,
       })
     : null;
 

@@ -43,6 +43,7 @@ export function ContrataCreadaPanel({
         contrata={contrata}
         tituloPanel="Contrata registrada"
         tituloMensaje="Detalles de tu contrata"
+        descuentos={{ cobroOtras: Math.round((contrata.otrasLiquidadas ?? []).reduce((s, c) => s + c.subtotal, 0) * 100) / 100 }}
       />
 
       <ReciboOtrasLiquidadasPanel
