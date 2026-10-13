@@ -218,6 +218,27 @@ export function mensajeCobro(opts: {
 /** Fechas que se listan al inicio antes de resumir (ver regla 4 arriba). */
 const FECHAS_AL_INICIO = 3;
 
+/**
+ * Lo que se descuenta del monto de la contrata al entregarla: el cliente no
+ * recibe el monto completo cuando con él se liquida su contrata anterior
+ * (renovar / unificar) o se cobran cuotas de sus otras contratas.
+ */
+export type DescuentosEntrega = {
+  /** Saldo de la(s) contrata(s) que esta sustituye. */
+  liquidacionAnterior?: number;
+  /** Cuántas contratas se liquidaron (2+ al unificar). */
+  contratasAnteriores?: number;
+  /** Cuotas cobradas de sus otras contratas (van detalladas en su propio recibo). */
+  cobroOtras?: number;
+};
+
+/** Lo que el cliente recibe en mano; null si no hay nada que descontar. */
+export function enManoDeEntrega(monto: number, d?: DescuentosEntrega | null): number | null {
+  const descuento = (d?.liquidacionAnterior ?? 0) + (d?.cobroOtras ?? 0);
+  if (descuento <= 0) return null;
+  return Math.max(0, Math.round((monto - descuento) * 100) / 100);
+}
+
 export function mensajeEntrega(opts: {
   nombreApp: string;
   clienteNombre: string;
@@ -228,9 +249,31 @@ export function mensajeEntrega(opts: {
   pagos: { numeroCuota: number; fecha: Date }[];
   fecha?: Date;
   hechoPor?: string | null;
+  descuentos?: DescuentosEntrega | null;
 }): string {
   const fecha = opts.fecha ?? new Date();
   const total = Math.round(opts.abono * opts.numCuotas * 100) / 100;
+
+  // Sin descuentos (cliente sin otras contratas, entrega simple) el monto
+  // de la contrata ES lo entregado. Con ellos se desglosa: decir "monto
+  // entregado" por el total sería afirmar por escrito que recibió dinero
+  // que en realidad se quedó cubriendo lo que ya debía.
+  const enMano = enManoDeEntrega(opts.monto, opts.descuentos);
+  const d = opts.descuentos;
+  const varias = (d?.contratasAnteriores ?? 1) > 1;
+  const montos =
+    enMano === null
+      ? [`💵 *MONTO ENTREGADO: ${formatMoneda(opts.monto)}*`]
+      : [
+          `💵 *MONTO DE LA CONTRATA: ${formatMoneda(opts.monto)}*`,
+          ...(d?.liquidacionAnterior
+            ? [
+                `➖ Liquidación de ${varias ? `tus ${d.contratasAnteriores} contratas anteriores` : "tu contrata anterior"}: ${formatMoneda(d.liquidacionAnterior)}`,
+              ]
+            : []),
+          ...(d?.cobroOtras ? [`➖ Cobro de tus otras contratas: ${formatMoneda(d.cobroOtras)}`] : []),
+          `🤝 *RECIBES EN MANO: ${formatMoneda(enMano)}*`,
+        ];
   const ordenados = [...opts.pagos].sort((a, b) => a.numeroCuota - b.numeroCuota);
 
   // Con 4 o menos caben todas: resumir escondería una sola fecha, que
@@ -269,7 +312,7 @@ export function mensajeEntrega(opts: {
       `📅 Entregado el ${fechaLarga(fecha)}`,
       ...atendio(opts.hechoPor),
       ``,
-      `💵 *MONTO ENTREGADO: ${formatMoneda(opts.monto)}*`,
+      ...montos,
       ``,
       LINEA,
       `📊 *TU PLAN DE PAGOS*`,

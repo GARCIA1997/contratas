@@ -92,6 +92,8 @@ export function UnificarForm({
   const [unificada, setUnificada] = useState<ContrataEntregada & { id: string } | null>(
     null
   );
+  // Se congela al guardar: tras unificar, las contratas elegidas ya no tienen saldo.
+  const [liquidado, setLiquidado] = useState({ saldo: 0, contratas: 0 });
   const [tipo, setTipo] = useState<TipoContrata>(contratas[0]?.tipo ?? "SEMANAL");
   const [monto, setMonto] = useState("");
   const [montoTocado, setMontoTocado] = useState(false);
@@ -211,6 +213,7 @@ export function UnificarForm({
         })
       : null;
 
+    setLiquidado({ saldo: saldoSeleccionado, contratas: contrataIds.length });
     // Antes de guardar: la página redirige si deja de ver contratas
     // elegibles y no sabe que esto fue una unificación.
     onUnificada?.();
@@ -250,6 +253,7 @@ export function UnificarForm({
           contrata={unificada}
           tituloPanel="Contratas unificadas"
           tituloMensaje="Detalles de tu reestructuración"
+          descuentos={{ liquidacionAnterior: liquidado.saldo, contratasAnteriores: liquidado.contratas }}
         />
         <Button variant="outline" className="w-full" asChild>
           <Link href={rutas.contrata(unificada.id)}>Ver la contrata nueva</Link>

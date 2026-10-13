@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { linkWhatsApp } from "@/lib/whatsapp";
-import { mensajeEntrega } from "@/lib/mensajes-whatsapp";
+import { enManoDeEntrega, mensajeEntrega, type DescuentosEntrega } from "@/lib/mensajes-whatsapp";
 
 export type ContrataEntregada = {
   cliente: { nombre: string; telefono: string | null };
@@ -32,7 +32,8 @@ export function construirMensajeEntrega(
   nombreApp: string,
   c: ContrataEntregada,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _titulo?: string
+  _titulo?: string,
+  descuentos?: DescuentosEntrega | null
 ): string {
   return mensajeEntrega({
     nombreApp,
@@ -41,6 +42,7 @@ export function construirMensajeEntrega(
     monto: c.monto,
     abono: c.abono,
     numCuotas: c.numCuotas,
+    descuentos,
     pagos: c.pagos.map((p) => ({
       numeroCuota: p.numeroCuota,
       fecha: anclarFechaCliente(p.fechaProgramada),
@@ -59,6 +61,7 @@ export function ReciboEntregaPanel({
   contrata,
   tituloPanel,
   tituloMensaje,
+  descuentos,
 }: {
   nombreApp: string;
   contrata: ContrataEntregada;
@@ -66,8 +69,11 @@ export function ReciboEntregaPanel({
   tituloPanel: string;
   /** Título dentro del mensaje de WhatsApp, p. ej. "Detalles de tu renovación". */
   tituloMensaje: string;
+  /** Lo que se descontó del monto (contrata anterior liquidada, cobro de otras). */
+  descuentos?: DescuentosEntrega | null;
 }) {
-  const mensaje = construirMensajeEntrega(nombreApp, contrata, tituloMensaje);
+  const mensaje = construirMensajeEntrega(nombreApp, contrata, tituloMensaje, descuentos);
+  const enMano = enManoDeEntrega(contrata.monto, descuentos);
   const telefono = contrata.cliente.telefono;
   const link = linkWhatsApp(telefono, mensaje);
 
@@ -81,6 +87,9 @@ export function ReciboEntregaPanel({
             {contrata.cliente.nombre} · {formatMoneda(contrata.monto)} ·{" "}
             {contrata.numCuotas} pagos de {formatMoneda(contrata.abono)}
           </p>
+          {enMano !== null && (
+            <p className="text-sm font-semibold text-pagado">Entregas en mano: {formatMoneda(enMano)}</p>
+          )}
         </CardContent>
       </Card>
 

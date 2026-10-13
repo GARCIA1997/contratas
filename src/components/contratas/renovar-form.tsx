@@ -95,6 +95,8 @@ export function RenovarForm({
   const [otrasLiquidadas, setOtrasLiquidadas] = useState<ContrataResumenCobro[]>(
     []
   );
+  // Se congela al guardar: tras renovar, `saldoOriginal` ya llega en 0.
+  const [liquidado, setLiquidado] = useState(0);
   const [tipo, setTipo] = useState<TipoContrata>(tipoOriginal);
   const [monto, setMonto] = useState("");
   const [numCuotas, setNumCuotas] = useState(cuotasPorDefecto);
@@ -198,6 +200,7 @@ export function RenovarForm({
         })
       : null;
 
+    setLiquidado(Math.round(saldoOriginal * 100) / 100);
     // Antes de guardar: la página redirige en cuanto ve la original
     // liquidada (por el efecto local o por el sync) si no sabe que esto fue
     // una renovación.
@@ -240,6 +243,10 @@ export function RenovarForm({
           contrata={renovada}
           tituloPanel="Contrata renovada"
           tituloMensaje="Detalles de tu renovación"
+          descuentos={{
+            liquidacionAnterior: liquidado,
+            cobroOtras: Math.round(otrasLiquidadas.reduce((s, c) => s + c.subtotal, 0) * 100) / 100,
+          }}
         />
         <ReciboOtrasLiquidadasPanel
           nombreApp={nombreApp}

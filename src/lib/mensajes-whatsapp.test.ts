@@ -659,3 +659,39 @@ describe("mensajeRecordatorioAbono", () => {
     }
   });
 });
+
+describe("mensajeEntrega — lo que el cliente recibe en mano", () => {
+  const base = {
+    nombreApp: "Kredired",
+    clienteNombre: "Leticia",
+    tipo: "SEMANAL" as const,
+    monto: 1500,
+    abono: 190,
+    numCuotas: 10,
+    pagos: [{ numeroCuota: 1, fecha: new Date(2026, 9, 20) }],
+  };
+  it("entrega simple (cliente sin otras contratas): monto entregado completo", () => {
+    const t = mensajeEntrega(base);
+    expect(t).toContain("MONTO ENTREGADO: $1,500.00");
+    expect(t).not.toContain("RECIBES EN MANO");
+    expect(mensajeEntrega({ ...base, descuentos: { cobroOtras: 0 } })).toContain("MONTO ENTREGADO: $1,500.00");
+  });
+  it("renovación de su única contrata: descuenta la anterior", () => {
+    const t = mensajeEntrega({ ...base, descuentos: { liquidacionAnterior: 190, cobroOtras: 0 } });
+    expect(t).toContain("MONTO DE LA CONTRATA: $1,500.00");
+    expect(t).toContain("Liquidación de tu contrata anterior: $190.00");
+    expect(t).not.toContain("otras contratas");
+    expect(t).toContain("RECIBES EN MANO: $1,310.00");
+    expect(t).not.toContain("MONTO ENTREGADO");
+  });
+  it("renovación cobrando además sus otras contratas", () => {
+    const t = mensajeEntrega({ ...base, descuentos: { liquidacionAnterior: 190, cobroOtras: 820 } });
+    expect(t).toContain("Cobro de tus otras contratas: $820.00");
+    expect(t).toContain("RECIBES EN MANO: $490.00");
+  });
+  it("contrata nueva cobrando sus otras contratas, y unificación", () => {
+    expect(mensajeEntrega({ ...base, descuentos: { cobroOtras: 820 } })).toContain("RECIBES EN MANO: $680.00");
+    const u = mensajeEntrega({ ...base, descuentos: { liquidacionAnterior: 1000, contratasAnteriores: 2 } });
+    expect(u).toContain("Liquidación de tus 2 contratas anteriores: $1,000.00");
+  });
+});
