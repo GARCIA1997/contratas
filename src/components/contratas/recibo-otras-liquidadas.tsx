@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
 
@@ -28,12 +29,15 @@ export function ReciboOtrasLiquidadasPanel({
   clienteTelefono,
   otrasLiquidadas,
   fecha,
+  auto,
 }: {
   nombreApp: string;
   clienteNombre: string;
   clienteTelefono: string | null;
   otrasLiquidadas: ContrataResumenCobro[];
   fecha?: Date;
+  /** Con WhatsApp automático: clave de la operación para seguir el envío (el manual queda de respaldo). */
+  auto?: { ownerId: string | null | undefined; clave: string | null };
 }) {
   if (otrasLiquidadas.length === 0) return null;
 
@@ -64,14 +68,19 @@ export function ReciboOtrasLiquidadasPanel({
         </p>
       </CardContent>
       <CardContent className="p-4 pt-0">
-        <Button className="w-full" asChild>
-          <a href={link} target="_blank" rel="noopener noreferrer">
-            <MessageCircle className="size-4" />
-            {clienteTelefono
-              ? "Enviar recibo de cobro por WhatsApp"
-              : "Compartir recibo de cobro por WhatsApp"}
-          </a>
-        </Button>
+        <SeguimientoRecibo
+          ownerId={auto?.ownerId}
+          telefono={clienteTelefono}
+          claves={auto?.clave ? [auto.clave] : []}
+          botonManual={
+            <Button className="w-full" asChild>
+              <a href={link} target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="size-4" />
+                {clienteTelefono ? "Enviar recibo de cobro por WhatsApp" : "Compartir recibo de cobro por WhatsApp"}
+              </a>
+            </Button>
+          }
+        />
       </CardContent>
     </Card>
   );

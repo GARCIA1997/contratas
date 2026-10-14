@@ -96,6 +96,7 @@ export function RenovarForm({
     []
   );
   // Se congela al guardar: tras renovar, `saldoOriginal` ya llega en 0.
+  const [claveRecibo, setClaveRecibo] = useState<string | null>(null);
   const [liquidado, setLiquidado] = useState(0);
   const [tipo, setTipo] = useState<TipoContrata>(tipoOriginal);
   const [monto, setMonto] = useState("");
@@ -206,9 +207,11 @@ export function RenovarForm({
     // una renovación.
     onRenovada?.();
 
+    const claveOp = idem.clave();
+    setClaveRecibo(claveOp);
     const r = await guardarOperacion<ResultadoRenovacion>({
       ownerId,
-      clave: idem.clave(),
+      clave: claveOp,
       lote: [
         {
           type: "contrata.renovar",
@@ -243,6 +246,7 @@ export function RenovarForm({
           contrata={renovada}
           tituloPanel="Contrata renovada"
           tituloMensaje="Detalles de tu renovación"
+          auto={{ ownerId, clave: claveRecibo }}
           descuentos={{
             liquidacionAnterior: liquidado,
             cobroOtras: Math.round(otrasLiquidadas.reduce((s, c) => s + c.subtotal, 0) * 100) / 100,
@@ -253,6 +257,7 @@ export function RenovarForm({
           clienteNombre={renovada.cliente.nombre}
           clienteTelefono={renovada.cliente.telefono}
           otrasLiquidadas={otrasLiquidadas}
+          auto={{ ownerId, clave: claveRecibo }}
         />
         <Button variant="outline" className="w-full" asChild>
           <Link href={rutas.contrata(renovada.id)}>Ver la contrata nueva</Link>

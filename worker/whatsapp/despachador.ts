@@ -14,6 +14,7 @@ import {
   espaciadoMs,
   esTransaccional,
 } from "@/lib/whatsapp-auto/reglas";
+import { SUFIJO_ENTREGA } from "@/lib/whatsapp-auto/recibos";
 import { unirRecibos } from "@/lib/whatsapp-auto/unir-recibos";
 import { lineaPresentacion, textoPresentacion } from "@/lib/whatsapp-auto/textos";
 import { normalizarTelefono } from "@/lib/whatsapp-auto/telefono";
@@ -134,9 +135,9 @@ async function intentarUno(
   }
 
   // Se juntan los avisos del mismo destinatario que pueden ir en un mensaje.
-  const familia = familiaDe(primero.tipo);
+  const familia = familiaDe(primero);
   const grupo = candidatos.filter(
-    (m) => m.telefono === primero.telefono && familiaDe(m.tipo) === familia && elegible(m) && (familia !== "unico" || m.id === primero.id)
+    (m) => m.telefono === primero.telefono && familiaDe(m) === familia && elegible(m) && (familia !== "unico" || m.id === primero.id)
   );
   const ids = grupo.map((m) => m.id);
   const tomados = await prisma.mensajeWhatsApp.updateMany({
@@ -238,9 +239,10 @@ async function intentarUno(
   return "enviado";
 }
 
-function familiaDe(tipo: TipoMensajeWhatsApp): "recibo" | "cuota" | "unico" {
-  if (tipo === "RECIBO") return "recibo";
-  if (tipo === "POR_VENCER" || tipo === "VENCIDA") return "cuota";
+function familiaDe(m: { tipo: TipoMensajeWhatsApp; claveDedupe: string }): "recibo" | "cuota" | "unico" {
+  // El comprobante de entrega es un documento aparte: va solo, no pegado a un recibo de cobro.
+  if (m.tipo === "RECIBO") return m.claveDedupe.endsWith(SUFIJO_ENTREGA) ? "unico" : "recibo";
+  if (m.tipo === "POR_VENCER" || m.tipo === "VENCIDA") return "cuota";
   return "unico";
 }
 

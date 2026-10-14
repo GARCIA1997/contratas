@@ -32,9 +32,12 @@ export type ContrataCreada = ContrataEntregada & {
 export function ContrataCreadaPanel({
   nombreApp,
   contrata,
+  auto,
 }: {
   nombreApp: string;
   contrata: ContrataCreada;
+  /** Con WhatsApp automático: clave de la operación para seguir el envío (el manual queda de respaldo). */
+  auto?: { ownerId: string | null | undefined; clave: string | null };
 }) {
   return (
     <div className="space-y-4">
@@ -43,6 +46,7 @@ export function ContrataCreadaPanel({
         contrata={contrata}
         tituloPanel="Contrata registrada"
         tituloMensaje="Detalles de tu contrata"
+        auto={auto}
         descuentos={{ cobroOtras: Math.round((contrata.otrasLiquidadas ?? []).reduce((s, c) => s + c.subtotal, 0) * 100) / 100 }}
       />
 
@@ -51,6 +55,7 @@ export function ContrataCreadaPanel({
         clienteNombre={contrata.cliente.nombre}
         clienteTelefono={contrata.cliente.telefono}
         otrasLiquidadas={contrata.otrasLiquidadas ?? []}
+        auto={auto}
       />
 
       <Button variant="outline" className="w-full" asChild>

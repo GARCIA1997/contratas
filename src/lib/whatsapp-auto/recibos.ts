@@ -69,11 +69,13 @@ async function prepararRecibo(opts: {
   pagoIds?: string[];
   abonoDeudorId?: string;
   texto: (nombreApp: string) => string;
+  /** Distingue dos mensajes de la MISMA operación (p. ej. ":entrega"). */
+  sufijo?: string;
   /** Datos estructurados del recibo; se leen DESPUÉS de `texto`. */
   datos?: () => Prisma.InputJsonValue | undefined;
 }): Promise<ReciboPreparado | null> {
   const clave = claveOperacionActual() ?? globalThis.crypto.randomUUID();
-  const claveDedupe = `recibo:${clave}`;
+  const claveDedupe = `recibo:${clave}${opts.sufijo ?? ""}`;
   const contexto = { claveDedupe, destinatario: opts.destinatario.nombre, pagoIds: opts.pagoIds, abonoDeudorId: opts.abonoDeudorId };
   let cuenta: { id: string; ownerId: string } | null = null;
   let telefono: string | null = null;
@@ -168,6 +170,52 @@ export function prepararReciboCobro(opts: {
     },
     datos: () => (datos ? (JSON.parse(JSON.stringify(datos)) as Prisma.InputJsonValue) : undefined),
   });
+}
+
+/** Sufijo de la clave del comprobante de entrega (la pantalla lo consulta con él). */
+export const SUFIJO_ENTREGA = ":entrega";
+
+/**
+ * Comprobante de entrega de una contrata (crear / renovar / unificar). Usa
+ * la misma Idempotency-Key de la operación con sufijo, porque esa operación
+ * puede llevar además el recibo de cobro de las otras contratas.
+ */
+export function prepararComprobanteEntrega(opts: {
+  ownerId: string;
+  cliente: { id: string; nombre: string; telefono: string | null };
+  texto: (nombreApp: string) => string;
+}): Promise<ReciboPreparado | null> {
+  return prepararRecibo({
+    ownerId: opts.ownerId,
+    destinatario: { clienteId: opts.cliente.id, nombre: opts.cliente.nombre, telefono: opts.cliente.telefono },
+    sufijo: SUFIJO_ENTREGA,
+    texto: opts.texto,
+  });
+}
+
+/**
+ * Encola recibos de una operación que YA quedó guardada (entregas: su
+ * transacción es interactiva y no admite la escritura del recibo adentro).
+ * Nunca lanza: lo guardado no se toca; si el recibo falla queda registrado y
+ * la pantalla ofrece el envío manual. Uno por uno y en orden, para que
+ * salgan en ese orden.
+ */
+export async function encolarRecibosAparte(recibos: (ReciboPreparado | null)[]): Promise<void> {
+  let alguno = false;
+  for (const r of recibos) {
+    if (!r) continue;
+    try {
+      if (!r.listo) {
+        await r.registrarFallo();
+        continue;
+      }
+      await r.escritura();
+      alguno = true;
+    } catch (e) {
+      if (r.listo) await r.registrarFallo(mensajeDe(e)).catch(() => undefined);
+    }
+  }
+  if (alguno) await prisma.$executeRaw`SELECT pg_notify('whatsapp_salida', '')`.catch(() => undefined);
 }
 
 export function prepararReciboAbonoDeudor(opts: {

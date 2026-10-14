@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { linkWhatsApp } from "@/lib/whatsapp";
+import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
 import { enManoDeEntrega, mensajeEntrega, type DescuentosEntrega } from "@/lib/mensajes-whatsapp";
 
 export type ContrataEntregada = {
@@ -62,6 +63,7 @@ export function ReciboEntregaPanel({
   tituloPanel,
   tituloMensaje,
   descuentos,
+  auto,
 }: {
   nombreApp: string;
   contrata: ContrataEntregada;
@@ -71,6 +73,8 @@ export function ReciboEntregaPanel({
   tituloMensaje: string;
   /** Lo que se descontó del monto (contrata anterior liquidada, cobro de otras). */
   descuentos?: DescuentosEntrega | null;
+  /** Con WhatsApp automático: clave de la operación para seguir el envío (el manual queda de respaldo). */
+  auto?: { ownerId: string | null | undefined; clave: string | null };
 }) {
   const mensaje = construirMensajeEntrega(nombreApp, contrata, tituloMensaje, descuentos);
   const enMano = enManoDeEntrega(contrata.monto, descuentos);
@@ -93,14 +97,20 @@ export function ReciboEntregaPanel({
         </CardContent>
       </Card>
 
-      <Button className="w-full" asChild>
-        <a href={link} target="_blank" rel="noopener noreferrer">
-          <MessageCircle className="size-4" />
-          {telefono
-            ? "Enviar detalles por WhatsApp"
-            : "Compartir detalles por WhatsApp"}
-        </a>
-      </Button>
+      <SeguimientoRecibo
+        ownerId={auto?.ownerId}
+        telefono={telefono}
+        // El comprobante viaja con la clave de la operación + ":entrega" (ver recibos.ts).
+        claves={auto?.clave ? [`${auto.clave}:entrega`] : []}
+        botonManual={
+          <Button className="w-full" asChild>
+            <a href={link} target="_blank" rel="noopener noreferrer">
+              <MessageCircle className="size-4" />
+              {telefono ? "Enviar detalles por WhatsApp" : "Compartir detalles por WhatsApp"}
+            </a>
+          </Button>
+        }
+      />
       {!telefono && (
         <p className="text-center text-xs text-muted-foreground">
           Este cliente no tiene teléfono guardado: elige el contacto al abrir
