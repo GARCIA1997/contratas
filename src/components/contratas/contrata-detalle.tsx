@@ -24,6 +24,7 @@ import { estadoContrata, haTerminadoPeriodo, saldoPendiente } from "@/lib/contra
 import { enqueue } from "@/lib/offline/queue";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { rutas } from "@/lib/rutas";
+import { avisar, confirmar } from "@/lib/dialogo";
 
 type PagoUI = {
   numeroCuota: number;
@@ -222,7 +223,7 @@ export function ContrataDetalle({
   }
 
   async function marcarComoDeuda() {
-    const ok = confirm(
+    const ok = await confirmar(
       `Vas a marcar el saldo pendiente (${formatMoneda(saldo)}) de ${contrata.clienteNombre} como deuda. La contrata dejará de contar como activa. ¿Confirmar?`
     );
     if (!ok) return;
@@ -259,14 +260,14 @@ export function ContrataDetalle({
   }
 
   async function eliminar() {
-    if (!confirm("¿Eliminar esta contrata? No se puede deshacer.")) return;
+    if (!(await confirmar("¿Eliminar esta contrata? No se puede deshacer.", { aceptar: "Eliminar", peligro: true }))) return;
     setBorrando(true);
     if (ownerId) {
       try {
         await enqueue(ownerId, "contrata.eliminar", { contrataId: contrata.id });
       } catch (e) {
         setBorrando(false);
-        alert(e instanceof Error ? e.message : "No se pudo eliminar");
+        void avisar(e instanceof Error ? e.message : "No se pudo eliminar");
         return;
       }
       router.push("/contratas");
@@ -280,7 +281,7 @@ export function ContrataDetalle({
       router.refresh();
     } else {
       setBorrando(false);
-      alert("No se pudo eliminar.");
+      void avisar("No se pudo eliminar.");
     }
   }
 

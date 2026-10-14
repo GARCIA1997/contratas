@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./monitor.css";
+import { DialogoMonitor } from "@/components/monitor/dialogo-monitor";
 
 export const metadata: Metadata = {
   title: "Kredired Monitor",
@@ -20,6 +21,7 @@ export default function MonitorLayout({ children }: { children: React.ReactNode 
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
       />
       {children}
+      <DialogoMonitor />
     </div>
   );
 }

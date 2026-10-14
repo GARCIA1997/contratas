@@ -16,6 +16,7 @@ import { syncCitas } from "@/lib/offline/sync";
 import type { CitaLocal } from "@/lib/offline/db";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { rutas } from "@/lib/rutas";
+import { avisar, confirmar } from "@/lib/dialogo";
 
 const TIPO_LABEL: Record<CitaLocal["tipo"], string> = {
   NUEVA: "Nueva contrata",
@@ -50,7 +51,7 @@ export function CitaCard({
         : `/contratas/nueva?clienteId=${cita.clienteId}&citaId=${cita.id}`;
 
   async function descartar() {
-    if (!confirm(`¿Descartar la cita de ${cita.clienteNombre}?`)) return;
+    if (!(await confirmar(`¿Descartar la cita de ${cita.clienteNombre}?`, { aceptar: "Descartar", peligro: true }))) return;
     setDescartando(true);
     try {
       const r = await guardarOperacion({
@@ -60,7 +61,7 @@ export function CitaCard({
       });
       if (r.enServidor) await syncCitas(ownerId);
     } catch (e) {
-      alert(mensajeDeError(e, "No se pudo descartar"));
+      void avisar(mensajeDeError(e, "No se pudo descartar"));
     }
     setDescartando(false);
   }

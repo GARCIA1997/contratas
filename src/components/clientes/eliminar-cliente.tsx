@@ -8,6 +8,7 @@ import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 import { syncAll } from "@/lib/offline/sync";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { mensajeDeError } from "@/lib/offline/conexion";
+import { avisar, confirmar } from "@/lib/dialogo";
 
 export function EliminarCliente({
   id,
@@ -22,10 +23,10 @@ export function EliminarCliente({
 
   async function eliminar() {
     if (deshabilitado) {
-      alert("El cliente tiene contratas y no puede eliminarse.");
+      void avisar("El cliente tiene contratas y no puede eliminarse.");
       return;
     }
-    if (!confirm("¿Eliminar este cliente?")) return;
+    if (!(await confirmar("¿Eliminar este cliente?", { aceptar: "Eliminar", peligro: true }))) return;
     setBorrando(true);
 
     const ownerId = claims.ready ? claims.ownerId : null;
@@ -40,7 +41,7 @@ export function EliminarCliente({
       if (r.enServidor) router.refresh();
     } catch (e) {
       setBorrando(false);
-      alert(mensajeDeError(e, "No se pudo eliminar."));
+      void avisar(mensajeDeError(e, "No se pudo eliminar."));
     }
   }
 

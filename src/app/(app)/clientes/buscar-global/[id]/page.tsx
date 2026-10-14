@@ -14,6 +14,7 @@ import { syncAll } from "@/lib/offline/sync";
 import type { ClienteGlobalDetalle } from "@/lib/services/clientes-globales";
 import type { TipoContrata } from "@prisma/client";
 import { rutas } from "@/lib/rutas";
+import { confirmar } from "@/lib/dialogo";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -52,7 +53,7 @@ export default function ClienteGlobalDetallePage() {
   }, [params.id]);
 
   async function registrarEnMiCartera() {
-    const ok = confirm(
+    const ok = await confirmar(
       "Se creará un registro nuevo y limpio de este cliente en tu cartera (nombre, teléfono y dirección). No copia su historial de pagos ni contratas — podrás prestarle desde cero. ¿Continuar?"
     );
     if (!ok) return;

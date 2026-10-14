@@ -20,6 +20,7 @@ import { formatMoneda } from "@/lib/utils";
 import { enqueue } from "@/lib/offline/queue";
 import { syncDeudores } from "@/lib/offline/sync";
 import { rutas } from "@/lib/rutas";
+import { avisar, confirmar } from "@/lib/dialogo";
 
 type AbonoUI = {
   id: string;
@@ -122,8 +123,8 @@ export function DeudorDetalle({
   }
 
   async function eliminar() {
-    if (!confirm("¿Eliminar este deudor y su historial?")) return;
-    if (modoLocalActivo()) return alert("Enciende la sincronización para hacer este cambio.");
+    if (!(await confirmar("¿Eliminar este deudor y su historial?", { aceptar: "Eliminar", peligro: true }))) return;
+    if (modoLocalActivo()) return void avisar("Enciende la sincronización para hacer este cambio.");
     const res = await fetch(`/api/deudores/${deudor.id}`, { method: "DELETE" });
     if (res.ok) {
       // Igual que en cobro-vencido: el DELETE ya pasó en el servidor, pero
@@ -133,7 +134,7 @@ export function DeudorDetalle({
       router.push("/deudores");
       router.refresh();
     } else {
-      alert("No se pudo eliminar.");
+      void avisar("No se pudo eliminar.");
     }
   }
 
