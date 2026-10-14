@@ -8,8 +8,8 @@ import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
 import {
   CUPO_DIARIO,
   RECIBO_VIGENCIA_MS,
-  VENTANA_AGRUPACION_RECIBOS_MS,
   cupoPresentacion,
+  recibosListosEn,
   enHorario,
   espaciadoMs,
   esTransaccional,
@@ -95,21 +95,19 @@ async function intentarUno(
   const reciboLibre = (proximoRecibo.get(cuenta.id) ?? 0) <= ahoraMs;
   const generalLibre = (proximoEnvio.get(cuenta.id) ?? 0) <= ahoraMs;
   // Ventana deslizante: el último recibo PENDIENTE de cada teléfono decide
-  // cuándo salen todos (un cobro de varias contratas llega en milisegundos).
-  const ultimoReciboPor = new Map<string, number>();
-  for (const m of candidatos) {
-    if (m.tipo === "RECIBO") {
-      ultimoReciboPor.set(m.telefono, Math.max(ultimoReciboPor.get(m.telefono) ?? 0, m.creadoEn.getTime()));
-    }
-  }
+  // cuándo salen todos — incluidos los que llegaron de la cola offline y aún
+  // esperan su `programadoPara`, que no están entre los candidatos.
+  const recibosListos = recibosListosEn(
+    await prisma.mensajeWhatsApp.findMany({
+      where: { cuentaId: cuenta.id, estado: "PENDIENTE", tipo: "RECIBO" },
+      select: { telefono: true, creadoEn: true, programadoPara: true },
+    })
+  );
   const elegible = (m: MensajeWhatsApp) => {
     if (esTransaccional(m.tipo) && !reciboLibre) return false;
     if (!esTransaccional(m.tipo) && !generalLibre) return false;
     if (m.tipo === "RECIBO")
-      return (
-        cuenta.activo &&
-        (ultimoReciboPor.get(m.telefono) ?? m.creadoEn.getTime()) <= ahora.getTime() - VENTANA_AGRUPACION_RECIBOS_MS
-      );
+      return cuenta.activo && (recibosListos.get(m.telefono) ?? 0) <= ahora.getTime();
     if (esTransaccional(m.tipo)) return true;
     if (!hayCupo || !horario) return false;
     if (m.tipo === "POR_VENCER") return cuenta.activo && cuenta.porVencer;

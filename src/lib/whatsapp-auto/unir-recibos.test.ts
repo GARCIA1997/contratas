@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { unirRecibos } from "./unir-recibos";
-import { esTransaccional, enHorario } from "./reglas";
+import { esTransaccional, enHorario, recibosListosEn, VENTANA_SINCRONIZACION_MS } from "./reglas";
 
 const uno = (monto: number, cuota: number, abono: number, contrataId = `c${monto}`) => ({
   total: abono,
@@ -56,5 +56,23 @@ describe("mensajes de prueba", () => {
     expect(esTransaccional("PRUEBA")).toBe(true);
     expect(esTransaccional("VENCIDA")).toBe(false);
     expect(enHorario(new Date(2026, 9, 13, 22))).toBe(false);
+  });
+});
+
+describe("recibosListosEn (un solo recibo aunque se sincronice lento)", () => {
+  const t0 = new Date("2026-10-15T18:00:00Z").getTime();
+  const r = (tel: string, creadoS: number, programadoS = creadoS) => ({
+    telefono: tel,
+    creadoEn: new Date(t0 + creadoS * 1000),
+    programadoPara: new Date(t0 + programadoS * 1000),
+  });
+  it("con señal: 5 s después del último recibo del teléfono", () => {
+    expect(recibosListosEn([r("a", 0), r("a", 0.2)]).get("a")).toBe(t0 + 5200);
+  });
+  it("sincronizado lento: cada operación que llega reinicia la espera de 30 s", () => {
+    const v = VENTANA_SINCRONIZACION_MS / 1000;
+    const listos = recibosListosEn([r("a", 0, v), r("a", 12, 12 + v), r("b", 0)]);
+    expect(listos.get("a")).toBe(t0 + (12 + v) * 1000);
+    expect(listos.get("b")).toBe(t0 + 5000);
   });
 });

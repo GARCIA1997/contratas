@@ -4,7 +4,7 @@ import { mensajeCobro, mensajeReciboAbonoDeudor, type CobroContrata } from "@/li
 import type { DatosRecibo } from "./unir-recibos";
 import { claveOperacionActual, fechaCapturaActual } from "./contexto-operacion";
 import { normalizarTelefono } from "./telefono";
-import { PRIORIDAD } from "./reglas";
+import { CAPTURA_TARDIA_MS, PRIORIDAD, VENTANA_SINCRONIZACION_MS } from "./reglas";
 import { registrarBitacora } from "./bitacora";
 
 /**
@@ -127,7 +127,12 @@ async function prepararRecibo(opts: {
     if (optOut?.activo) return null;
 
     const texto = opts.texto(await nombreAppDe(opts.ownerId));
+    // Llegó por la cola offline: espera a que suban las demás operaciones
+    // del mismo cobro para salir en un solo recibo (ver recibosListosEn).
+    const captura = fechaCapturaActual();
+    const tardia = captura !== null && Date.now() - captura.getTime() > CAPTURA_TARDIA_MS;
     const data = {
+      ...(tardia ? { programadoPara: new Date(Date.now() + VENTANA_SINCRONIZACION_MS) } : {}),
       cuentaId: c.id,
       ownerId: c.ownerId,
       tipo: "RECIBO" as const,
