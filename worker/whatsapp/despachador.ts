@@ -404,6 +404,10 @@ async function motivoCancelarRecibo(ownerId: string, m: MensajeWhatsApp, ahora: 
       return "El cobro se revirtió antes de enviarse";
     }
   }
+  if (m.contrataId && m.claveDedupe.endsWith(SUFIJO_ENTREGA)) {
+    const contrata = await prisma.contrata.findFirst({ where: { id: m.contrataId, ownerId }, select: { id: true } });
+    if (!contrata) return "La contrata se borró antes de enviar el comprobante";
+  }
   if (m.abonoDeudorId) {
     const abono = await prisma.abonoDeudor.findFirst({ where: { id: m.abonoDeudorId, deudor: { ownerId } } });
     if (!abono) return "El abono ya no existe";

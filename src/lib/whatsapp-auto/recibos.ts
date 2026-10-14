@@ -71,6 +71,8 @@ async function prepararRecibo(opts: {
   texto: (nombreApp: string) => string;
   /** Distingue dos mensajes de la MISMA operación (p. ej. ":entrega"). */
   sufijo?: string;
+  /** Contrata a la que pertenece (comprobante de entrega: si se borra antes de salir, se cancela). */
+  contrataId?: string;
   /** Datos estructurados del recibo; se leen DESPUÉS de `texto`. */
   datos?: () => Prisma.InputJsonValue | undefined;
 }): Promise<ReciboPreparado | null> {
@@ -136,6 +138,7 @@ async function prepararRecibo(opts: {
       deudorId: opts.destinatario.deudorId ?? null,
       pagoIds: opts.pagoIds ?? [],
       abonoDeudorId: opts.abonoDeudorId ?? null,
+      contrataId: opts.contrataId ?? null,
       claveDedupe,
       texto,
       datos: opts.datos?.(),
@@ -189,12 +192,14 @@ export const SUFIJO_ENTREGA = ":entrega";
 export function prepararComprobanteEntrega(opts: {
   ownerId: string;
   cliente: { id: string; nombre: string; telefono: string | null };
+  contrataId: string;
   texto: (nombreApp: string) => string;
 }): Promise<ReciboPreparado | null> {
   return prepararRecibo({
     ownerId: opts.ownerId,
     destinatario: { clienteId: opts.cliente.id, nombre: opts.cliente.nombre, telefono: opts.cliente.telefono },
     sufijo: SUFIJO_ENTREGA,
+    contrataId: opts.contrataId,
     texto: opts.texto,
   });
 }

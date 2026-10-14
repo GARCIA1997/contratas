@@ -233,6 +233,7 @@ async function encolarRecibosDeEntrega(
     const entrega = await prepararComprobanteEntrega({
       ownerId,
       cliente,
+      contrataId: nueva.id,
       texto: (nombreApp) =>
         mensajeEntrega({
           nombreApp,
