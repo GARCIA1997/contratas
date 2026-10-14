@@ -2,9 +2,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { mensajeCobro, mensajeReciboAbonoDeudor, type CobroContrata } from "@/lib/mensajes-whatsapp";
 import type { DatosRecibo } from "./unir-recibos";
-import { claveOperacionActual } from "./contexto-operacion";
+import { claveOperacionActual, fechaCapturaActual } from "./contexto-operacion";
 import { normalizarTelefono } from "./telefono";
-import { PRIORIDAD } from "./reglas";
+import { CAPTURA_TARDIA_MS, PRIORIDAD, VENTANA_SINCRONIZACION_MS } from "./reglas";
 import { registrarBitacora } from "./bitacora";
 
 /**
@@ -69,11 +69,15 @@ async function prepararRecibo(opts: {
   pagoIds?: string[];
   abonoDeudorId?: string;
   texto: (nombreApp: string) => string;
+  /** Distingue dos mensajes de la MISMA operación (p. ej. ":entrega"). */
+  sufijo?: string;
+  /** Contrata a la que pertenece (comprobante de entrega: si se borra antes de salir, se cancela). */
+  contrataId?: string;
   /** Datos estructurados del recibo; se leen DESPUÉS de `texto`. */
   datos?: () => Prisma.InputJsonValue | undefined;
 }): Promise<ReciboPreparado | null> {
   const clave = claveOperacionActual() ?? globalThis.crypto.randomUUID();
-  const claveDedupe = `recibo:${clave}`;
+  const claveDedupe = `recibo:${clave}${opts.sufijo ?? ""}`;
   const contexto = { claveDedupe, destinatario: opts.destinatario.nombre, pagoIds: opts.pagoIds, abonoDeudorId: opts.abonoDeudorId };
   let cuenta: { id: string; ownerId: string } | null = null;
   let telefono: string | null = null;
@@ -123,7 +127,12 @@ async function prepararRecibo(opts: {
     if (optOut?.activo) return null;
 
     const texto = opts.texto(await nombreAppDe(opts.ownerId));
+    // Llegó por la cola offline: espera a que suban las demás operaciones
+    // del mismo cobro para salir en un solo recibo (ver recibosListosEn).
+    const captura = fechaCapturaActual();
+    const tardia = captura !== null && Date.now() - captura.getTime() > CAPTURA_TARDIA_MS;
     const data = {
+      ...(tardia ? { programadoPara: new Date(Date.now() + VENTANA_SINCRONIZACION_MS) } : {}),
       cuentaId: c.id,
       ownerId: c.ownerId,
       tipo: "RECIBO" as const,
@@ -134,6 +143,7 @@ async function prepararRecibo(opts: {
       deudorId: opts.destinatario.deudorId ?? null,
       pagoIds: opts.pagoIds ?? [],
       abonoDeudorId: opts.abonoDeudorId ?? null,
+      contrataId: opts.contrataId ?? null,
       claveDedupe,
       texto,
       datos: opts.datos?.(),
@@ -164,10 +174,64 @@ export function prepararReciboCobro(opts: {
     texto: (nombreApp) => {
       const { total, contratas } = opts.armar();
       datos = { total, contratas };
-      return mensajeCobro({ nombreApp, clienteNombre: opts.cliente.nombre, total, contratas });
+      return mensajeCobro({
+        nombreApp,
+        clienteNombre: opts.cliente.nombre,
+        total,
+        contratas,
+        fecha: fechaCapturaActual() ?? undefined,
+      });
     },
     datos: () => (datos ? (JSON.parse(JSON.stringify(datos)) as Prisma.InputJsonValue) : undefined),
   });
+}
+
+/** Sufijo de la clave del comprobante de entrega (la pantalla lo consulta con él). */
+export const SUFIJO_ENTREGA = ":entrega";
+
+/**
+ * Comprobante de entrega de una contrata (crear / renovar / unificar). Usa
+ * la misma Idempotency-Key de la operación con sufijo, porque esa operación
+ * puede llevar además el recibo de cobro de las otras contratas.
+ */
+export function prepararComprobanteEntrega(opts: {
+  ownerId: string;
+  cliente: { id: string; nombre: string; telefono: string | null };
+  contrataId: string;
+  texto: (nombreApp: string) => string;
+}): Promise<ReciboPreparado | null> {
+  return prepararRecibo({
+    ownerId: opts.ownerId,
+    destinatario: { clienteId: opts.cliente.id, nombre: opts.cliente.nombre, telefono: opts.cliente.telefono },
+    sufijo: SUFIJO_ENTREGA,
+    contrataId: opts.contrataId,
+    texto: opts.texto,
+  });
+}
+
+/**
+ * Encola recibos de una operación que YA quedó guardada (entregas: su
+ * transacción es interactiva y no admite la escritura del recibo adentro).
+ * Nunca lanza: lo guardado no se toca; si el recibo falla queda registrado y
+ * la pantalla ofrece el envío manual. Uno por uno y en orden, para que
+ * salgan en ese orden.
+ */
+export async function encolarRecibosAparte(recibos: (ReciboPreparado | null)[]): Promise<void> {
+  let alguno = false;
+  for (const r of recibos) {
+    if (!r) continue;
+    try {
+      if (!r.listo) {
+        await r.registrarFallo();
+        continue;
+      }
+      await r.escritura();
+      alguno = true;
+    } catch (e) {
+      if (r.listo) await r.registrarFallo(mensajeDe(e)).catch(() => undefined);
+    }
+  }
+  if (alguno) await prisma.$executeRaw`SELECT pg_notify('whatsapp_salida', '')`.catch(() => undefined);
 }
 
 export function prepararReciboAbonoDeudor(opts: {

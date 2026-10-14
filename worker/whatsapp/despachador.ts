@@ -8,12 +8,13 @@ import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
 import {
   CUPO_DIARIO,
   RECIBO_VIGENCIA_MS,
-  VENTANA_AGRUPACION_RECIBOS_MS,
   cupoPresentacion,
+  recibosListosEn,
   enHorario,
   espaciadoMs,
   esTransaccional,
 } from "@/lib/whatsapp-auto/reglas";
+import { SUFIJO_ENTREGA } from "@/lib/whatsapp-auto/recibos";
 import { unirRecibos } from "@/lib/whatsapp-auto/unir-recibos";
 import { lineaPresentacion, textoPresentacion } from "@/lib/whatsapp-auto/textos";
 import { normalizarTelefono } from "@/lib/whatsapp-auto/telefono";
@@ -94,21 +95,19 @@ async function intentarUno(
   const reciboLibre = (proximoRecibo.get(cuenta.id) ?? 0) <= ahoraMs;
   const generalLibre = (proximoEnvio.get(cuenta.id) ?? 0) <= ahoraMs;
   // Ventana deslizante: el último recibo PENDIENTE de cada teléfono decide
-  // cuándo salen todos (un cobro de varias contratas llega en milisegundos).
-  const ultimoReciboPor = new Map<string, number>();
-  for (const m of candidatos) {
-    if (m.tipo === "RECIBO") {
-      ultimoReciboPor.set(m.telefono, Math.max(ultimoReciboPor.get(m.telefono) ?? 0, m.creadoEn.getTime()));
-    }
-  }
+  // cuándo salen todos — incluidos los que llegaron de la cola offline y aún
+  // esperan su `programadoPara`, que no están entre los candidatos.
+  const recibosListos = recibosListosEn(
+    await prisma.mensajeWhatsApp.findMany({
+      where: { cuentaId: cuenta.id, estado: "PENDIENTE", tipo: "RECIBO" },
+      select: { telefono: true, creadoEn: true, programadoPara: true },
+    })
+  );
   const elegible = (m: MensajeWhatsApp) => {
     if (esTransaccional(m.tipo) && !reciboLibre) return false;
     if (!esTransaccional(m.tipo) && !generalLibre) return false;
     if (m.tipo === "RECIBO")
-      return (
-        cuenta.activo &&
-        (ultimoReciboPor.get(m.telefono) ?? m.creadoEn.getTime()) <= ahora.getTime() - VENTANA_AGRUPACION_RECIBOS_MS
-      );
+      return cuenta.activo && (recibosListos.get(m.telefono) ?? 0) <= ahora.getTime();
     if (esTransaccional(m.tipo)) return true;
     if (!hayCupo || !horario) return false;
     if (m.tipo === "POR_VENCER") return cuenta.activo && cuenta.porVencer;
@@ -134,9 +133,9 @@ async function intentarUno(
   }
 
   // Se juntan los avisos del mismo destinatario que pueden ir en un mensaje.
-  const familia = familiaDe(primero.tipo);
+  const familia = familiaDe(primero);
   const grupo = candidatos.filter(
-    (m) => m.telefono === primero.telefono && familiaDe(m.tipo) === familia && elegible(m) && (familia !== "unico" || m.id === primero.id)
+    (m) => m.telefono === primero.telefono && familiaDe(m) === familia && elegible(m) && (familia !== "unico" || m.id === primero.id)
   );
   const ids = grupo.map((m) => m.id);
   const tomados = await prisma.mensajeWhatsApp.updateMany({
@@ -238,9 +237,10 @@ async function intentarUno(
   return "enviado";
 }
 
-function familiaDe(tipo: TipoMensajeWhatsApp): "recibo" | "cuota" | "unico" {
-  if (tipo === "RECIBO") return "recibo";
-  if (tipo === "POR_VENCER" || tipo === "VENCIDA") return "cuota";
+function familiaDe(m: { tipo: TipoMensajeWhatsApp; claveDedupe: string }): "recibo" | "cuota" | "unico" {
+  // El comprobante de entrega es un documento aparte: va solo, no pegado a un recibo de cobro.
+  if (m.tipo === "RECIBO") return m.claveDedupe.endsWith(SUFIJO_ENTREGA) ? "unico" : "recibo";
+  if (m.tipo === "POR_VENCER" || m.tipo === "VENCIDA") return "cuota";
   return "unico";
 }
 
@@ -391,7 +391,7 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
 async function motivoCancelarRecibo(ownerId: string, m: MensajeWhatsApp, ahora: Date): Promise<string | null> {
   if (!m.texto) return "El recibo no se pudo preparar: mandarlo a mano";
   if (ahora.getTime() - m.creadoEn.getTime() > RECIBO_VIGENCIA_MS) {
-    return "Recibo con más de 24 h sin enviarse: mandarlo a mano";
+    return "Recibo con más de 7 días sin enviarse: mandarlo a mano";
   }
   if (m.pagoIds.length > 0) {
     const pagos = await prisma.pago.findMany({
@@ -401,6 +401,10 @@ async function motivoCancelarRecibo(ownerId: string, m: MensajeWhatsApp, ahora: 
     if (pagos.length !== m.pagoIds.length || pagos.some((p) => !p.pagado && p.montoAbonado <= 0)) {
       return "El cobro se revirtió antes de enviarse";
     }
+  }
+  if (m.contrataId && m.claveDedupe.endsWith(SUFIJO_ENTREGA)) {
+    const contrata = await prisma.contrata.findFirst({ where: { id: m.contrataId, ownerId }, select: { id: true } });
+    if (!contrata) return "La contrata se borró antes de enviar el comprobante";
   }
   if (m.abonoDeudorId) {
     const abono = await prisma.abonoDeudor.findFirst({ where: { id: m.abonoDeudorId, deudor: { ownerId } } });

@@ -52,6 +52,33 @@ export function siguienteApertura(ahora: Date): Date {
  */
 export const VENTANA_AGRUPACION_RECIBOS_MS = 5_000;
 
+/**
+ * Lo que se hizo sin señal sube operación por operación al sincronizar, y
+ * con red lenta entre una y otra pasan más de 5 s: esos recibos esperan
+ * esto para salir juntos, en un solo mensaje, igual que con señal.
+ */
+export const VENTANA_SINCRONIZACION_MS = 30_000;
+/** Una operación capturada hace más que esto llegó por la cola offline. */
+export const CAPTURA_TARDIA_MS = 60_000;
+
+/**
+ * Cuándo pueden salir los recibos de cada teléfono: hasta que pase la
+ * ventana del ÚLTIMO recibo pendiente (incluidos los que aún esperan su
+ * `programadoPara`). Así un recibo que llega después reinicia la espera de
+ * todos y salen en un solo mensaje.
+ */
+export function recibosListosEn(
+  pendientes: { telefono: string; creadoEn: Date; programadoPara: Date }[],
+  ventanaMs: number = VENTANA_AGRUPACION_RECIBOS_MS
+): Map<string, number> {
+  const listo = new Map<string, number>();
+  for (const r of pendientes) {
+    const t = Math.max(r.creadoEn.getTime() + ventanaMs, r.programadoPara.getTime());
+    listo.set(r.telefono, Math.max(listo.get(r.telefono) ?? 0, t));
+  }
+  return listo;
+}
+
 /** Pausa aleatoria entre un mensaje y el siguiente del mismo número, en ms. */
 export function espaciadoMs(tipo: TipoMensajeWhatsApp, azar: () => number = Math.random): number {
   const [min, max] =
@@ -106,8 +133,12 @@ export function umbralFreno(diasConEnvio: number): number {
 
 /* ── Pausas ──────────────────────────────────────────────────────────── */
 
-/** Al reanudar, los recibos que esperaron más que esto se cancelan (se mandan a mano). */
-export const RECIBO_VIGENCIA_MS = 24 * 60 * 60 * 1000;
+/**
+ * Recibos y comprobantes siguen siendo válidos aunque salgan tarde (worker
+ * caído, número desconectado o pausado): se mandan al reanudar. Solo pasado
+ * este tiempo se cancelan para mandarlos a mano.
+ */
+export const RECIBO_VIGENCIA_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * WhatsApp confirma cada mensaje en segundos. Uno "enviado" que pasó este

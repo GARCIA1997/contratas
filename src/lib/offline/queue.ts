@@ -244,7 +244,15 @@ async function enviar(op: WriteQueueItem): Promise<"ok" | "rechazada" | "reinten
     const { url, init } = peticionDe(op);
     res = await fetchConTimeout(
       url,
-      { ...init, headers: { ...(init.headers ?? {}), "Idempotency-Key": op.clave ?? op.id } },
+      {
+        ...init,
+        headers: {
+          ...(init.headers ?? {}),
+          "Idempotency-Key": op.clave ?? op.id,
+          // Para fechar el recibo automático con el momento real del cobro.
+          "X-Fecha-Captura": op.createdAt,
+        },
+      },
       TIMEOUT_ESCRITURA_MS
     );
   } catch (err) {

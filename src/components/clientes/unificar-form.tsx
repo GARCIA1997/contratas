@@ -93,6 +93,7 @@ export function UnificarForm({
     null
   );
   // Se congela al guardar: tras unificar, las contratas elegidas ya no tienen saldo.
+  const [claveRecibo, setClaveRecibo] = useState<string | null>(null);
   const [liquidado, setLiquidado] = useState({ saldo: 0, contratas: 0 });
   const [tipo, setTipo] = useState<TipoContrata>(contratas[0]?.tipo ?? "SEMANAL");
   const [monto, setMonto] = useState("");
@@ -218,9 +219,11 @@ export function UnificarForm({
     // elegibles y no sabe que esto fue una unificación.
     onUnificada?.();
 
+    const claveOp = idem.clave();
+    setClaveRecibo(claveOp);
     const r = await guardarOperacion<ResultadoRenovacion>({
       ownerId,
-      clave: idem.clave(),
+      clave: claveOp,
       lote: [
         {
           type: "cliente.unificar",
@@ -253,6 +256,7 @@ export function UnificarForm({
           contrata={unificada}
           tituloPanel="Contratas unificadas"
           tituloMensaje="Detalles de tu reestructuración"
+          auto={{ ownerId, clave: claveRecibo }}
           descuentos={{ liquidacionAnterior: liquidado.saldo, contratasAnteriores: liquidado.contratas }}
         />
         <Button variant="outline" className="w-full" asChild>

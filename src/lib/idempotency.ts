@@ -48,7 +48,8 @@ export async function withIdempotency<T>(
   const key = req.headers.get("Idempotency-Key");
   if (!key) return run();
   // El recibo automático de WhatsApp usa esta misma key como clave única.
-  const ejecutar = () => conClaveOperacion(key, run);
+  // Hora en que la cola offline capturó la operación (fecha del recibo).
+  const ejecutar = () => conClaveOperacion(key, run, req.headers.get("X-Fecha-Captura"));
 
   try {
     await prisma.processedOperation.create({

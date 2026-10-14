@@ -9,10 +9,14 @@ import { saldoPendiente, montoVencidoOVigente, cuotasVencidasOVigentes, errorDeM
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
 import {
   cobroDeContrata,
+  encolarRecibosAparte,
   guardarCobro,
+  prepararComprobanteEntrega,
   prepararReciboCobro,
   revertirRecibos,
 } from "@/lib/whatsapp-auto/recibos";
+import { anclarFechaCliente } from "@/lib/fechas";
+import { mensajeEntrega, type DescuentosEntrega } from "@/lib/mensajes-whatsapp";
 
 export type ContrataConDatos = Prisma.ContrataGetPayload<{
   include: { cliente: true; pagos: true };
@@ -206,7 +210,56 @@ export async function crearContrata(
     return creada;
   });
 
+  await encolarRecibosDeEntrega(ownerId, nueva, { cobroOtras: saldoOtras }, otras, hoy);
   return { ...nueva, otrasLiquidadas: desgloseOtrasLiquidadas(otras, hoy) };
+}
+
+/**
+ * Con WhatsApp automático: encola el comprobante de entrega de la contrata
+ * nueva y, si se cobró algo de sus otras contratas, el recibo de ese cobro.
+ * Son los mismos dos documentos que la pantalla ofrece mandar a mano. Va
+ * DESPUÉS de guardar y nunca lanza: la entrega ya quedó hecha.
+ */
+async function encolarRecibosDeEntrega(
+  ownerId: string,
+  nueva: ContrataConDatos,
+  descuentos: DescuentosEntrega,
+  otras: Awaited<ReturnType<typeof contratasConVencido>>,
+  hoy: Date
+): Promise<void> {
+  try {
+    const cliente = { id: nueva.cliente.id, nombre: nueva.cliente.nombre, telefono: nueva.cliente.telefono };
+    const desglose = desgloseOtrasLiquidadas(otras, hoy);
+    const entrega = await prepararComprobanteEntrega({
+      ownerId,
+      cliente,
+      contrataId: nueva.id,
+      texto: (nombreApp) =>
+        mensajeEntrega({
+          nombreApp,
+          clienteNombre: cliente.nombre,
+          tipo: nueva.tipo,
+          monto: nueva.monto,
+          abono: nueva.abono,
+          numCuotas: nueva.numCuotas,
+          descuentos,
+          fecha: hoy,
+          pagos: nueva.pagos.map((p) => ({ numeroCuota: p.numeroCuota, fecha: anclarFechaCliente(p.fechaProgramada) })),
+        }),
+    });
+    const cobro =
+      desglose.length > 0
+        ? await prepararReciboCobro({
+            ownerId,
+            cliente,
+            pagoIds: otras.flatMap((c) => cuotasVencidasOVigentes(c.pagos, hoy).map((p) => p.id)),
+            armar: () => ({ total: round2(desglose.reduce((s, c) => s + c.subtotal, 0)), contratas: desglose }),
+          })
+        : null;
+    await encolarRecibosAparte([entrega, cobro]);
+  } catch {
+    // El recibo nunca tumba la entrega: la pantalla ofrece mandarlo a mano.
+  }
 }
 
 type ActualizarInput = Partial<CrearInput>;
@@ -736,6 +789,14 @@ export async function renovarContrata(
     return nueva;
   });
 
+  await encolarRecibosDeEntrega(
+    ownerId,
+    resultado,
+    { liquidacionAnterior: round2(saldoOriginal), cobroOtras: round2(otras.reduce((s, c) => s + c.saldo, 0)) },
+    otras,
+    hoy
+  );
+
   return {
     nuevaContrata: resultado,
     montoEntregado: round2(input.monto - saldoTotal),
@@ -808,6 +869,14 @@ export async function unificarContratas(
     }
     return nueva;
   });
+
+  await encolarRecibosDeEntrega(
+    ownerId,
+    resultado,
+    { liquidacionAnterior: saldoTotal, contratasAnteriores: conSaldo.length },
+    [],
+    hoyDeCaptura(input.fechaCaptura)
+  );
 
   return {
     nuevaContrata: resultado,

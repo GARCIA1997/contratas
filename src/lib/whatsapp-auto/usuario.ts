@@ -110,14 +110,28 @@ async function canalCaido(ownerId: string): Promise<string | null> {
  */
 export async function estadoDeRecibos(
   ownerId: string,
-  claves: string[]
+  claves: string[],
+  telefono?: string | null
 ): Promise<{ estado: EstadoRecibo; motivo: string | null; canalCaido: string | null }> {
   if (claves.length === 0) return { estado: null, motivo: null, canalCaido: null };
   const filas = await prisma.mensajeWhatsApp.findMany({
     where: { ownerId, tipo: "RECIBO", claveDedupe: { in: claves.map((c) => `recibo:${c}`) } },
     select: { estado: true, motivo: true },
   });
-  if (filas.length === 0) return { estado: null, motivo: null, canalCaido: null };
+  if (filas.length === 0) {
+    // Quien respondió NO no recibe automáticos: la pantalla ofrece el manual de inmediato.
+    const tel = normalizarTelefono(telefono);
+    if (tel) {
+      const optOut = await prisma.optOutWhatsApp.findFirst({
+        where: { telefono: tel, activo: true, cuenta: { ownerId } },
+        select: { activo: true },
+      });
+      if (optOut) {
+        return { estado: "fallo", motivo: "El cliente pidió no recibir mensajes automáticos", canalCaido: null };
+      }
+    }
+    return { estado: null, motivo: null, canalCaido: null };
+  }
   const fallo = filas.find((f) => ["FALLIDO", "CANCELADO", "REVISAR"].includes(f.estado));
   if (fallo) return { estado: "fallo", motivo: fallo.motivo, canalCaido: null };
   if (filas.every((f) => f.estado === "ENVIADO")) return { estado: "enviado", motivo: null, canalCaido: null };

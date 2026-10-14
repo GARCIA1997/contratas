@@ -20,7 +20,9 @@ import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
  * llega dos veces el mismo recibo (riesgo aceptado).
  */
 
-const TIEMPO_MAX_MS = 40_000;
+// Holgado: una entrega manda dos mensajes espaciados (comprobante y recibo). Si el
+// servicio está caído no se espera esto: el servidor lo avisa de inmediato.
+const TIEMPO_MAX_MS = 75_000;
 const CADA_MS = 2_000;
 /** El "enviado" es solo una confirmación: se quita solo. */
 const OCULTAR_ENVIADO_MS = 4_000;
@@ -43,8 +45,10 @@ type Fase =
 async function sigueEnElTelefono(claves: string[]): Promise<boolean> {
   const database = db;
   if (!database) return false;
+  // El comprobante de entrega usa la clave de la operación con sufijo (":entrega").
+  const bases = claves.map((c) => c.split(":")[0]);
   const ops = await database.writeQueue
-    .filter((op) => claves.includes(op.clave ?? op.id) && op.status !== "conflict")
+    .filter((op) => bases.includes(op.clave ?? op.id) && op.status !== "conflict")
     .count();
   return ops > 0;
 }
@@ -90,7 +94,8 @@ export function SeguimientoRecibo({
       desde ??= Date.now();
       setFase((f) => (f.tipo === "en_telefono" ? { tipo: "enviando" } : f));
       try {
-        const r = await fetch(`/api/whatsapp/recibos?claves=${encodeURIComponent(lista.join(","))}`, { cache: "no-store" });
+        const qs = new URLSearchParams({ claves: lista.join(","), ...(telefono ? { telefono } : {}) });
+        const r = await fetch(`/api/whatsapp/recibos?${qs.toString()}`, { cache: "no-store" });
         const j = r.ok
           ? ((await r.json()) as {
               estado: "enviando" | "enviado" | "fallo" | null;
@@ -120,7 +125,7 @@ export function SeguimientoRecibo({
       vivo = false;
       clearTimeout(t);
     };
-  }, [aplica, claveDeps]);
+  }, [aplica, claveDeps, telefono]);
 
   useEffect(() => {
     if (fase.tipo !== "enviado") return;
@@ -138,29 +143,29 @@ export function SeguimientoRecibo({
   if (fase.tipo === "en_telefono") {
     return (
       <Aviso tono="neutro" icono={<Smartphone className="size-4" />}>
-        Cobro guardado en el teléfono. El recibo se enviará solo por WhatsApp en cuanto se sincronice.
+        Guardado en el teléfono. Se enviará solo por WhatsApp en cuanto se sincronice.
       </Aviso>
     );
   }
   if (fase.tipo === "enviando") {
     return (
       <Aviso tono="neutro" icono={<Loader2 className="size-4 animate-spin" />}>
-        Enviando recibo por WhatsApp…
+        Enviando por WhatsApp…
       </Aviso>
     );
   }
   if (fase.tipo === "enviado") {
     return (
       <Aviso tono="ok" icono={<CircleCheck className="size-4" />}>
-        Recibo enviado por WhatsApp.
+        Enviado por WhatsApp.
       </Aviso>
     );
   }
   return (
     <div className="space-y-2">
       <Aviso tono="error" icono={<CircleX className="size-4" />}>
-        <span className="font-semibold">Falló el envío automático del recibo.</span> El cobro sí quedó
-        registrado. Envía el recibo manualmente.
+        <span className="font-semibold">Falló el envío automático.</span> Lo que registraste sí quedó
+        guardado. Envíalo manualmente.
         {fase.motivo && <span className="mt-0.5 block opacity-80">({fase.motivo})</span>}
       </Aviso>
       {botonManual}

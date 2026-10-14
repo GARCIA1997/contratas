@@ -150,6 +150,7 @@ export function ContrataForm({
   const enCurso = useRef(false);
   /** Contrata recién creada: cambia el formulario por el panel de entrega. */
   const [creada, setCreada] = useState<ContrataCreada | null>(null);
+  const [claveRecibo, setClaveRecibo] = useState<string | null>(null);
 
   const sugerencias = useMemo(() => {
     const q = clienteQuery.trim().toLowerCase();
@@ -321,9 +322,11 @@ export function ContrataForm({
         })
       : null;
 
+    const claveOp = idem.clave();
+    setClaveRecibo(claveOp);
     const r = await guardarOperacion<ContrataCreada>({
       ownerId,
-      clave: idem.clave(),
+      clave: claveOp,
       lote: [
         {
           type: "contrata.crear",
@@ -361,7 +364,7 @@ export function ContrataForm({
   const cubreOtras = !incluirOtras || montoNumPreview >= saldoOtras;
 
   if (creada) {
-    return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} />;
+    return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} auto={{ ownerId, clave: claveRecibo }} />;
   }
 
   return (
