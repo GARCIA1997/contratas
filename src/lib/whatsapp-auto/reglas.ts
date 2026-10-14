@@ -106,8 +106,12 @@ export function umbralFreno(diasConEnvio: number): number {
 
 /* ── Pausas ──────────────────────────────────────────────────────────── */
 
-/** Al reanudar, los recibos que esperaron más que esto se cancelan (se mandan a mano). */
-export const RECIBO_VIGENCIA_MS = 24 * 60 * 60 * 1000;
+/**
+ * Recibos y comprobantes siguen siendo válidos aunque salgan tarde (worker
+ * caído, número desconectado o pausado): se mandan al reanudar. Solo pasado
+ * este tiempo se cancelan para mandarlos a mano.
+ */
+export const RECIBO_VIGENCIA_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * WhatsApp confirma cada mensaje en segundos. Uno "enviado" que pasó este

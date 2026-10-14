@@ -242,6 +242,7 @@ async function encolarRecibosDeEntrega(
           abono: nueva.abono,
           numCuotas: nueva.numCuotas,
           descuentos,
+          fecha: hoy,
           pagos: nueva.pagos.map((p) => ({ numeroCuota: p.numeroCuota, fecha: anclarFechaCliente(p.fechaProgramada) })),
         }),
     });
@@ -873,7 +874,7 @@ export async function unificarContratas(
     resultado,
     { liquidacionAnterior: saldoTotal, contratasAnteriores: conSaldo.length },
     [],
-    new Date()
+    hoyDeCaptura(input.fechaCaptura)
   );
 
   return {

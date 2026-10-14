@@ -393,7 +393,7 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
 async function motivoCancelarRecibo(ownerId: string, m: MensajeWhatsApp, ahora: Date): Promise<string | null> {
   if (!m.texto) return "El recibo no se pudo preparar: mandarlo a mano";
   if (ahora.getTime() - m.creadoEn.getTime() > RECIBO_VIGENCIA_MS) {
-    return "Recibo con más de 24 h sin enviarse: mandarlo a mano";
+    return "Recibo con más de 7 días sin enviarse: mandarlo a mano";
   }
   if (m.pagoIds.length > 0) {
     const pagos = await prisma.pago.findMany({

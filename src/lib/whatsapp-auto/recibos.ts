@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { mensajeCobro, mensajeReciboAbonoDeudor, type CobroContrata } from "@/lib/mensajes-whatsapp";
 import type { DatosRecibo } from "./unir-recibos";
-import { claveOperacionActual } from "./contexto-operacion";
+import { claveOperacionActual, fechaCapturaActual } from "./contexto-operacion";
 import { normalizarTelefono } from "./telefono";
 import { PRIORIDAD } from "./reglas";
 import { registrarBitacora } from "./bitacora";
@@ -166,7 +166,13 @@ export function prepararReciboCobro(opts: {
     texto: (nombreApp) => {
       const { total, contratas } = opts.armar();
       datos = { total, contratas };
-      return mensajeCobro({ nombreApp, clienteNombre: opts.cliente.nombre, total, contratas });
+      return mensajeCobro({
+        nombreApp,
+        clienteNombre: opts.cliente.nombre,
+        total,
+        contratas,
+        fecha: fechaCapturaActual() ?? undefined,
+      });
     },
     datos: () => (datos ? (JSON.parse(JSON.stringify(datos)) as Prisma.InputJsonValue) : undefined),
   });
