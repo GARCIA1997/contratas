@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { confirmar } from "@/lib/dialogo";
 
 async function enviar(cuerpo: object) {
   const res = await fetch("/api/monitor/calidad", {
@@ -49,7 +50,7 @@ export function RestaurarIgnorados({ revision, cuantos }: { revision: string; cu
         type="button"
         disabled={enviando}
         onClick={async () => {
-          if (!confirm("¿Volver a mostrar los casos ignorados de esta revisión?")) return;
+          if (!(await confirmar("¿Volver a mostrar los casos ignorados de esta revisión?"))) return;
           setEnviando(true);
           try {
             await enviar({ accion: "restaurar", revision });

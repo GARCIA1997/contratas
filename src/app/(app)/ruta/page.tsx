@@ -38,6 +38,7 @@ import {
 } from "@/lib/citas";
 import type { ParadaRuta } from "@/lib/services/ruta";
 import { rutas } from "@/lib/rutas";
+import { avisar } from "@/lib/dialogo";
 
 /** Para el mensaje de "no hay entregas X pendientes". */
 const ETIQUETA_FILTRO: Record<FiltroPeriodicidad, string> = {
@@ -242,7 +243,7 @@ export default function RutaDelDiaPage() {
       // Todas las cuotas del cliente o ninguna: si el límite de movimientos
       // sin sincronizar cortara a la mitad, quedaría medio cobrado.
       if ((await espacioEnCola(ownerId as string)) < parada.cuotas.length) {
-        alert(new LimiteOfflineError().message);
+        void avisar(new LimiteOfflineError().message);
         return;
       }
       const claves: string[] = [];

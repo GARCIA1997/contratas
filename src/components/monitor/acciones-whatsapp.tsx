@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { avisar, confirmar as pedirConfirmacion } from "@/lib/dialogo";
 
 async function enviar(cuerpo: object) {
   const res = await fetch("/api/monitor/whatsapp", {
@@ -46,13 +47,13 @@ export function BotonAccion({
       disabled={ocupado}
       className={cn(BOTON, TONOS[tono])}
       onClick={async () => {
-        if (confirmar && !confirm(confirmar)) return;
+        if (confirmar && !(await pedirConfirmacion(confirmar))) return;
         setOcupado(true);
         try {
           await enviar(cuerpo);
           router.refresh();
         } catch (e) {
-          alert(e instanceof Error ? e.message : "Error");
+          void avisar(e instanceof Error ? e.message : "Error");
         } finally {
           setOcupado(false);
         }
@@ -236,13 +237,13 @@ export function FormCambiarNumero({ cuentaId }: { cuentaId: string }) {
       className="flex items-center gap-space-xs"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!confirm("Se desvincula el número actual, se cancela lo pendiente y el nuevo empieza de cero (calentamiento y presentación). ¿Continuar?")) return;
+        if (!(await pedirConfirmacion("Se desvincula el número actual, se cancela lo pendiente y el nuevo empieza de cero (calentamiento y presentación). ¿Continuar?"))) return;
         try {
           await enviar({ accion: "cambiar_numero", cuentaId, numero });
           setAbierto(false);
           router.refresh();
         } catch (err) {
-          alert(err instanceof Error ? err.message : "Error");
+          void avisar(err instanceof Error ? err.message : "Error");
         }
       }}
     >
@@ -319,7 +320,7 @@ export function IniciarCampana({ cuentaId }: { cuentaId: string }) {
               setLista(null);
               router.refresh();
             } catch (e) {
-              alert(e instanceof Error ? e.message : "Error");
+              void avisar(e instanceof Error ? e.message : "Error");
             }
           }}
         >
@@ -356,7 +357,7 @@ export function FormPrueba({ cuentaId, aviso }: { cuentaId: string; aviso: strin
       className="flex flex-col gap-space-sm"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!confirm(`Se enviará un mensaje real de WhatsApp a ${telefono}. ¿Continuar?`)) return;
+        if (!(await pedirConfirmacion(`Se enviará un mensaje real de WhatsApp a ${telefono}. ¿Continuar?`))) return;
         setEnviando(true);
         setEstado(null);
         try {

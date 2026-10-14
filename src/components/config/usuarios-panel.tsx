@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { avisar, confirmar } from "@/lib/dialogo";
 
 type Usuario = {
   id: string;
@@ -65,24 +66,24 @@ export function UsuariosPanel({
   }
 
   async function cambiarRol(id: string, nuevoRol: "ADMIN" | "VIEWER") {
-    if (modoLocalActivo()) return alert("Enciende la sincronización para hacer este cambio.");
+    if (modoLocalActivo()) return void avisar("Enciende la sincronización para hacer este cambio.");
     const res = await fetch(`/api/usuarios/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ rol: nuevoRol }),
     });
     if (res.ok) router.refresh();
-    else alert("No se pudo cambiar el rol.");
+    else void avisar("No se pudo cambiar el rol.");
   }
 
   async function eliminar(id: string) {
-    if (!confirm("¿Eliminar este usuario? Se borran también sus datos.")) return;
-    if (modoLocalActivo()) return alert("Enciende la sincronización para hacer este cambio.");
+    if (!(await confirmar("¿Eliminar este usuario? Se borran también sus datos.", { aceptar: "Eliminar", peligro: true }))) return;
+    if (modoLocalActivo()) return void avisar("Enciende la sincronización para hacer este cambio.");
     const res = await fetch(`/api/usuarios/${id}`, { method: "DELETE" });
     if (res.ok) router.refresh();
     else {
       const data = await res.json().catch(() => ({}));
-      alert(data.error ?? "No se pudo eliminar.");
+      void avisar(data.error ?? "No se pudo eliminar.");
     }
   }
 

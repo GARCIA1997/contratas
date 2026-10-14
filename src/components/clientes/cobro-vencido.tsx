@@ -16,6 +16,7 @@ import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { getCobroVencidoDetalle } from "@/lib/offline/repo";
+import { confirmar } from "@/lib/dialogo";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
   SEMANAL: "Semanal",
@@ -76,7 +77,7 @@ export function CobroVencido({
 
   async function cobrar(opts?: { esReintento?: boolean }) {
     if (!opts?.esReintento) {
-      const ok = confirm(
+      const ok = await confirmar(
         `Vas a registrar el pago completo de ${cuotas} cuota(s) por un total de ${formatMoneda(total)} (incluye vencidas y próximas a vencer). ¿Confirmar?`
       );
       if (!ok) return;

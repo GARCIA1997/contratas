@@ -12,6 +12,7 @@ import { OfflineToast } from "@/components/offline/offline-toast";
 import { InstalarAndroidBanner } from "@/components/pwa/instalar-android-banner";
 import { VersionBadge } from "@/components/version-badge";
 import { AbrirEnAppElegida } from "@/components/whatsapp/abrir-en-app-elegida";
+import { DialogoGlobal } from "@/components/ui/dialogo-global";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
 
 export default function AppLayout({
@@ -44,6 +45,7 @@ export default function AppLayout({
     // el ancho disponible en vez de quedar centrado a 512px. Sin prefijo
     // `md:`/`lg:` nada cambia — el celular queda pixel-igual.
     <div className="min-h-dvh md:flex">
+      <DialogoGlobal />
       <OfflineToast />
       <InstalarAndroidBanner />
       <OfflineBootstrap ownerId={ownerId} />
