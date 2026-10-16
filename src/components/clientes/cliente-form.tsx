@@ -15,6 +15,9 @@ import { useIdempotencia } from "@/lib/offline/use-idempotencia";
 import { rutas } from "@/lib/rutas";
 import { verificarClienteNuevo, type Verificacion } from "@/lib/offline/verificar-cliente";
 import { AvisoClienteExistente } from "@/components/clientes/aviso-cliente-existente";
+import { PresentacionCliente } from "@/components/clientes/presentacion-cliente";
+import { CheckCircle2 } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 
 export type ClienteInicial = {
   id: string;
@@ -39,6 +42,8 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [aviso, setAviso] = useState<Exclude<Verificacion, { tipo: "nuevo" }> | null>(null);
+  // Alta recién hecha: antes de ir al cliente se ofrece el mensaje de presentación.
+  const [creado, setCreado] = useState<{ id: string; nombre: string; telefono: string | null } | null>(null);
   // Candado síncrono: dos toques seguidos en "Crear" llegaban a disparar dos
   // altas antes de que el botón se deshabilitara (el estado tarda un render).
   const enCurso = useRef(false);
@@ -96,6 +101,10 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
       });
       idem.confirmado();
       if (r.enServidor && ownerId) await syncAll(ownerId, { forzar: true });
+      if (!editando) {
+        setCreado({ id, nombre: datos.nombre, telefono: datos.telefono });
+        return;
+      }
       router.push(rutas.cliente(id));
       if (r.enServidor) router.refresh();
     } catch (e) {
@@ -104,6 +113,27 @@ export function ClienteForm({ inicial }: { inicial?: ClienteInicial }) {
       setGuardando(false);
       enCurso.current = false;
     }
+  }
+
+  if (creado) {
+    return (
+      <div className="space-y-4 md:max-w-xl">
+        <Card className="border-pagado/30">
+          <CardContent className="flex flex-col items-center gap-2 p-5 text-center">
+            <CheckCircle2 className="size-10 text-pagado" />
+            <h2 className="text-lg font-semibold">Cliente registrado</h2>
+            <p className="text-sm text-muted-foreground">{creado.nombre}</p>
+          </CardContent>
+        </Card>
+        <PresentacionCliente cliente={creado} />
+        <Button variant="outline" className="w-full" asChild>
+          <Link href={rutas.cliente(creado.id)}>Ver el cliente</Link>
+        </Button>
+        <Button variant="ghost" className="w-full" asChild>
+          <Link href={`/contratas/nueva?clienteId=${creado.id}`}>Entregarle una contrata</Link>
+        </Button>
+      </div>
+    );
   }
 
   return (

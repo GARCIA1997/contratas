@@ -4,6 +4,7 @@ import {
   mensajeCobro,
   mensajeDetalleContrata,
   mensajeEntrega,
+  mensajePresentacionCliente,
   mensajeEstadoCuenta,
   mensajeEstadoCuentaDeudor,
   mensajeRecordatorio,
@@ -693,5 +694,17 @@ describe("mensajeEntrega — lo que el cliente recibe en mano", () => {
     expect(mensajeEntrega({ ...base, descuentos: { cobroOtras: 820 } })).toContain("RECIBES EN MANO: $680.00");
     const u = mensajeEntrega({ ...base, descuentos: { liquidacionAnterior: 1000, contratasAnteriores: 2 } });
     expect(u).toContain("Liquidación de tus 2 contratas anteriores: $1,000.00");
+  });
+});
+
+describe("mensajePresentacionCliente", () => {
+  it("se presenta con el nombre de quien registra y el del negocio", () => {
+    const t = mensajePresentacionCliente({ nombreApp: "Kredired", clienteNombre: "leticia álvarez", remitente: "Alejandro" });
+    expect(t).toContain("Hola Leticia 👋");
+    expect(t).toContain("Le escribe *Alejandro* de *Kredired*");
+    expect(t).toContain("guardar este número");
+  });
+  it("sin nombre de quien registra habla en nombre del negocio", () => {
+    expect(mensajePresentacionCliente({ nombreApp: "Kredired", clienteNombre: "Ana" })).toContain("Le escribimos de *Kredired*");
   });
 });
