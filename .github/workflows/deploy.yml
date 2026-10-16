@@ -30,8 +30,11 @@ jobs:
           script: |
             set -e
             cd ~/kredired
+            ANTERIOR=$(git rev-parse HEAD)
             git fetch origin
             git reset --hard origin/main
             sudo docker compose build app
             sudo docker compose up -d
+            # El worker de WhatsApp solo se reconstruye si cambió su código.
+            bash deploy/actualizar-worker.sh "$ANTERIOR"
             sudo docker image prune -f

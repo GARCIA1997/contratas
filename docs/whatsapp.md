@@ -434,7 +434,9 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 
 ### Actualizar el worker
 
-El deploy automático **no** lo reinicia (a propósito). Para no olvidarlo, la app y el worker calculan una **huella** del código que usa el worker (lista única en `worker/whatsapp/huella.mjs`): la app al construirse, el worker al arrancar. El encabezado del monitor muestra las dos (`código app … · worker …`) y, si no coinciden, aparece una alerta roja con el comando. Ahí se repite el paso 4. La sesión queda en la BD: reconecta sola, sin volver a vincular.
+El deploy lo reconstruye **solo cuando cambió el código que usa** (`deploy/actualizar-worker.sh`): compara contra el commit con el que se construyó la última vez (`~/kredired/.worker-commit` en el VPS) usando la lista de `worker/whatsapp/huella.mjs`. Si no cambió nada, no lo toca: cada reinicio es una reconexión, y las reconexiones son señal de riesgo para el número. La sesión queda en la BD: reconecta sola, sin volver a vincular.
+
+Respaldo por si algo se sale de ese camino: la app y el worker calculan una **huella** de ese mismo código (la app al construirse, el worker al arrancar). El encabezado del monitor muestra las dos (`código app … · worker …`) y, si no coinciden, aparece una alerta roja con el comando. Ahí se repite el paso 4.
 
 Si el worker empieza a importar otro archivo de la app, agrégalo a `ARCHIVOS_DEL_WORKER` en `huella.mjs`.
 
@@ -447,6 +449,8 @@ Cada 5 minutos el crontab del VPS llama `/api/cron/whatsapp-alertas` y, si hay u
 - una sesión con sesión guardada lleva más de 10 minutos caída (una cuenta desvinculada a propósito no avisa);
 - el freno pausó una campaña;
 - el worker está desactualizado.
+
+Para comprobar que te llegan: botón **Probar aviso** en el encabezado de Monitor → WhatsApp. Manda un push solo a tus dispositivos y dice si no tienes ninguno suscrito (o si son suscripciones antiguas, que no reciben estos avisos).
 
 Para activarlo:
 1. Agregar la línea de `deploy/crontab.example` al crontab del VPS (`crontab -e`), con el `CRON_SECRET` real.

@@ -7,6 +7,7 @@ import {
   BotonAccion,
   FormCambiarNumero,
   FormPrueba,
+  ProbarAviso,
   BarraCuentas,
   IniciarCampana,
   RefrescoRapido,
@@ -92,6 +93,7 @@ export default async function WhatsAppPage({
           panel.huellaApp && panel.huellaWorker && panel.huellaApp !== panel.huellaWorker ? " ⚠ desactualizado" : ""
         }`}
       >
+        <ProbarAviso />
         {panel.paroGlobal ? (
           <BotonAccion cuerpo={{ accion: "paro_global", activo: false }} texto="Quitar paro global" icono="play_arrow" tono="primario" confirmar="¿Reanudar los envíos de todos los números?" />
         ) : (

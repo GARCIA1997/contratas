@@ -34,9 +34,10 @@ services:
       - "3000:3000"
 
   # Worker de WhatsApp automático (docs/whatsapp.md). Va en un perfil
-  # aparte a propósito: el deploy normal (`docker compose up -d`) NO lo
-  # levanta ni lo reinicia — las reconexiones frecuentes son señal de riesgo
-  # para el número. Se arranca/actualiza a mano:
+  # aparte a propósito: `docker compose up -d` NO lo levanta ni lo reinicia
+  # — las reconexiones frecuentes son señal de riesgo para el número. El
+  # deploy lo reconstruye solo cuando cambió su código
+  # (deploy/actualizar-worker.sh). A mano:
   #   sudo docker compose --profile whatsapp build whatsapp
   #   sudo docker compose --profile whatsapp up -d whatsapp
   whatsapp:
