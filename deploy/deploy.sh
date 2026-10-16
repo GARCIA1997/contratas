@@ -15,10 +15,12 @@ VPS_USER="deploy"
 ssh "${VPS_USER}@${VPS_HOST}" '
   set -e
   cd ~/kredired
+  ANTERIOR=$(git rev-parse HEAD)
   git fetch origin
   git reset --hard origin/main
   sudo docker compose build app
   sudo docker compose up -d
+  bash deploy/actualizar-worker.sh "$ANTERIOR"
   sudo docker image prune -f
   echo "--- estado ---"
   sudo docker compose ps

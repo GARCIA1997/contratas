@@ -406,3 +406,56 @@ export function FormPrueba({ cuentaId, aviso }: { cuentaId: string; aviso: strin
     </form>
   );
 }
+
+/**
+ * Manda un push de prueba a tus dispositivos: confirma que te llegarán los
+ * avisos de incidentes (worker caído, sesión cerrada, mensajes rechazados).
+ */
+export function ProbarAviso() {
+  const [ocupado, setOcupado] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={ocupado}
+      className={cn(BOTON, TONOS.normal)}
+      onClick={async () => {
+        setOcupado(true);
+        try {
+          const res = await fetch("/api/monitor/push-prueba", { method: "POST" });
+          const j = (await res.json().catch(() => ({}))) as {
+            enviadas?: number;
+            dispositivos?: number;
+            antiguas?: number;
+            deshabilitado?: boolean;
+            error?: string;
+          };
+          if (!res.ok) throw new Error(j.error ?? "No se pudo enviar");
+          if (j.deshabilitado) {
+            await avisar("Los avisos push no están configurados en el servidor (faltan las llaves VAPID).");
+          } else if (!j.dispositivos) {
+            await avisar(
+              j.antiguas
+                ? `Hay ${j.antiguas} dispositivo(s) con notificaciones activadas antes de la versión que avisa por persona: a esos NO les llegan los avisos del monitor. En tu celular desactiva y vuelve a activar las notificaciones de la app, y prueba otra vez.`
+                : "No tienes ningún dispositivo suscrito a los avisos. Abre la app en tu celular, entra con tu usuario y activa las notificaciones; luego vuelve a probar."
+            );
+          } else if (!j.enviadas) {
+            await avisar(
+              `No se pudo entregar a tus ${j.dispositivos} dispositivo(s): la suscripción caducó. Vuelve a activar las notificaciones en la app del celular.`
+            );
+          } else {
+            await avisar(
+              `Aviso enviado a ${j.enviadas} de ${j.dispositivos} dispositivo(s). Si no aparece en tu celular en unos segundos, revisa los permisos de notificaciones de la app.`
+            );
+          }
+        } catch (e) {
+          await avisar(e instanceof Error ? e.message : "No se pudo enviar");
+        } finally {
+          setOcupado(false);
+        }
+      }}
+    >
+      <span className="material-symbols-outlined text-[16px]">notifications_active</span>
+      {ocupado ? "Enviando…" : "Probar aviso"}
+    </button>
+  );
+}
