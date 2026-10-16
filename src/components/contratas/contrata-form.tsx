@@ -151,6 +151,7 @@ export function ContrataForm({
   /** Contrata recién creada: cambia el formulario por el panel de entrega. */
   const [creada, setCreada] = useState<ContrataCreada | null>(null);
   const [claveRecibo, setClaveRecibo] = useState<string | null>(null);
+  const [conClienteNuevo, setConClienteNuevo] = useState(false);
 
   const sugerencias = useMemo(() => {
     const q = clienteQuery.trim().toLowerCase();
@@ -310,6 +311,7 @@ export function ContrataForm({
     const clienteNuevo =
       clienteMode === "nuevo" ? { id: crypto.randomUUID(), nombre: clienteNombre.trim() } : null;
     const liquidaOtras = clienteMode === "existente" && incluirOtras;
+    setConClienteNuevo(Boolean(clienteNuevo));
 
     const entrega = ownerId
       ? await prepararEntregaLocal(ownerId, {
@@ -364,7 +366,7 @@ export function ContrataForm({
   const cubreOtras = !incluirOtras || montoNumPreview >= saldoOtras;
 
   if (creada) {
-    return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} auto={{ ownerId, clave: claveRecibo }} />;
+    return <ContrataCreadaPanel nombreApp={nombreApp} contrata={creada} auto={{ ownerId, clave: claveRecibo }} clienteNuevo={conClienteNuevo} />;
   }
 
   return (
