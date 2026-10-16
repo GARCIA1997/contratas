@@ -9,6 +9,7 @@ import {
 import { ReciboOtrasLiquidadasPanel } from "@/components/contratas/recibo-otras-liquidadas";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
 import { rutas } from "@/lib/rutas";
+import { PresentacionCliente } from "@/components/clientes/presentacion-cliente";
 
 export type ContrataCreada = ContrataEntregada & {
   id: string;
@@ -33,14 +34,18 @@ export function ContrataCreadaPanel({
   nombreApp,
   contrata,
   auto,
+  clienteNuevo = false,
 }: {
   nombreApp: string;
   contrata: ContrataCreada;
+  /** El cliente se dio de alta junto con esta contrata: se ofrece su presentación. */
+  clienteNuevo?: boolean;
   /** Con WhatsApp automático: clave de la operación para seguir el envío (el manual queda de respaldo). */
   auto?: { ownerId: string | null | undefined; clave: string | null };
 }) {
   return (
     <div className="space-y-4">
+      {clienteNuevo && <PresentacionCliente cliente={contrata.cliente} />}
       <ReciboEntregaPanel
         nombreApp={nombreApp}
         contrata={contrata}

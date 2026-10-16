@@ -213,6 +213,42 @@ export function mensajeCobro(opts: {
   });
 }
 
+/* ── Presentación a un cliente nuevo ───────────────────────────────────── */
+
+/**
+ * Mensaje que se ofrece al registrar un cliente: quién le escribe y para qué
+ * usará este número. Se manda a mano y está para todos (con o sin WhatsApp
+ * automático): es el primer contacto, el que hace que el cliente guarde el
+ * número y reconozca los recibos que vendrán.
+ */
+export function mensajePresentacionCliente(opts: {
+  nombreApp: string;
+  clienteNombre: string;
+  /** Primer nombre de quien registra (ya depurado: sin correos ni números). */
+  remitente?: string | null;
+}): string {
+  const nombre = opts.clienteNombre.trim().split(/\s+/)[0] ?? "";
+  const saludo = nombre ? `Hola ${nombre.charAt(0).toUpperCase()}${nombre.slice(1).toLowerCase()} 👋` : "Hola 👋";
+  return envolver({
+    nombreApp: opts.nombreApp,
+    icono: "👋",
+    titulo: "Bienvenida",
+    cuerpo: [
+      saludo,
+      ``,
+      opts.remitente
+        ? `Le escribe *${opts.remitente}* de *${opts.nombreApp}*. Ya forma parte de nuestros clientes.`
+        : `Le escribimos de *${opts.nombreApp}*. Ya forma parte de nuestros clientes.`,
+      ``,
+      `📲 Por este número le enviaremos sus *comprobantes de pago*, el *detalle de sus préstamos* y *avisos* de sus próximos pagos.`,
+      ``,
+      `💾 Le recomendamos *guardar este número* en sus contactos para reconocer nuestros mensajes.`,
+      ``,
+    ],
+    cierre: [`🙏 *¡Gracias por su confianza!*`, ``],
+  });
+}
+
 /* ── Comprobante de entrega ─────────────────────────────────────────────── */
 
 /** Fechas que se listan al inicio antes de resumir (ver regla 4 arriba). */
