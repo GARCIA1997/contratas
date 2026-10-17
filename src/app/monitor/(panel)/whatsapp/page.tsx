@@ -261,12 +261,19 @@ export default async function WhatsAppPage({
                 valor={`${numero(d.porTipoHoy.reduce((s, x) => s + x.n, 0))}/${CUPO_DIARIO}`}
                 pie={d.porTipoHoy.map((x) => `${TIPO[x.tipo]} ${x.n}`).join(" · ") || "Sin envíos"}
               />
-              <KpiSimple
-                titulo="Acuses hoy"
-                icono="done_all"
-                valor={numero(d.acksHoy.find((a) => a.ack === "LEIDO")?.n ?? 0)}
-                pie={`leídos · entregados ${d.acksHoy.find((a) => a.ack === "ENTREGADO")?.n ?? 0} · sin acuse ${d.acksHoy.find((a) => a.ack === null)?.n ?? 0}`}
-              />
+              {(() => {
+                const n = (k: string | null) => d.acksHoy.find((a) => a.ack === k)?.n ?? 0;
+                const total = d.acksHoy.reduce((s, a) => s + a.n, 0);
+                const llegaron = n("ENTREGADO") + n("LEIDO");
+                return (
+                  <KpiSimple
+                    titulo="Llegaron al cliente hoy"
+                    icono="done_all"
+                    valor={`${numero(llegaron)}/${numero(total)}`}
+                    pie={`✓✓ leídos ${n("LEIDO")} · ✓✓ entregados ${n("ENTREGADO")} · ✓ solo en WhatsApp ${n("ENVIADO")} · sin acuse ${n(null)}`}
+                  />
+                );
+              })()}
               <KpiSimple
                 titulo="Próximo envío"
                 icono="schedule"
@@ -362,21 +369,52 @@ export default async function WhatsAppPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {d.mensajes
+                  {(() => {
+                    // Un renglón por MENSAJE de WhatsApp: los avisos que salieron
+                    // juntos (un recordatorio con varias contratas) van en uno solo.
+                    const porEnvio = new Map<string, number>();
+                    const cuotasPorEnvio = new Map<string, number[]>();
+                    for (const x of d.mensajes) {
+                      if (!x.envioId) continue;
+                      porEnvio.set(x.envioId, (porEnvio.get(x.envioId) ?? 0) + 1);
+                      if (x.numeroCuota) cuotasPorEnvio.set(x.envioId, [...(cuotasPorEnvio.get(x.envioId) ?? []), x.numeroCuota]);
+                    }
+                    const vistos = new Set<string>();
+                    const cuotasDe = (m: (typeof d.mensajes)[number]) => {
+                      const lista = m.envioId ? cuotasPorEnvio.get(m.envioId) : null;
+                      if (lista && lista.length > 1) return ` · cuotas ${lista.join(", ")}`;
+                      return m.numeroCuota ? ` · cuota ${m.numeroCuota}` : "";
+                    };
+                    return d.mensajes
                     .filter((m) => (!searchParams.estado || m.estado === searchParams.estado) && (!searchParams.tipo || m.tipo === searchParams.tipo))
+                    .filter((m) => {
+                      if (!m.envioId) return true;
+                      if (vistos.has(m.envioId)) return false;
+                      vistos.add(m.envioId);
+                      return true;
+                    })
                     .map((m) => (
                       <tr key={m.id} className="border-t border-outline-variant/30 align-top">
                         <td className="py-2">
                           {m.destinatarioNombre}
                           <div className="font-code-sm text-code-sm text-outline">{m.telefono}</div>
                         </td>
-                        <td>{TIPO[m.tipo]}{m.numeroCuota ? ` · cuota ${m.numeroCuota}` : ""}</td>
+                        <td>{TIPO[m.tipo]}{cuotasDe(m)}</td>
                         <td className={cn(m.estado === "FALLIDO" && "text-error", m.estado === "REVISAR" && "text-tertiary")}>
                           {ESTADO_MSG[m.estado]}
                           {m.envio?.conPresentacion && <div className="text-outline">con presentación</div>}
+                          {m.envioId && (porEnvio.get(m.envioId) ?? 0) > 1 && (
+                            <div className="text-outline">{porEnvio.get(m.envioId)} avisos en un solo mensaje</div>
+                          )}
                         </td>
                         <td>{fechaHora((m.envio?.enviadoEn ?? m.programadoPara).toISOString())}</td>
-                        <td>{["FALLIDO", "REVISAR"].includes(m.estado) ? "no entregado" : (m.envio?.ack?.toLowerCase() ?? "—")}</td>
+                        <td>
+                          {["FALLIDO", "REVISAR"].includes(m.estado) ? (
+                            <span className="text-error">no entregado</span>
+                          ) : (
+                            <Acuse ack={m.envio?.ack ?? null} />
+                          )}
+                        </td>
                         <td className="max-w-[240px] text-on-surface-variant">{m.motivo ?? ""}</td>
                         <td className="whitespace-nowrap">
                           {(m.texto || m.envio?.texto) && (
@@ -405,16 +443,21 @@ export default async function WhatsAppPage({
                               <BotonAccion
                                 cuerpo={{ accion: "reintentar_mensaje", mensajeId: m.id }}
                                 texto="Reenviar"
-                                confirmar="No se sabe si este mensaje salió. Revisa el chat en el teléfono: reenviar solo si NO le llegó. ¿Reenviar?"
+                                confirmar={`No se sabe si este mensaje salió. Revisa el chat en el teléfono: reenviar solo si NO le llegó.${m.envioId && (porEnvio.get(m.envioId) ?? 0) > 1 ? " Se reenvía el mensaje completo (todos sus avisos), una sola vez." : ""} ¿Reenviar?`}
                               />
                             )}
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    ));
+                  })()}
                 </tbody>
               </table>
-              <span className="font-label-sm text-label-sm text-outline">Últimos 300 movimientos.</span>
+              <span className="font-label-sm text-label-sm text-outline">
+                Últimos 300 movimientos. Acuse (lo confirma WhatsApp, igual que las palomitas): ✓ recibido por WhatsApp,
+                todavía no en el teléfono del cliente (apagado o sin datos) · ✓✓ entregado en su teléfono · ✓✓ azul: lo abrió.
+                La prueba de que le llegó es ✓✓.
+              </span>
             </Tarjeta>
           )}
 
@@ -549,4 +592,17 @@ export default async function WhatsAppPage({
       )}
     </>
   );
+}
+
+/** Acuse con las mismas palomitas que ve el cliente en WhatsApp. */
+function Acuse({ ack }: { ack: string | null }) {
+  if (ack === "LEIDO") return <span className="text-primary" title="Entregado y abierto por el cliente">✓✓ leído</span>;
+  if (ack === "ENTREGADO") return <span title="Llegó al teléfono del cliente">✓✓ entregado</span>;
+  if (ack === "ENVIADO")
+    return (
+      <span className="text-on-surface-variant" title="WhatsApp lo recibió; aún no llega al teléfono del cliente (apagado o sin datos)">
+        ✓ en WhatsApp
+      </span>
+    );
+  return <span className="text-outline">—</span>;
 }

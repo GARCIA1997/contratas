@@ -28,7 +28,7 @@ type Cuenta = {
 
 const TIPOS: { clave: "recibos" | "porVencer" | "vencidas" | "deudores"; texto: string; ayuda: string }[] = [
   { clave: "recibos", texto: "Recibos de cobro", ayuda: "Al guardarse el cobro en el servidor (también los capturados sin señal), a cualquier hora." },
-  { clave: "porVencer", texto: "Cuota por vencer", ayuda: "El día que la cuota aparece en tu Ruta, de 9:00 a 19:00." },
+  { clave: "porVencer", texto: "Cuota por vencer", ayuda: "El día que la cuota aparece en tu Ruta, de 9:00 a 22:00." },
   { clave: "vencidas", texto: "Cuota vencida", ayuda: "Una sola vez, el día siguiente a la fecha límite si no ha pagado." },
   { clave: "deudores", texto: "Recordatorio a deudores", ayuda: "Cada 15 días desde su último abono o recordatorio. Solo deudores con teléfono." },
 ];

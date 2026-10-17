@@ -295,7 +295,7 @@ export function IniciarCampana({ cuentaId }: { cuentaId: string }) {
     <div className="flex flex-col gap-space-sm rounded-lg bg-surface-container p-space-md">
       <span className="font-body-md text-body-md text-on-surface">
         {lista.total} destinatario{lista.total === 1 ? "" : "s"} (clientes con contrata activa y deudores con saldo, con teléfono, sin baja ni presentación previa).
-        Rampa: 20/día los primeros 3 días, luego 30/día, dentro del cupo de 100 y de 9:00 a 19:00.
+        Rampa: 20/día los primeros 3 días, luego 30/día, dentro del cupo de 200 y de 9:00 a 22:00.
       </span>
       <div className="max-h-56 overflow-auto rounded bg-surface-container-lowest p-space-sm font-code-sm text-code-sm text-on-surface-variant">
         {lista.muestra.map((d) => (
