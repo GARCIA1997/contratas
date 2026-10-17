@@ -363,23 +363,41 @@ export default async function WhatsAppPage({
                 </thead>
                 <tbody>
                   {(() => {
-                    // Avisos que salieron en el MISMO mensaje de WhatsApp (un recordatorio con varias contratas).
+                    // Un renglón por MENSAJE de WhatsApp: los avisos que salieron
+                    // juntos (un recordatorio con varias contratas) van en uno solo.
                     const porEnvio = new Map<string, number>();
-                    for (const x of d.mensajes) if (x.envioId) porEnvio.set(x.envioId, (porEnvio.get(x.envioId) ?? 0) + 1);
+                    const cuotasPorEnvio = new Map<string, number[]>();
+                    for (const x of d.mensajes) {
+                      if (!x.envioId) continue;
+                      porEnvio.set(x.envioId, (porEnvio.get(x.envioId) ?? 0) + 1);
+                      if (x.numeroCuota) cuotasPorEnvio.set(x.envioId, [...(cuotasPorEnvio.get(x.envioId) ?? []), x.numeroCuota]);
+                    }
+                    const vistos = new Set<string>();
+                    const cuotasDe = (m: (typeof d.mensajes)[number]) => {
+                      const lista = m.envioId ? cuotasPorEnvio.get(m.envioId) : null;
+                      if (lista && lista.length > 1) return ` · cuotas ${lista.join(", ")}`;
+                      return m.numeroCuota ? ` · cuota ${m.numeroCuota}` : "";
+                    };
                     return d.mensajes
                     .filter((m) => (!searchParams.estado || m.estado === searchParams.estado) && (!searchParams.tipo || m.tipo === searchParams.tipo))
+                    .filter((m) => {
+                      if (!m.envioId) return true;
+                      if (vistos.has(m.envioId)) return false;
+                      vistos.add(m.envioId);
+                      return true;
+                    })
                     .map((m) => (
                       <tr key={m.id} className="border-t border-outline-variant/30 align-top">
                         <td className="py-2">
                           {m.destinatarioNombre}
                           <div className="font-code-sm text-code-sm text-outline">{m.telefono}</div>
                         </td>
-                        <td>{TIPO[m.tipo]}{m.numeroCuota ? ` · cuota ${m.numeroCuota}` : ""}</td>
+                        <td>{TIPO[m.tipo]}{cuotasDe(m)}</td>
                         <td className={cn(m.estado === "FALLIDO" && "text-error", m.estado === "REVISAR" && "text-tertiary")}>
                           {ESTADO_MSG[m.estado]}
                           {m.envio?.conPresentacion && <div className="text-outline">con presentación</div>}
                           {m.envioId && (porEnvio.get(m.envioId) ?? 0) > 1 && (
-                            <div className="text-outline">mismo mensaje que {(porEnvio.get(m.envioId) ?? 1) - 1} aviso(s) más</div>
+                            <div className="text-outline">{porEnvio.get(m.envioId)} avisos en un solo mensaje</div>
                           )}
                         </td>
                         <td>{fechaHora((m.envio?.enviadoEn ?? m.programadoPara).toISOString())}</td>
