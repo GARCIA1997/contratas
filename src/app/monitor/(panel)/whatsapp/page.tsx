@@ -261,12 +261,19 @@ export default async function WhatsAppPage({
                 valor={`${numero(d.porTipoHoy.reduce((s, x) => s + x.n, 0))}/${CUPO_DIARIO}`}
                 pie={d.porTipoHoy.map((x) => `${TIPO[x.tipo]} ${x.n}`).join(" · ") || "Sin envíos"}
               />
-              <KpiSimple
-                titulo="Acuses hoy"
-                icono="done_all"
-                valor={numero(d.acksHoy.find((a) => a.ack === "LEIDO")?.n ?? 0)}
-                pie={`leídos · entregados ${d.acksHoy.find((a) => a.ack === "ENTREGADO")?.n ?? 0} · sin acuse ${d.acksHoy.find((a) => a.ack === null)?.n ?? 0}`}
-              />
+              {(() => {
+                const n = (k: string | null) => d.acksHoy.find((a) => a.ack === k)?.n ?? 0;
+                const total = d.acksHoy.reduce((s, a) => s + a.n, 0);
+                const llegaron = n("ENTREGADO") + n("LEIDO");
+                return (
+                  <KpiSimple
+                    titulo="Llegaron al cliente hoy"
+                    icono="done_all"
+                    valor={`${numero(llegaron)}/${numero(total)}`}
+                    pie={`✓✓ leídos ${n("LEIDO")} · ✓✓ entregados ${n("ENTREGADO")} · ✓ solo en WhatsApp ${n("ENVIADO")} · sin acuse ${n(null)}`}
+                  />
+                );
+              })()}
               <KpiSimple
                 titulo="Próximo envío"
                 icono="schedule"
@@ -401,7 +408,13 @@ export default async function WhatsAppPage({
                           )}
                         </td>
                         <td>{fechaHora((m.envio?.enviadoEn ?? m.programadoPara).toISOString())}</td>
-                        <td>{["FALLIDO", "REVISAR"].includes(m.estado) ? "no entregado" : (m.envio?.ack?.toLowerCase() ?? "—")}</td>
+                        <td>
+                          {["FALLIDO", "REVISAR"].includes(m.estado) ? (
+                            <span className="text-error">no entregado</span>
+                          ) : (
+                            <Acuse ack={m.envio?.ack ?? null} />
+                          )}
+                        </td>
                         <td className="max-w-[240px] text-on-surface-variant">{m.motivo ?? ""}</td>
                         <td className="whitespace-nowrap">
                           {(m.texto || m.envio?.texto) && (
@@ -440,7 +453,11 @@ export default async function WhatsAppPage({
                   })()}
                 </tbody>
               </table>
-              <span className="font-label-sm text-label-sm text-outline">Últimos 300 movimientos.</span>
+              <span className="font-label-sm text-label-sm text-outline">
+                Últimos 300 movimientos. Acuse (lo confirma WhatsApp, igual que las palomitas): ✓ recibido por WhatsApp,
+                todavía no en el teléfono del cliente (apagado o sin datos) · ✓✓ entregado en su teléfono · ✓✓ azul: lo abrió.
+                La prueba de que le llegó es ✓✓.
+              </span>
             </Tarjeta>
           )}
 
@@ -575,4 +592,17 @@ export default async function WhatsAppPage({
       )}
     </>
   );
+}
+
+/** Acuse con las mismas palomitas que ve el cliente en WhatsApp. */
+function Acuse({ ack }: { ack: string | null }) {
+  if (ack === "LEIDO") return <span className="text-primary" title="Entregado y abierto por el cliente">✓✓ leído</span>;
+  if (ack === "ENTREGADO") return <span title="Llegó al teléfono del cliente">✓✓ entregado</span>;
+  if (ack === "ENVIADO")
+    return (
+      <span className="text-on-surface-variant" title="WhatsApp lo recibió; aún no llega al teléfono del cliente (apagado o sin datos)">
+        ✓ en WhatsApp
+      </span>
+    );
+  return <span className="text-outline">—</span>;
 }

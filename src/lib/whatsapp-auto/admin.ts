@@ -5,7 +5,7 @@ import { HttpError } from "@/lib/session";
 import { saldoActual } from "@/lib/services/deudores";
 import { registrarBitacora } from "./bitacora";
 import { normalizarTelefono } from "./telefono";
-import { CUPO_DIARIO, LATIDO_MAX_MS, PRIORIDAD } from "./reglas";
+import { CUPO_DIARIO, HORA_FIN, HORA_INICIO, LATIDO_MAX_MS, PRIORIDAD } from "./reglas";
 import { RECONEXIONES_ALERTA, eventosDeSesion } from "./sesion-alertas";
 
 /**
@@ -541,10 +541,10 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     const fuera = await prisma.$queryRaw<{ n: bigint }[]>`
       SELECT COUNT(*)::bigint AS n FROM "EnvioWhatsApp"
       WHERE "enviadoEn" >= ${hoy} AND tipo = 'RECIBO'
-        AND (EXTRACT(HOUR FROM "enviadoEn" AT TIME ZONE 'America/Mexico_City') < 9
-          OR EXTRACT(HOUR FROM "enviadoEn" AT TIME ZONE 'America/Mexico_City') >= 19)`;
+        AND (EXTRACT(HOUR FROM "enviadoEn" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City') < ${HORA_INICIO}
+          OR EXTRACT(HOUR FROM "enviadoEn" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City') >= ${HORA_FIN})`;
     const n = Number(fuera[0]?.n ?? 0);
-    if (n > 0) alertas.push({ nivel: "info", texto: `${n} recibo(s) enviados hoy fuera de 9:00–19:00` });
+    if (n > 0) alertas.push({ nivel: "info", texto: `${n} recibo(s) enviados hoy fuera de ${HORA_INICIO}:00–${HORA_FIN}:00` });
   }
 
   const sel = cuentaSeleccionada ? filas.find((f) => f.id === cuentaSeleccionada) : undefined;

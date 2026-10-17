@@ -6,7 +6,7 @@ import type { TipoMensajeWhatsApp } from "@prisma/client";
  */
 
 /** Tope diario por número. Los recibos cuentan pero nunca se bloquean. */
-export const CUPO_DIARIO = 100;
+export const CUPO_DIARIO = 200;
 
 /** Menor = sale primero. */
 export const PRIORIDAD: Record<TipoMensajeWhatsApp, number> = {
@@ -27,9 +27,9 @@ export function esTransaccional(tipo: TipoMensajeWhatsApp): boolean {
   return tipo === "RECIBO" || tipo === "CONFIRMACION_BAJA" || tipo === "PRUEBA";
 }
 
-/** Ventana para recordatorios, deudores y presentación (hora local del worker: America/Mexico_City). */
+/** Ventana para recordatorios, deudores y presentación: 9:00–22:00 (hora local del worker: America/Mexico_City). */
 export const HORA_INICIO = 9;
-export const HORA_FIN = 19;
+export const HORA_FIN = 22;
 
 export function enHorario(ahora: Date): boolean {
   const h = ahora.getHours();
