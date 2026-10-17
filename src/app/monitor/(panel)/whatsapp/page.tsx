@@ -362,7 +362,11 @@ export default async function WhatsAppPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {d.mensajes
+                  {(() => {
+                    // Avisos que salieron en el MISMO mensaje de WhatsApp (un recordatorio con varias contratas).
+                    const porEnvio = new Map<string, number>();
+                    for (const x of d.mensajes) if (x.envioId) porEnvio.set(x.envioId, (porEnvio.get(x.envioId) ?? 0) + 1);
+                    return d.mensajes
                     .filter((m) => (!searchParams.estado || m.estado === searchParams.estado) && (!searchParams.tipo || m.tipo === searchParams.tipo))
                     .map((m) => (
                       <tr key={m.id} className="border-t border-outline-variant/30 align-top">
@@ -374,6 +378,9 @@ export default async function WhatsAppPage({
                         <td className={cn(m.estado === "FALLIDO" && "text-error", m.estado === "REVISAR" && "text-tertiary")}>
                           {ESTADO_MSG[m.estado]}
                           {m.envio?.conPresentacion && <div className="text-outline">con presentación</div>}
+                          {m.envioId && (porEnvio.get(m.envioId) ?? 0) > 1 && (
+                            <div className="text-outline">mismo mensaje que {(porEnvio.get(m.envioId) ?? 1) - 1} aviso(s) más</div>
+                          )}
                         </td>
                         <td>{fechaHora((m.envio?.enviadoEn ?? m.programadoPara).toISOString())}</td>
                         <td>{["FALLIDO", "REVISAR"].includes(m.estado) ? "no entregado" : (m.envio?.ack?.toLowerCase() ?? "—")}</td>
@@ -405,13 +412,14 @@ export default async function WhatsAppPage({
                               <BotonAccion
                                 cuerpo={{ accion: "reintentar_mensaje", mensajeId: m.id }}
                                 texto="Reenviar"
-                                confirmar="No se sabe si este mensaje salió. Revisa el chat en el teléfono: reenviar solo si NO le llegó. ¿Reenviar?"
+                                confirmar={`No se sabe si este mensaje salió. Revisa el chat en el teléfono: reenviar solo si NO le llegó.${m.envioId && (porEnvio.get(m.envioId) ?? 0) > 1 ? " Se reenvía el mensaje completo (todos sus avisos), una sola vez." : ""} ¿Reenviar?`}
                               />
                             )}
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    ));
+                  })()}
                 </tbody>
               </table>
               <span className="font-label-sm text-label-sm text-outline">Últimos 300 movimientos.</span>

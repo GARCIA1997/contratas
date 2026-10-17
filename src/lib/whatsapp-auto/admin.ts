@@ -123,9 +123,21 @@ export async function paroGlobal(activo: boolean, actor: string) {
 
 /* ── Mensajes ────────────────────────────────────────────────────────── */
 
+/**
+ * Un envío de WhatsApp puede juntar varios avisos (un recordatorio con 3
+ * contratas son 3 renglones en la cola). Reenviar o cancelar uno actúa sobre
+ * todos los de ese mismo envío: tocar los 3 mandaba el mensaje otra vez.
+ */
+async function idsDelMismoEnvio(id: string): Promise<string[]> {
+  const m = await prisma.mensajeWhatsApp.findUnique({ where: { id }, select: { envioId: true } });
+  if (!m?.envioId) return [id];
+  const todos = await prisma.mensajeWhatsApp.findMany({ where: { envioId: m.envioId }, select: { id: true } });
+  return todos.map((x) => x.id);
+}
+
 export async function cancelarMensaje(id: string, actor: string) {
   const r = await prisma.mensajeWhatsApp.updateMany({
-    where: { id, estado: { in: ["PENDIENTE", "FALLIDO", "REVISAR"] } },
+    where: { id: { in: await idsDelMismoEnvio(id) }, estado: { in: ["PENDIENTE", "FALLIDO", "REVISAR"] } },
     data: { estado: "CANCELADO", motivo: `Cancelado por ${actor}` },
   });
   if (r.count === 0) throw new HttpError(409, "El mensaje ya no se puede cancelar");
@@ -139,7 +151,7 @@ export async function reintentarMensaje(id: string, actor: string) {
     throw new HttpError(409, "Este recibo no se pudo preparar, no hay texto que reenviar: mándalo a mano desde la app");
   }
   const r = await prisma.mensajeWhatsApp.updateMany({
-    where: { id, estado: { in: ["FALLIDO", "REVISAR"] } },
+    where: { id: { in: await idsDelMismoEnvio(id) }, estado: { in: ["FALLIDO", "REVISAR"] } },
     data: { estado: "PENDIENTE", motivo: `Reintento por ${actor}`, programadoPara: new Date() },
   });
   if (r.count === 0) throw new HttpError(409, "Solo se reintentan mensajes fallidos o por revisar");
