@@ -572,7 +572,11 @@ async function detalleCuenta(cuentaId: string) {
   const [porTipoHoy, porEstado, mensajes, revertidos, optOuts, campana, procesos, bitacora, reconexiones, proximo, acks] =
     await Promise.all([
       prisma.envioWhatsApp.groupBy({ by: ["tipo"], where: { cuentaId, enviadoEn: { gte: hoy } }, _count: true }),
-      prisma.mensajeWhatsApp.groupBy({ by: ["estado"], where: { cuentaId }, _count: true }),
+      // Por MENSAJE, igual que la tabla de la cola: los avisos que salieron
+      // juntos (varias cuotas en un recordatorio) cuentan como uno.
+      prisma.$queryRaw<{ estado: string; n: bigint }[]>`
+        SELECT estado::text AS estado, COUNT(DISTINCT COALESCE("envioId", id))::bigint AS n
+        FROM "MensajeWhatsApp" WHERE "cuentaId" = ${cuentaId} GROUP BY estado`,
       prisma.mensajeWhatsApp.findMany({
         where: { cuentaId },
         orderBy: { actualizadoEn: "desc" },
@@ -630,7 +634,7 @@ async function detalleCuenta(cuentaId: string) {
     cuenta: { ...cuenta, qr: undefined },
     qrImagen,
     porTipoHoy: porTipoHoy.map((x) => ({ tipo: x.tipo, n: x._count })),
-    porEstado: porEstado.map((x) => ({ estado: x.estado, n: x._count })),
+    porEstado: porEstado.map((x) => ({ estado: x.estado, n: Number(x.n) })),
     acksHoy: acks.map((x) => ({ ack: x.ack, n: x._count })),
     mensajes,
     revertidos,
