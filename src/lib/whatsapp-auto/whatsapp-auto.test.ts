@@ -53,14 +53,15 @@ describe("opt-out", () => {
 });
 
 describe("reglas de envío", () => {
-  it("horario 9:00–19:00 todos los días (incluye fin de semana)", () => {
+  it("horario 9:00–22:00 todos los días (incluye fin de semana)", () => {
     expect(enHorario(local("2026-10-10", 8))).toBe(false);
     expect(enHorario(local("2026-10-10", 9))).toBe(true);
     expect(enHorario(local("2026-10-11", 18))).toBe(true); // domingo
-    expect(enHorario(local("2026-10-10", 19))).toBe(false);
+    expect(enHorario(local("2026-10-10", 21))).toBe(true);
+    expect(enHorario(local("2026-10-10", 22))).toBe(false);
   });
   it("lo que no cupo se reprograma a la siguiente apertura", () => {
-    expect(siguienteApertura(local("2026-10-10", 20)).getDate()).toBe(11);
+    expect(siguienteApertura(local("2026-10-10", 22)).getDate()).toBe(11);
     expect(siguienteApertura(local("2026-10-10", 7)).getHours()).toBe(9);
   });
   it("recibos primero, presentación al final; recibos y confirmaciones son transaccionales", () => {
@@ -72,7 +73,7 @@ describe("reglas de envío", () => {
     expect(esTransaccional("PRUEBA")).toBe(true);
     expect(PRIORIDAD.PRUEBA).toBe(0);
     expect(esTransaccional("VENCIDA")).toBe(false);
-    expect(CUPO_DIARIO).toBe(100);
+    expect(CUPO_DIARIO).toBe(200);
   });
   it("espaciado dentro de los rangos acordados", () => {
     expect(espaciadoMs("RECIBO", () => 0)).toBe(10_000);

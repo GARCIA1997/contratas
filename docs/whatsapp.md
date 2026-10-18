@@ -49,7 +49,7 @@ Enviar mensajes de WhatsApp automáticos (recibos, recordatorios de cuota, recor
 | Contenedores | **Uno solo** (`whatsapp-worker`) con hasta 6 sesiones. No uno por número. |
 | Cupo diario | **100 por día por número**, estricto para todo **excepto recibos** |
 | Recibos | Al insertar el cobro en BD, en la misma transacción. **Cualquier día y hora.** Se pueden pasar de 100. |
-| Recordatorios de cuota | Misma ventana que la Ruta. Todos los días, **9:00–19:00** |
+| Recordatorios de cuota | Misma ventana que la Ruta. Todos los días, **9:00–22:00** |
 | Recordatorio vencida | **Una sola vez**, el día siguiente a la fecha límite |
 | Deudores | Cada **15 días** desde lo más reciente entre su último abono y su último recordatorio. Sin teléfono, no se envía. |
 | Presentación | Sí se hace, con rampa (20/día → 30/día) dentro del cupo de 100 |
@@ -169,7 +169,7 @@ Normalizar a E.164 (`+52…`) al guardar y al comparar. Resolver el JID con `onW
 - **Ventana:** la misma que usa la Ruta (`aggregarRutaDelDia`, `src/lib/services/ruta.ts`), con `anclarFechaCliente` y `DIAS_ANTICIPACION_COBRO`.
 - **Por vencer:** el primer día en que la cuota entra a la Ruta (`fechaProgramada − DIAS_ANTICIPACION_COBRO`).
 - **Vencida:** `fechaProgramada + 1 día`, si no está pagada. **Una sola vez.**
-- **Horario:** 9:00–19:00, todos los días.
+- **Horario:** 9:00–22:00, todos los días.
 - **Monto:** se calcula **al momento de enviar** (`abono − montoAbonado`). Si ya está pagada, se cancela.
 - **Agrupación:** varias cuotas del mismo cliente el mismo día → un solo mensaje.
 - **Exclusiones:** contrata `convertidaADeuda`, cliente sin teléfono, opt-out.
@@ -180,11 +180,11 @@ Normalizar a E.164 (`+52…`) al guardar y al comparar. Resolver el JID con `onW
 - Cada **15 días** desde lo más reciente entre su último abono y su último recordatorio.
 - Solo si saldo > 0 y tiene teléfono. Sin teléfono no se genera nada.
 - Texto: el mensaje default de la feature de deudores.
-- Horario 9:00–19:00, todos los días.
+- Horario 9:00–22:00, todos los días.
 
 ### 5.4 Cupo diario y prioridades
 
-Tope de **100 mensajes por día por número** (cada número lleva su propio contador). Orden de prioridad:
+Tope de **200 mensajes por día por número** (cada número lleva su propio contador). Orden de prioridad:
 
 1. Recibos (siempre salen, aunque se pase de 100)
 2. Recordatorios de cuota
@@ -199,7 +199,7 @@ Lo que no cabe pasa al día siguiente con la misma prioridad y se **revalida** a
 |---|---|
 | Destinatarios | Clientes con ≥1 contrata activa y teléfono + deudores con saldo > 0 y teléfono. Sin opt-out. Un mensaje por teléfono. |
 | Rampa | 20/día los primeros 3 días sin incidentes → 30/día como tope |
-| Espaciado | 4–10 min al azar, 9:00–19:00 |
+| Espaciado | 4–10 min al azar, 9:00–22:00 |
 | Variación | 3–4 versiones del texto, rotando, con `{nombre}` |
 | Orden | Primero quienes pagaron más recientemente |
 | Freno | Pausa automática con **2** "NO" o bloqueos en un día los primeros 3 días; **3** después. También ante cualquier error de cuenta restringida. Reanuda solo el administrador. |
@@ -311,7 +311,7 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 | Freno de presentación | Campaña pausada automáticamente |
 | Memoria alta | Worker > 300 MB |
 | Por revisar | Hay mensajes en estado `revisar` |
-| Recibos nocturnos | Recibos enviados fuera de 9:00–19:00 (informativo) |
+| Recibos nocturnos | Recibos enviados fuera de 9:00–22:00 (informativo) |
 
 ---
 

@@ -10,6 +10,7 @@ import type { Boom } from "@hapi/boom";
 import pino from "pino";
 import { prisma } from "@/lib/prisma";
 import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
+import { MOTIVO_SIN_ACUSE } from "@/lib/whatsapp-auto/reglas";
 import { jidDe, normalizarTelefono, telefonoDeJid } from "@/lib/whatsapp-auto/telefono";
 import { authDesdeBD, borrarSesion } from "./auth-bd";
 import { procesarEntrante } from "./receptor";
@@ -349,6 +350,12 @@ export class Sesion {
       await prisma.envioWhatsApp.updateMany({
         where: { cuentaId: this.cuentaId, waMensajeId: key.id },
         data: { ack },
+      });
+      // El acuse llegó tarde (p. ej. tras un corte): lo que se había apartado
+      // por falta de acuse sí salió. Vuelve a "Enviado" para que nadie lo reenvíe.
+      await prisma.mensajeWhatsApp.updateMany({
+        where: { cuentaId: this.cuentaId, estado: "REVISAR", motivo: MOTIVO_SIN_ACUSE, envio: { waMensajeId: key.id } },
+        data: { estado: "ENVIADO", motivo: null },
       });
     }
   }

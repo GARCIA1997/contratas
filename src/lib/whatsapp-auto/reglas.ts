@@ -6,7 +6,7 @@ import type { TipoMensajeWhatsApp } from "@prisma/client";
  */
 
 /** Tope diario por número. Los recibos cuentan pero nunca se bloquean. */
-export const CUPO_DIARIO = 100;
+export const CUPO_DIARIO = 200;
 
 /** Menor = sale primero. */
 export const PRIORIDAD: Record<TipoMensajeWhatsApp, number> = {
@@ -27,9 +27,9 @@ export function esTransaccional(tipo: TipoMensajeWhatsApp): boolean {
   return tipo === "RECIBO" || tipo === "CONFIRMACION_BAJA" || tipo === "PRUEBA";
 }
 
-/** Ventana para recordatorios, deudores y presentación (hora local del worker: America/Mexico_City). */
+/** Ventana para recordatorios, deudores y presentación: 9:00–22:00 (hora local del worker: America/Mexico_City). */
 export const HORA_INICIO = 9;
-export const HORA_FIN = 19;
+export const HORA_FIN = 22;
 
 export function enHorario(ahora: Date): boolean {
   const h = ahora.getHours();
@@ -141,10 +141,16 @@ export function umbralFreno(diasConEnvio: number): number {
 export const RECIBO_VIGENCIA_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * WhatsApp confirma cada mensaje en segundos. Uno "enviado" que pasó este
- * tiempo sin acuse probablemente no salió: se aparta para revisarlo.
+ * WhatsApp confirma cada mensaje en segundos, pero tras un corte de conexión
+ * el acuse puede llegar minutos después (pasó: 3 min era poco y se reenvió un
+ * recordatorio que sí había llegado). Uno "enviado" que pasó este tiempo sin
+ * acuse se aparta para revisarlo; si el acuse llega después, vuelve solo a
+ * "Enviado" (sesion.ts).
  */
-export const SIN_ACUSE_MS = 3 * 60 * 1000;
+export const SIN_ACUSE_MS = 15 * 60 * 1000;
+
+/** Motivo con el que se apartan los que no tuvieron acuse (se reconoce al llegar tarde). */
+export const MOTIVO_SIN_ACUSE = "WhatsApp no confirmó la recepción: revisa el chat antes de reenviar";
 
 /** Un ENVIANDO más viejo que esto significa que el worker murió a medio envío. */
 export const ENVIANDO_ABANDONADO_MS = 5 * 60 * 1000;

@@ -1,7 +1,7 @@
 import { Client } from "pg";
 import { prisma } from "@/lib/prisma";
 import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
-import { ENVIANDO_ABANDONADO_MS, SIN_ACUSE_MS, VENTANA_AGRUPACION_RECIBOS_MS } from "@/lib/whatsapp-auto/reglas";
+import { ENVIANDO_ABANDONADO_MS, MOTIVO_SIN_ACUSE, SIN_ACUSE_MS, VENTANA_AGRUPACION_RECIBOS_MS } from "@/lib/whatsapp-auto/reglas";
 import { borrarSesion, tieneSesion } from "./auth-bd";
 import { verificarLlave } from "./cifrado";
 import { despacharCuenta } from "./despachador";
@@ -205,7 +205,7 @@ async function revisarSinAcuse() {
       estado: "ENVIADO",
       envio: { ack: null, enviadoEn: { lt: new Date(ahora - SIN_ACUSE_MS), gt: new Date(ahora - 24 * 60 * 60_000) } },
     },
-    data: { estado: "REVISAR", motivo: "WhatsApp no confirmó la recepción: revisa el chat antes de reenviar" },
+    data: { estado: "REVISAR", motivo: MOTIVO_SIN_ACUSE },
   });
   if (r.count > 0) await registrarBitacora({ tipo: "sin_acuse", detalle: { mensajes: r.count } });
 }
