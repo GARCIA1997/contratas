@@ -76,3 +76,37 @@ describe("recibosListosEn (un solo recibo aunque se sincronice lento)", () => {
     expect(listos.get("b")).toBe(t0 + 5000);
   });
 });
+
+describe("cuotas pendientes en el recibo", () => {
+  const hoy = new Date(2026, 10, 2, 12);
+  const dia = (d: number) => new Date(Date.UTC(2026, 9, d));
+  it("lista las vencidas sin pagar o a medias, sin contar las cobradas ni las que vencen hoy", async () => {
+    const { cuotasPendientesAtrasadas } = await import("@/lib/mensajes-whatsapp");
+    const pagos = [
+      { numeroCuota: 3, montoAbonado: 300, pagado: false, fechaProgramada: dia(12) },
+      { numeroCuota: 5, montoAbonado: 675, pagado: true, fechaProgramada: dia(19) },
+      { numeroCuota: 6, montoAbonado: 0, pagado: false, fechaProgramada: dia(26) },
+      { numeroCuota: 7, montoAbonado: 0, pagado: false, fechaProgramada: new Date(Date.UTC(2026, 10, 1)) },
+      { numeroCuota: 8, montoAbonado: 0, pagado: false, fechaProgramada: new Date(Date.UTC(2026, 10, 2)) },
+    ];
+    expect(cuotasPendientesAtrasadas(pagos, 675, [7], hoy)).toEqual([
+      { numeroCuota: 3, falta: 375 },
+      { numeroCuota: 6, falta: 675 },
+    ]);
+  });
+  it("el recibo lo dice en una sola línea", async () => {
+    const { mensajeCobro } = await import("@/lib/mensajes-whatsapp");
+    const base = { numCuotas: 20, montoContrata: 10000, saldoTrasCobro: 8775, cuotas: [{ numeroCuota: 7, monto: 675 }], subtotal: 675 };
+    const varias = mensajeCobro({ nombreApp: "K", clienteNombre: "E", total: 675, contratas: [{ ...base, pendientes: [{ numeroCuota: 3, falta: 375 }, { numeroCuota: 6, falta: 675 }] }] });
+    expect(varias).toContain("⚠️ Atrasadas: cuotas 3, 6 ($1,050.00)");
+    expect(mensajeCobro({ nombreApp: "K", clienteNombre: "E", total: 675, contratas: [{ ...base, pendientes: [{ numeroCuota: 6, falta: 675 }] }] })).toContain(
+      "⚠️ Atrasada: cuota 6 ($675.00)"
+    );
+    expect(mensajeCobro({ nombreApp: "K", clienteNombre: "E", total: 675, contratas: [base] })).not.toContain("Atrasada");
+  });
+  it("al juntar recibos de la misma contrata no marca pendiente lo que se cobró en otro", () => {
+    const a = { total: 675, contratas: [{ contrataId: "c", numCuotas: 20, montoContrata: 10000, cuotas: [{ numeroCuota: 6, monto: 675 }], subtotal: 675, pendientes: [{ numeroCuota: 7, falta: 675 }] }] };
+    const b = { total: 675, contratas: [{ contrataId: "c", numCuotas: 20, montoContrata: 10000, cuotas: [{ numeroCuota: 7, monto: 675 }], subtotal: 675, pendientes: [] }] };
+    expect(unirRecibos({ nombreApp: "K", clienteNombre: "E", datos: [a, b] })).not.toContain("Atrasada");
+  });
+});

@@ -1,4 +1,5 @@
 import { startOfDay, addDays } from "date-fns";
+import { cuotasPendientesAtrasadas } from "@/lib/mensajes-whatsapp";
 import type { TipoContrata } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
@@ -237,6 +238,7 @@ export function distribuirAbono(
   for (const r of Array.from(porContrata.values())) {
     const c = contratas.find((x) => x.contrataId === r.contrataId);
     if (!c) continue;
+    r.pendientes = cuotasPendientesAtrasadas(c.pagos, c.abono, r.cuotas.map((q) => q.numeroCuota), hoy);
     const antes = c.pagos.reduce((s, p) => s + (p.pagado ? 0 : Math.max(c.abono - p.montoAbonado, 0)), 0);
     r.saldoTrasCobro = Math.max(0, round(antes - r.subtotal));
   }

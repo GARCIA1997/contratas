@@ -39,6 +39,10 @@ export function unirRecibos(opts: {
         continue;
       }
       previa.cuotas = [...previa.cuotas, ...c.cuotas].sort((a, b) => a.numeroCuota - b.numeroCuota);
+      // El recibo posterior es el más actual; lo cobrado en el conjunto ya no está pendiente.
+      const cobradas = previa.cuotas.map((q) => q.numeroCuota);
+      const pendientes = (c.pendientes ?? previa.pendientes ?? []).filter((p) => !cobradas.includes(p.numeroCuota));
+      previa.pendientes = pendientes.length > 0 ? pendientes : undefined;
       previa.subtotal = r2(previa.subtotal + c.subtotal);
       if (previa.saldoTrasCobro !== undefined && c.saldoTrasCobro !== undefined) {
         previa.saldoTrasCobro = Math.min(previa.saldoTrasCobro, c.saldoTrasCobro);
