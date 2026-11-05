@@ -53,7 +53,6 @@ Enviar mensajes de WhatsApp automáticos (recibos, recordatorios de cuota, recor
 | Recordatorio vencida | **Una sola vez**, el día siguiente a la fecha límite |
 | Deudores | Cada **15 días** desde lo más reciente entre su último abono y su último recordatorio. Sin teléfono, no se envía. |
 | Presentación | Sí se hace, con rampa (20/día → 30/día) dentro del cupo de 100 |
-| Opt-out | Excluye **solo mensajes automáticos**. El envío manual no cambia. |
 | Corrección de recibo | No hay corrección automática. Se marca en el monitor. |
 
 ---
@@ -172,7 +171,7 @@ Normalizar a E.164 (`+52…`) al guardar y al comparar. Resolver el JID con `onW
 - **Horario:** 9:00–22:00, todos los días.
 - **Monto:** se calcula **al momento de enviar** (`abono − montoAbonado`). Si ya está pagada, se cancela.
 - **Agrupación:** varias cuotas del mismo cliente el mismo día → un solo mensaje.
-- **Exclusiones:** contrata `convertidaADeuda`, cliente sin teléfono, opt-out.
+- **Exclusiones:** contrata `convertidaADeuda`, cliente sin teléfono.
 - **Cancelación automática:** cuota pagada, contrata liquidada / renovada / unificada, cliente eliminado o teléfono cambiado.
 
 ### 5.3 Recordatorios a deudores
@@ -197,24 +196,20 @@ Lo que no cabe pasa al día siguiente con la misma prioridad y se **revalida** a
 
 | Regla | Valor |
 |---|---|
-| Destinatarios | Clientes con ≥1 contrata activa y teléfono + deudores con saldo > 0 y teléfono. Sin opt-out. Un mensaje por teléfono. |
+| Destinatarios | Clientes con ≥1 contrata activa y teléfono + deudores con saldo > 0 y teléfono. Un mensaje por teléfono. |
 | Rampa | 20/día los primeros 3 días sin incidentes → 30/día como tope |
 | Espaciado | 4–10 min al azar, 9:00–22:00 |
 | Variación | 3–4 versiones del texto, rotando, con `{nombre}` |
 | Orden | Primero quienes pagaron más recientemente |
-| Freno | Pausa automática con **2** "NO" o bloqueos en un día los primeros 3 días; **3** después. También ante cualquier error de cuenta restringida. Reanuda solo el administrador. |
 | Inicio | Desde el monitor, con lista, conteo y casilla de confirmación |
 | Requisito previo | Fase 2 cumplida: 3–4 semanas con conversaciones reales con respuesta |
 | Primer mensaje | Si un cliente recibe un recibo o recordatorio antes de su turno en la campaña, ese mensaje lleva antes la línea de presentación y se registra en `Presentacion`. |
 
-### 5.6 Opt-out
+### 5.6 Sin opción de baja
 
-- **Detección:** mensaje entrante que, completo y normalizado (sin acentos, minúsculas, sin espacios extremos), sea `no`, `baja`, `stop`, `alto` o `ya no`. No se busca la palabra suelta dentro de un texto.
-- **Respuesta:** una sola vez, "Listo, no le enviaremos más mensajes automáticos".
-- **Reactivación:** si escribe `alta` o `si`.
-- **Alcance:** solo mensajes automáticos (recibos, recordatorios, presentación). El envío manual no cambia.
-- **Llave:** cuenta + teléfono normalizado (el opt-out con un usuario no afecta a otro).
-- Las demás respuestas las atiende el dueño en el iPhone; el worker no las procesa.
+Desde v5.2.0 no existe la baja por respuesta: los mensajes no invitan a responder "NO" y el worker no procesa mensajes entrantes. Las respuestas las atiende el dueño en su teléfono. La tabla `OptOutWhatsApp` y el tipo `CONFIRMACION_BAJA` quedan en la base sin uso.
+
+**Riesgo aceptado:** quien no quiere los mensajes solo puede bloquear o reportar el número, y eso pesa contra la reputación de la línea. La campaña de presentación ya no tiene el freno automático por bajas.
 
 ### 5.7 Seguridad general
 
@@ -246,8 +241,8 @@ Lo que no cabe pasa al día siguiente con la misma prioridad y se **revalida** a
 |---|---|---|---|---|
 | P1 | Generador de recibos | `web`, en la transacción del cobro | Por cada cobro | Inserta en `MensajeSalida` con clave `recibo:{Idempotency-Key}` si el tipo está activo |
 | P2 | Programador de recordatorios | worker | Cada hora (y al arrancar) | Calcula cuotas por vencer / vencidas y deudores con la lógica de la Ruta; inserta con `ON CONFLICT DO NOTHING` |
-| P3 | Despachador | worker | Bucle continuo | Toma por prioridad, valida horario / cupo / opt-out / revalida monto, agrupa por cliente, aplica espaciado y envía |
-| P4 | Receptor | worker | Eventos de Baileys | Procesa opt-out / reactivación y acks (entregado, leído) |
+| P3 | Despachador | worker | Bucle continuo | Toma por prioridad, valida horario / cupo / revalida monto, agrupa por cliente, aplica espaciado y envía |
+| P4 | Receptor | worker | Eventos de Baileys | Procesa acks (entregado, leído). No lee mensajes entrantes |
 | P5 | Campaña de presentación | worker | Junto con P3 | Encola la cuota diaria de la rampa; aplica el freno |
 | P6 | Supervisor de conexión | worker | Continuo | Reconexión con espera creciente (5 s → 15 s → 1 min → 5 min); detecta `loggedOut` / restricción → `bloqueado` / `pausado` |
 | P7 | Latido (heartbeat) | worker | Cada 30 s | Escribe estado, memoria, CPU, versión de Baileys. Si falta > 2 min, el monitor alerta "worker caído" |
@@ -290,9 +285,6 @@ Una fila por número (hasta 6): número, **usuario al que pertenece**, estado co
 - Rampa actual (20 o 30), día de la campaña, "NO" recibidos hoy y en total.
 - Estado: activa / pausada (motivo) / terminada. Botones iniciar (con lista y casilla) / pausar / reanudar.
 
-### 7.6 Opt-outs
-- Lista: teléfono, nombre (cliente o deudor), fecha, mensaje recibido.
-- Reactivar a mano (con confirmación).
 
 ### 7.7 Procesos
 Tabla con P1–P8: última ejecución, duración, resultado, elementos procesados, próxima ejecución y último error. Rojo si un proceso no corre en su frecuencia esperada.
@@ -387,7 +379,7 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 - `index.ts`: reconcilia las órdenes del monitor cada 3 s, despacha cada 5 s, programa recordatorios cada hora, latido cada 30 s, limpieza al arrancar y diario a las 3:00. Arranque escalonado de sesiones (20–40 s entre cada una).
 - `sesion.ts`: una conexión de Baileys por cuenta, aislada. Vinculación por **código** (`requestPairingCode`) o QR; verifica que el número vinculado sea el capturado; reconexión 5 s → 15 s → 1 min → 5 min; 401 → sesión borrada; 403/402 → cuenta BLOQUEADA y pausada.
 - `auth-bd.ts` + `cifrado.ts`: sesión de Baileys en `WhatsAppLlave`, cifrada AES-256-GCM con `WHATSAPP_SESSION_KEY`.
-- `despachador.ts` (P3), `programador.ts` (P2), `receptor.ts` (P4: bajas y acuses), `campana.ts` (P5).
+- `despachador.ts` (P3), `programador.ts` (P2), `campana.ts` (P5).
 - Tiene su **propio `package.json`**: Baileys depende de `libsignal` desde GitHub, así que se mantiene fuera de la imagen y del lockfile de la app web.
 
 ### Decisiones tomadas al implementar
@@ -431,6 +423,10 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 5. Monitor → WhatsApp: el encabezado debe decir "worker vivo".
 6. Asignar el número al usuario → **Código de vinculación** → el usuario lo escribe en WhatsApp → Dispositivos vinculados → Vincular con número de teléfono.
 7. El usuario enciende "WhatsApp automático" en Configuración (acepta el riesgo) y elige los tipos. Nada se envía hasta este paso.
+
+### Parche de Baileys
+
+`worker/whatsapp/patches/baileys+6.7.24.patch` (lo aplica `patch-package` en el `npm ci`; si no aplica, el build falla). Le confirma a WhatsApp cada mensaje entrante: Baileys dejó de hacerlo en 6.7.20 y el servidor corta el stream a los 50 minutos con `Stream Errored (ack)` ([issue #1910](https://github.com/WhiskeySockets/Baileys/issues/1910)). También quita el NACK de los que no se pueden descifrar, porque el worker no usa mensajes entrantes. Al subir de versión de Baileys hay que revisar si sigue haciendo falta.
 
 ### Actualizar el worker
 

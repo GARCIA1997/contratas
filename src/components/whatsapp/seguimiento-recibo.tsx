@@ -94,8 +94,7 @@ export function SeguimientoRecibo({
       desde ??= Date.now();
       setFase((f) => (f.tipo === "en_telefono" ? { tipo: "enviando" } : f));
       try {
-        const qs = new URLSearchParams({ claves: lista.join(","), ...(telefono ? { telefono } : {}) });
-        const r = await fetch(`/api/whatsapp/recibos?${qs.toString()}`, { cache: "no-store" });
+        const r = await fetch(`/api/whatsapp/recibos?claves=${encodeURIComponent(lista.join(","))}`, { cache: "no-store" });
         const j = r.ok
           ? ((await r.json()) as {
               estado: "enviando" | "enviado" | "fallo" | null;
@@ -125,7 +124,7 @@ export function SeguimientoRecibo({
       vivo = false;
       clearTimeout(t);
     };
-  }, [aplica, claveDeps, telefono]);
+  }, [aplica, claveDeps]);
 
   useEffect(() => {
     if (fase.tipo !== "enviado") return;

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { panelWhatsApp, MAX_CUENTAS } from "@/lib/whatsapp-auto/admin";
-import { CUPO_DIARIO } from "@/lib/whatsapp-auto/reglas";
+import { CUPO_DIARIO, MOTIVO_SIN_ACUSE } from "@/lib/whatsapp-auto/reglas";
 import { fechaHora, haceCuanto, numero } from "@/components/monitor/formato";
 import { Chips, Encabezado, KpiSimple, Tarjeta } from "@/components/monitor/ui";
 import {
@@ -270,7 +270,7 @@ export default async function WhatsAppPage({
                     titulo="Llegaron al cliente hoy"
                     icono="done_all"
                     valor={`${numero(llegaron)}/${numero(total)}`}
-                    pie={`✓✓ leídos ${n("LEIDO")} · ✓✓ entregados ${n("ENTREGADO")} · ✓ solo en WhatsApp ${n("ENVIADO")} · sin acuse ${n(null)}`}
+                    pie={`✓✓ leídos ${n("LEIDO")} · ✓✓ entregados ${n("ENTREGADO")} · ✓ sin entrega aún ${n("ENVIADO")} · sin acuse ${n(null)}`}
                   />
                 );
               })()}
@@ -324,7 +324,6 @@ export default async function WhatsAppPage({
               { valor: "cola", texto: "Cola", cuenta: d.porEstado.reduce((s, x) => s + x.n, 0) },
               { valor: "revertidos", texto: "Cobros revertidos", cuenta: d.revertidos.length },
               { valor: "campana", texto: "Presentación" },
-              { valor: "optouts", texto: "Opt-outs", cuenta: d.optOuts.filter((o) => o.activo).length },
               { valor: "procesos", texto: "Procesos" },
               { valor: "bitacora", texto: "Bitácora" },
             ]}
@@ -453,10 +452,19 @@ export default async function WhatsAppPage({
                   })()}
                 </tbody>
               </table>
+              {d.mensajes.some((m) => m.estado === "REVISAR" && m.motivo === MOTIVO_SIN_ACUSE) && (
+                <div>
+                  <BotonAccion
+                    cuerpo={{ accion: "resolver_sin_acuse", cuentaId: d.cuenta.id }}
+                    texto="Marcar «sin confirmación» como enviados"
+                    confirmar="Regresa a Enviado los mensajes apartados solo por falta de confirmación. No se manda nada de nuevo. ¿Continuar?"
+                  />
+                </div>
+              )}
               <span className="font-label-sm text-label-sm text-outline">
-                Últimos 300 movimientos. Acuse (lo confirma WhatsApp, igual que las palomitas): ✓ recibido por WhatsApp,
-                todavía no en el teléfono del cliente (apagado o sin datos) · ✓✓ entregado en su teléfono · ✓✓ azul: lo abrió.
-                La prueba de que le llegó es ✓✓.
+                Últimos 300 movimientos. Acuse: ✓ lo confirmó otro dispositivo de esta cuenta, todavía sin confirmación
+                del teléfono del cliente · ✓✓ entregado en su teléfono · ✓✓ azul: lo abrió · — sin ninguna confirmación
+                (no significa que no llegó). La prueba de que le llegó es ✓✓.
               </span>
             </Tarjeta>
           )}
@@ -488,10 +496,9 @@ export default async function WhatsAppPage({
               )}
               {d.campana && (d.campana.estado === "ACTIVA" || d.campana.estado === "PAUSADA") ? (
                 <>
-                  <div className="grid grid-cols-2 gap-space-sm md:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-space-sm md:grid-cols-3">
                     <KpiSimple titulo="Estado" icono="campaign" valor={d.campana.estado.toLowerCase()} pie={d.campana.pausaMotivo ?? `iniciada ${fechaHora(d.campana.iniciadaEn.toISOString())} por ${d.campana.iniciadaPor}`} />
                     <KpiSimple titulo="Enviados" icono="send" valor={`${d.campana.enviados}/${d.campana.total}`} pie={`faltan ${d.campana.faltan} · ~${Math.ceil(d.campana.faltan / 30)} días`} />
-                    <KpiSimple titulo="Bajas hoy" icono="do_not_disturb_on" valor={String(d.campana.bajasHoy)} pie={`${d.campana.bajas} desde que inició`} />
                     <KpiSimple titulo="Rampa" icono="trending_up" valor="20 → 30 / día" pie="sube tras 3 días con envíos sin incidentes" />
                   </div>
                   <div className="flex gap-space-xs">
@@ -507,7 +514,7 @@ export default async function WhatsAppPage({
                 <>
                   {d.campana?.estado === "TERMINADA" && (
                     <span className="font-body-sm text-body-sm text-on-surface-variant">
-                      Última campaña terminada {fechaHora((d.campana.terminadaEn ?? d.campana.actualizadoEn).toISOString())}: {d.campana.enviados}/{d.campana.total} enviados, {d.campana.bajas} bajas.
+                      Última campaña terminada {fechaHora((d.campana.terminadaEn ?? d.campana.actualizadoEn).toISOString())}: {d.campana.enviados}/{d.campana.total} enviados.
                     </span>
                   )}
                   {d.cuenta.estado === "CONECTADO" ? (
@@ -517,28 +524,6 @@ export default async function WhatsAppPage({
                   )}
                 </>
               )}
-            </Tarjeta>
-          )}
-
-          {/* 7.6 Opt-outs */}
-          {seccion === "optouts" && (
-            <Tarjeta className="gap-space-sm">
-              {d.optOuts.length === 0 && <span className="text-on-surface-variant">Nadie ha pedido la baja.</span>}
-              {d.optOuts.map((o) => (
-                <div key={o.telefono} className="flex items-center justify-between gap-space-sm border-t border-outline-variant/30 py-2 font-body-sm text-body-sm">
-                  <span>
-                    <span className="font-code-sm">{o.telefono}</span> · “{o.mensaje}” · {fechaHora(o.fecha.toISOString())}
-                    {!o.activo && <span className="ml-1 text-outline">(reactivado {o.reactivadoEn ? fechaHora(o.reactivadoEn.toISOString()) : ""})</span>}
-                  </span>
-                  {o.activo && (
-                    <BotonAccion
-                      cuerpo={{ accion: "reactivar_optout", cuentaId: d.cuenta.id, telefono: o.telefono }}
-                      texto="Reactivar"
-                      confirmar="Esta persona pidió no recibir mensajes. Solo reactívala si te lo pidió. ¿Continuar?"
-                    />
-                  )}
-                </div>
-              ))}
             </Tarjeta>
           )}
 
@@ -600,8 +585,8 @@ function Acuse({ ack }: { ack: string | null }) {
   if (ack === "ENTREGADO") return <span title="Llegó al teléfono del cliente">✓✓ entregado</span>;
   if (ack === "ENVIADO")
     return (
-      <span className="text-on-surface-variant" title="WhatsApp lo recibió; aún no llega al teléfono del cliente (apagado o sin datos)">
-        ✓ en WhatsApp
+      <span className="text-on-surface-variant" title="Lo confirmó otro dispositivo de esta cuenta; todavía sin confirmación del teléfono del cliente">
+        ✓ sin entrega aún
       </span>
     );
   return <span className="text-outline">—</span>;

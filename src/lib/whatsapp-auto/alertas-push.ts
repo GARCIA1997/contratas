@@ -27,14 +27,13 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
       include: {
         owner: { select: { nombre: true, email: true } },
         llaves: { where: { tipo: "creds" }, select: { cuentaId: true } },
-        campanas: { where: { estado: "PAUSADA" }, orderBy: { actualizadoEn: "desc" }, take: 1 },
       },
     }),
   ]);
   if (cuentas.length === 0) return [];
   const fuera: Incidente[] = [];
   const t = ahora.getTime();
-  const { cerradas, reconexiones, sinEntregar } = await eventosDeSesion(ahora);
+  const { cerradas, reconexiones, sinEntregar, sinAcuses } = await eventosDeSesion(ahora);
 
   const latidoEn = control?.latidoEn ?? null;
   const workerVivo = Boolean(latidoEn && t - latidoEn.getTime() < LATIDO_MAX_MS);
@@ -83,6 +82,14 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
         cuerpo: `${nReconex} desconexiones en la última hora en ${c.numero}. Puede terminar en una desvinculación.`,
       });
     }
+    const nSinAcuses = sinAcuses.get(c.id) ?? 0;
+    if (nSinAcuses > 0) {
+      fuera.push({
+        clave: `sin_acuses:${c.id}:${new Date(t).toISOString().slice(0, 10)}`,
+        titulo: `WhatsApp: ${quien} no recibe confirmaciones`,
+        cuerpo: `${nSinAcuses} mensajes de ${c.numero} en 24 h sin una sola confirmación de WhatsApp: no se puede saber si llegaron.`,
+      });
+    }
     const nSinEntregar = sinEntregar.get(c.id) ?? 0;
     if (nSinEntregar > 0) {
       fuera.push({
@@ -103,14 +110,6 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
         clave: `sesion_caida:${c.id}:${c.ultimaConexion.toISOString()}`,
         titulo: `WhatsApp: ${quien} desconectado`,
         cuerpo: `La sesión de ${c.numero} lleva más de 10 minutos caída y no se ha reconectado.`,
-      });
-    }
-    const campana = c.campanas[0];
-    if (campana?.pausaMotivo?.startsWith("Freno")) {
-      fuera.push({
-        clave: `freno:${campana.id}:${campana.actualizadoEn.toISOString()}`,
-        titulo: `WhatsApp: campaña de ${quien} pausada`,
-        cuerpo: campana.pausaMotivo,
       });
     }
   }

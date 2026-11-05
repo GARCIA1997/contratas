@@ -6,6 +6,7 @@ import { handleApiError } from "@/lib/api";
 import { requireMonitor } from "@/lib/monitor/datos";
 import {
   atenderRevertido,
+  resolverSinAcuse,
   cambiarEstadoCampana,
   cambiarNumero,
   cancelarMensaje,
@@ -17,7 +18,6 @@ import {
   panelWhatsApp,
   paroGlobal,
   pausarComoAdmin,
-  reactivarOptOut,
   reintentarMensaje,
   solicitar,
 } from "@/lib/whatsapp-auto/admin";
@@ -49,7 +49,7 @@ const schema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("cancelar_mensaje"), mensajeId: id }),
   z.object({ accion: z.literal("reintentar_mensaje"), mensajeId: id }),
   z.object({ accion: z.literal("atender_revertido"), mensajeId: id }),
-  z.object({ accion: z.literal("reactivar_optout"), cuentaId: id, telefono: z.string().max(20) }),
+  z.object({ accion: z.literal("resolver_sin_acuse"), cuentaId: id }),
   z.object({ accion: z.literal("iniciar_campana"), cuentaId: id, total: z.number().int().min(1) }),
   z.object({ accion: z.literal("prueba"), cuentaId: id, telefono: z.string().max(30), texto: z.string().max(1000).nullable().optional() }),
   z.object({ accion: z.literal("campana"), campanaId: id, operacion: z.enum(["pausar", "reanudar", "terminar"]) }),
@@ -88,14 +88,14 @@ export async function POST(req: NextRequest) {
       case "cancelar_mensaje":
         await cancelarMensaje(a.mensajeId, actor);
         break;
+      case "resolver_sin_acuse":
+        await resolverSinAcuse(a.cuentaId, actor);
+        break;
       case "reintentar_mensaje":
         await reintentarMensaje(a.mensajeId, actor);
         break;
       case "atender_revertido":
         await atenderRevertido(a.mensajeId);
-        break;
-      case "reactivar_optout":
-        await reactivarOptOut(a.cuentaId, a.telefono, actor);
         break;
       case "iniciar_campana":
         await iniciarCampana(a.cuentaId, a.total, actor);

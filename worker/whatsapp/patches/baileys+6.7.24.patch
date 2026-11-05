@@ -1,0 +1,24 @@
+diff --git a/node_modules/baileys/lib/Socket/messages-recv.js b/node_modules/baileys/lib/Socket/messages-recv.js
+index c46b096..18d47f5 100644
+--- a/node_modules/baileys/lib/Socket/messages-recv.js
++++ b/node_modules/baileys/lib/Socket/messages-recv.js
+@@ -650,7 +650,9 @@ export const makeMessagesRecvSocket = (config) => {
+                     // message failed to decrypt
+                     if (msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT) {
+                         if (msg?.messageStubParameters?.[0] === MISSING_KEYS_ERROR_TEXT) {
+-                            return sendMessageAck(node, NACK_REASONS.ParsingError);
++                            // Kredired: sin NACK. El worker no usa mensajes entrantes y un NACK
++                            // deja la stanza pendiente: el servidor corta el stream a los 50 min.
++                            return sendMessageAck(node);
+                         }
+                         retryMutex.mutex(async () => {
+                             if (ws.isOpen) {
+@@ -696,6 +698,8 @@ export const makeMessagesRecvSocket = (config) => {
+                         }
+                     }
+                     cleanMessage(msg, authState.creds.me.id);
++                    // Kredired: ack que Baileys quitó en 6.7.20 (issue #1910).
++                    await sendMessageAck(node);
+                     await upsertMessage(msg, node.attrs.offline ? 'append' : 'notify');
+                 })
+             ]);

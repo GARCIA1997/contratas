@@ -133,8 +133,8 @@ export function WhatsAppAutomatico({ editable }: { editable: boolean }) {
             <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3">
               <p>
                 Los mensajes salen solos desde este número usando una conexión <b>no oficial</b> de WhatsApp.
-                WhatsApp puede <b>bloquear el número</b>. Se reduce el riesgo (máximo 100 al día, pausas,
-                baja con “NO”), pero no desaparece.
+                WhatsApp puede <b>bloquear el número</b>. Se reduce el riesgo (máximo 200 al día y pausas
+                entre mensajes), pero no desaparece.
               </p>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={aceptoRiesgo} onChange={(e) => setAceptoRiesgo(e.target.checked)} />
