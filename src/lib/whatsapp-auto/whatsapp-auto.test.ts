@@ -150,7 +150,7 @@ describe("textos", () => {
     const b = textoPresentacion("JUAN pérez", "Kredired", 1);
     expect(a).not.toBe(b);
     expect(a).toContain("Juan");
-    expect(a).toContain("NO");
+    expect(a).not.toMatch(/\bNO\b/);
   });
 });
 
