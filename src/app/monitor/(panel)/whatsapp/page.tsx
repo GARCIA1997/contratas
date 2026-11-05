@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { panelWhatsApp, MAX_CUENTAS } from "@/lib/whatsapp-auto/admin";
-import { CUPO_DIARIO, MOTIVO_SIN_ACUSE } from "@/lib/whatsapp-auto/reglas";
+import { CUPO_DIARIO, MOTIVO_SIN_CONFIRMACION } from "@/lib/whatsapp-auto/reglas";
 import { fechaHora, haceCuanto, numero } from "@/components/monitor/formato";
 import { Chips, Encabezado, KpiSimple, Tarjeta } from "@/components/monitor/ui";
 import {
@@ -438,7 +438,7 @@ export default async function WhatsAppPage({
                             {m.estado === "FALLIDO" && m.tipo === "RECIBO" && !m.texto && (
                               <span className="text-error">Mandar a mano desde la app</span>
                             )}
-                            {m.estado === "REVISAR" && (
+                            {(m.estado === "REVISAR" || (m.estado === "ENVIADO" && m.motivo === MOTIVO_SIN_CONFIRMACION)) && (
                               <BotonAccion
                                 cuerpo={{ accion: "reintentar_mensaje", mensajeId: m.id }}
                                 texto="Reenviar"
@@ -452,12 +452,13 @@ export default async function WhatsAppPage({
                   })()}
                 </tbody>
               </table>
-              {d.mensajes.some((m) => m.estado === "REVISAR" && m.motivo === MOTIVO_SIN_ACUSE) && (
+              {(d.porEstado.find((x) => x.estado === "REVISAR")?.n ?? 0) > 0 && (
                 <div>
                   <BotonAccion
-                    cuerpo={{ accion: "resolver_sin_acuse", cuentaId: d.cuenta.id }}
-                    texto="Marcar «sin confirmación» como enviados"
-                    confirmar="Regresa a Enviado los mensajes apartados solo por falta de confirmación. No se manda nada de nuevo. ¿Continuar?"
+                    cuerpo={{ accion: "marcar_revisar_enviados", cuentaId: d.cuenta.id }}
+                    texto={`Marcar todos los «Por revisar» como enviados (${d.porEstado.find((x) => x.estado === "REVISAR")?.n})`}
+                    icono="done_all"
+                    confirmar="Pasan a Enviado sin mandar nada otra vez. Cada uno conserva su botón Reenviar por si un cliente dice que no le llegó. ¿Continuar?"
                   />
                 </div>
               )}

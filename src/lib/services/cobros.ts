@@ -107,6 +107,8 @@ export type ContrataResumenCobro = {
   montoContrata?: number;
   /** Lo que le queda por pagar a ESTA contrata después del cobro. */
   saldoTrasCobro?: number;
+  /** Cuotas vencidas que siguen sin pagar o a medias (ver CobroContrata). */
+  pendientes?: { numeroCuota: number; falta: number }[];
   cuotas: CuotaCobrada[];
   subtotal: number;
 };

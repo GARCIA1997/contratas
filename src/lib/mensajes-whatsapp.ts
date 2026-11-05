@@ -1,7 +1,8 @@
-import { differenceInCalendarDays, format } from "date-fns";
+import { differenceInCalendarDays, format, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import type { TipoContrata } from "@prisma/client";
 import { formatMoneda } from "@/lib/utils";
+import { anclarFechaCliente } from "@/lib/fechas";
 
 /**
  * Todos los mensajes de WhatsApp que la app le manda al cliente, en un solo
@@ -111,7 +112,33 @@ export type CobroContrata = {
     faltante?: number;
   }[];
   subtotal: number;
+  /**
+   * Cuotas ya vencidas que siguen sin pagar o a medias (sin contar las de este
+   * cobro). "Cuota 7 de 20" sola hacía creer al cliente que iba al corriente.
+   */
+  pendientes?: { numeroCuota: number; falta: number }[];
 };
+
+/** Cuotas vencidas antes de hoy que no están cubiertas (con lo que les falta), excepto `excluir`. */
+export function cuotasPendientesAtrasadas(
+  pagos: { numeroCuota: number; montoAbonado: number; pagado?: boolean; fechaProgramada?: Date | string }[],
+  abono: number,
+  excluir: number[],
+  hoy: Date = new Date()
+): { numeroCuota: number; falta: number }[] {
+  const base = startOfDay(hoy);
+  return pagos
+    .filter(
+      (p) =>
+        !p.pagado &&
+        p.fechaProgramada !== undefined &&
+        !excluir.includes(p.numeroCuota) &&
+        abono - p.montoAbonado > 0.009 &&
+        anclarFechaCliente(p.fechaProgramada) < base
+    )
+    .map((p) => ({ numeroCuota: p.numeroCuota, falta: Math.round((abono - p.montoAbonado) * 100) / 100 }))
+    .sort((a, b) => a.numeroCuota - b.numeroCuota);
+}
 
 export function mensajeCobro(opts: {
   nombreApp: string;
@@ -154,6 +181,14 @@ export function mensajeCobro(opts: {
           `${sangria}✅ Cuota ${q.numeroCuota} de ${c.numCuotas} — ${formatMoneda(q.monto)}`
         );
       }
+    }
+    if (c.pendientes && c.pendientes.length > 0) {
+      // Pendientes e incompletas juntas; el monto es lo que de verdad falta.
+      const varias = c.pendientes.length > 1;
+      const falta = Math.round(c.pendientes.reduce((s, p) => s + p.falta, 0) * 100) / 100;
+      detalle.push(
+        `${sangria}⚠️ ${varias ? "Atrasadas: cuotas" : "Atrasada: cuota"} ${c.pendientes.map((p) => p.numeroCuota).join(", ")} (${formatMoneda(falta)})`
+      );
     }
     if (c.saldoTrasCobro !== undefined) {
       detalle.push(

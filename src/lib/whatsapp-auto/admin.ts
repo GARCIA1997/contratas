@@ -5,7 +5,7 @@ import { HttpError } from "@/lib/session";
 import { saldoActual } from "@/lib/services/deudores";
 import { registrarBitacora } from "./bitacora";
 import { normalizarTelefono } from "./telefono";
-import { CUPO_DIARIO, HORA_FIN, HORA_INICIO, LATIDO_MAX_MS, MOTIVO_SIN_ACUSE, PRIORIDAD } from "./reglas";
+import { CUPO_DIARIO, LATIDO_MAX_MS, MOTIVO_SIN_CONFIRMACION, PRIORIDAD } from "./reglas";
 import { RECONEXIONES_ALERTA, eventosDeSesion } from "./sesion-alertas";
 
 /**
@@ -143,7 +143,11 @@ export async function cancelarMensaje(id: string, actor: string) {
   if (r.count === 0) throw new HttpError(409, "El mensaje ya no se puede cancelar");
 }
 
-/** Solo FALLIDO o REVISAR (este último: el administrador confirmó que no salió). */
+/**
+ * FALLIDO, REVISAR (el administrador confirmó que no salió) o un "Por
+ * revisar" que se dio por enviado: no se sabe si llegó, así que debe poder
+ * reenviarse si el cliente dice que no le llegó.
+ */
 export async function reintentarMensaje(id: string, actor: string) {
   // Solo se reenvía el MENSAJE: el cobro ya quedó guardado y no se toca.
   const m = await prisma.mensajeWhatsApp.findUnique({ where: { id }, select: { tipo: true, texto: true } });
@@ -151,22 +155,27 @@ export async function reintentarMensaje(id: string, actor: string) {
     throw new HttpError(409, "Este recibo no se pudo preparar, no hay texto que reenviar: mándalo a mano desde la app");
   }
   const r = await prisma.mensajeWhatsApp.updateMany({
-    where: { id: { in: await idsDelMismoEnvio(id) }, estado: { in: ["FALLIDO", "REVISAR"] } },
+    where: {
+      id: { in: await idsDelMismoEnvio(id) },
+      OR: [{ estado: { in: ["FALLIDO", "REVISAR"] } }, { estado: "ENVIADO", motivo: MOTIVO_SIN_CONFIRMACION }],
+    },
     data: { estado: "PENDIENTE", motivo: `Reintento por ${actor}`, programadoPara: new Date() },
   });
   if (r.count === 0) throw new HttpError(409, "Solo se reintentan mensajes fallidos o por revisar");
 }
 
 /**
- * Lo apartado solo por falta de acuse, de una cuenta que no recibía acuses, no
- * indica que falló. Vuelve a "Enviado" sin mandar nada otra vez.
+ * Da por enviados TODOS los "Por revisar" de la cuenta sin mandar nada otra
+ * vez (p. ej. una cuenta que no recibe acuses aparta mensajes que sí
+ * llegaron). Cada uno conserva el botón Reenviar por si un cliente dice que
+ * no le llegó.
  */
-export async function resolverSinAcuse(cuentaId: string, actor: string) {
+export async function marcarRevisarComoEnviados(cuentaId: string, actor: string) {
   const r = await prisma.mensajeWhatsApp.updateMany({
-    where: { cuentaId, estado: "REVISAR", motivo: MOTIVO_SIN_ACUSE },
-    data: { estado: "ENVIADO", motivo: "Sin confirmación de WhatsApp" },
+    where: { cuentaId, estado: "REVISAR" },
+    data: { estado: "ENVIADO", motivo: MOTIVO_SIN_CONFIRMACION },
   });
-  await registrarBitacora({ cuentaId, tipo: "sin_acuse_resuelto", detalle: { mensajes: r.count }, actor });
+  await registrarBitacora({ cuentaId, tipo: "revisar_marcados_enviados", detalle: { mensajes: r.count }, actor });
 }
 
 export async function atenderRevertido(id: string) {
@@ -540,19 +549,6 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     if (f.revisar > 0) alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.revisar} mensaje(s) por revisar` });
     if (f.ultimoError?.startsWith("Se vinculó")) alertas.push({ nivel: "error", cuentaId: f.id, texto: `${etq}: ${f.ultimoError}` });
   }
-  const nocturnos = await prisma.envioWhatsApp.count({
-    where: { enviadoEn: { gte: hoy }, tipo: "RECIBO" },
-  });
-  if (nocturnos > 0) {
-    const fuera = await prisma.$queryRaw<{ n: bigint }[]>`
-      SELECT COUNT(*)::bigint AS n FROM "EnvioWhatsApp"
-      WHERE "enviadoEn" >= ${hoy} AND tipo = 'RECIBO'
-        AND (EXTRACT(HOUR FROM "enviadoEn" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City') < ${HORA_INICIO}
-          OR EXTRACT(HOUR FROM "enviadoEn" AT TIME ZONE 'UTC' AT TIME ZONE 'America/Mexico_City') >= ${HORA_FIN})`;
-    const n = Number(fuera[0]?.n ?? 0);
-    if (n > 0) alertas.push({ nivel: "info", texto: `${n} recibo(s) enviados hoy fuera de ${HORA_INICIO}:00–${HORA_FIN}:00` });
-  }
-
   const sel = cuentaSeleccionada ? filas.find((f) => f.id === cuentaSeleccionada) : undefined;
   return {
     paroGlobal: control?.paroGlobal ?? false,

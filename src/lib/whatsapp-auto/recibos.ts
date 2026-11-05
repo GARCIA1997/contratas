@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { mensajeCobro, mensajeReciboAbonoDeudor, type CobroContrata } from "@/lib/mensajes-whatsapp";
+import { cuotasPendientesAtrasadas, mensajeCobro, mensajeReciboAbonoDeudor, type CobroContrata } from "@/lib/mensajes-whatsapp";
 import type { DatosRecibo } from "./unir-recibos";
 import { claveOperacionActual, fechaCapturaActual } from "./contexto-operacion";
 import { normalizarTelefono } from "./telefono";
@@ -323,9 +323,11 @@ export function cobroDeContrata(
     tipo: CobroContrata["tipo"];
     monto: number;
     abono: number;
-    pagos: { numeroCuota: number; montoAbonado: number }[];
+    pagos: { numeroCuota: number; montoAbonado: number; pagado?: boolean; fechaProgramada?: Date | string }[];
   },
-  aplicaciones: { numeroCuota: number; monto: number; quedaPagada: boolean }[]
+  aplicaciones: { numeroCuota: number; monto: number; quedaPagada: boolean }[],
+  // Sin señal, "hoy" es cuando se capturó el cobro (no cuando sincronizó).
+  hoy: Date = fechaCapturaActual() ?? new Date()
 ): CobroContrata {
   const r = (n: number) => Math.round(n * 100) / 100;
   const extra = new Map(aplicaciones.map((a) => [a.numeroCuota, a.monto]));
@@ -347,5 +349,11 @@ export function cobroDeContrata(
         : { numeroCuota: a.numeroCuota, monto: r(a.monto), parcial: true, faltante: Math.max(0, faltante) };
     }),
     subtotal: r(aplicaciones.reduce((s, a) => s + a.monto, 0)),
+    pendientes: cuotasPendientesAtrasadas(
+      contrata.pagos,
+      contrata.abono,
+      aplicaciones.map((a) => a.numeroCuota),
+      hoy
+    ),
   };
 }

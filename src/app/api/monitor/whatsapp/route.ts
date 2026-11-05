@@ -6,7 +6,7 @@ import { handleApiError } from "@/lib/api";
 import { requireMonitor } from "@/lib/monitor/datos";
 import {
   atenderRevertido,
-  resolverSinAcuse,
+  marcarRevisarComoEnviados,
   cambiarEstadoCampana,
   cambiarNumero,
   cancelarMensaje,
@@ -49,7 +49,7 @@ const schema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("cancelar_mensaje"), mensajeId: id }),
   z.object({ accion: z.literal("reintentar_mensaje"), mensajeId: id }),
   z.object({ accion: z.literal("atender_revertido"), mensajeId: id }),
-  z.object({ accion: z.literal("resolver_sin_acuse"), cuentaId: id }),
+  z.object({ accion: z.literal("marcar_revisar_enviados"), cuentaId: id }),
   z.object({ accion: z.literal("iniciar_campana"), cuentaId: id, total: z.number().int().min(1) }),
   z.object({ accion: z.literal("prueba"), cuentaId: id, telefono: z.string().max(30), texto: z.string().max(1000).nullable().optional() }),
   z.object({ accion: z.literal("campana"), campanaId: id, operacion: z.enum(["pausar", "reanudar", "terminar"]) }),
@@ -88,8 +88,8 @@ export async function POST(req: NextRequest) {
       case "cancelar_mensaje":
         await cancelarMensaje(a.mensajeId, actor);
         break;
-      case "resolver_sin_acuse":
-        await resolverSinAcuse(a.cuentaId, actor);
+      case "marcar_revisar_enviados":
+        await marcarRevisarComoEnviados(a.cuentaId, actor);
         break;
       case "reintentar_mensaje":
         await reintentarMensaje(a.mensajeId, actor);
