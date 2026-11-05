@@ -303,7 +303,6 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 | Freno de presentación | Campaña pausada automáticamente |
 | Memoria alta | Worker > 300 MB |
 | Por revisar | Hay mensajes en estado `revisar` |
-| Recibos nocturnos | Recibos enviados fuera de 9:00–22:00 (informativo) |
 
 ---
 

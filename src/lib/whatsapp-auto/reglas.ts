@@ -118,6 +118,9 @@ export const RECIBO_VIGENCIA_MS = 7 * 24 * 60 * 60 * 1000;
 export const SIN_ACUSE_MS = 15 * 60 * 1000;
 
 /** Motivo con el que se apartan los que no tuvieron acuse (se reconoce al llegar tarde). */
+/** "Por revisar" que el administrador dio por enviado sin reenviar: sigue pudiendo reenviarse. */
+export const MOTIVO_SIN_CONFIRMACION = "Marcado como enviado sin confirmación de WhatsApp";
+
 export const MOTIVO_SIN_ACUSE = "WhatsApp no confirmó la recepción: revisa el chat antes de reenviar";
 
 /** Un ENVIANDO más viejo que esto significa que el worker murió a medio envío. */
