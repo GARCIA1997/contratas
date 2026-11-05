@@ -18,8 +18,7 @@ export async function GET(req: NextRequest) {
       .map((c) => c.trim())
       .filter(Boolean)
       .slice(0, 20);
-    const telefono = req.nextUrl.searchParams.get("telefono");
-    return NextResponse.json(await estadoDeRecibos(user.ownerId, claves, telefono));
+    return NextResponse.json(await estadoDeRecibos(user.ownerId, claves));
   } catch (error) {
     return handleApiError(error);
   }

@@ -8,7 +8,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { fake } = vi.hoisted(() => {
   const fake = {
     cuentaWhatsApp: { findUnique: vi.fn() },
-    optOutWhatsApp: { findUnique: vi.fn() },
     configuracion: { findUnique: vi.fn(async () => ({ nombreApp: "Kredired" })) },
     mensajeWhatsApp: { createMany: vi.fn(), updateMany: vi.fn() },
     errorLog: { create: vi.fn(async () => ({})) },

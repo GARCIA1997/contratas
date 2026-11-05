@@ -31,7 +31,7 @@ import { marcarEnvioRechazado, marcarRestringida, SinWhatsApp, type Sesion } fro
  *  - espaciado aleatorio entre mensajes;
  *  - "a lo más una vez": se marca ENVIANDO antes de mandar.
  * Lo que se arma al enviar se revalida contra la BD en ese momento (monto
- * vigente, cuota ya pagada, teléfono cambiado, opt-out).
+ * vigente, cuota ya pagada, teléfono cambiado).
  */
 
 type Cuenta = NonNullable<Awaited<ReturnType<typeof cargarCuenta>>>;
@@ -257,13 +257,7 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
   const validos: MensajeWhatsApp[] = [];
   const telefono = mensajes[0].telefono;
 
-  const optOut = await prisma.optOutWhatsApp.findUnique({
-    where: { cuentaId_telefono: { cuentaId: cuenta.id, telefono } },
-  });
   const tipo0 = mensajes[0].tipo;
-  if (optOut?.activo && tipo0 !== "CONFIRMACION_BAJA") {
-    return { texto: null, validos, cancelados: mensajes.map((m) => ({ id: m.id, motivo: "Opt-out" })) };
-  }
 
   if (tipo0 === "CONFIRMACION_BAJA" || tipo0 === "PRUEBA") {
     return { texto: mensajes[0].texto, validos: [mensajes[0]], cancelados };

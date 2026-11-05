@@ -8,7 +8,7 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 ENV SENTRYCLI_SKIP_DOWNLOAD=1
-# Misma zona horaria que la app: horario 9–19 y "hoy" de los recordatorios.
+# Misma zona horaria que la app: horario 9–22 y "hoy" de los recordatorios.
 ENV TZ=America/Mexico_City
 
 # libsignal viene de GitHub: git para clonarlo, por https (sin llaves SSH).
@@ -21,7 +21,9 @@ COPY prisma ./prisma
 RUN npm ci && npx prisma generate
 
 # Dependencias propias del worker.
+# patches/: el postinstall de npm ci parchea Baileys; si el parche no aplica, el build falla.
 COPY worker/whatsapp/package.json worker/whatsapp/package-lock.json ./worker/whatsapp/
+COPY worker/whatsapp/patches ./worker/whatsapp/patches
 RUN cd worker/whatsapp && npm ci
 
 COPY tsconfig.json ./

@@ -1,8 +1,7 @@
 /**
  * Textos propios del envío automático. Los recibos y recordatorios usan las
  * plantillas de siempre (`mensajes-whatsapp.ts`); aquí solo va lo que no
- * existía: presentación, la línea de presentación del primer mensaje y la
- * confirmación de baja.
+ * existía: presentación y la línea de presentación del primer mensaje.
  *
  * La presentación rota entre varias versiones: el mismo texto idéntico a
  * cientos de contactos es justo lo que el antispam de WhatsApp castiga.
@@ -16,13 +15,13 @@
  */
 const PRESENTACIONES = [
   (n: string, app: string, r: string | null) =>
-    `Hola ${n}, ${r ? `le escribe ${r} de ${app}` : `le escribimos de ${app}`}. A partir de hoy recibirá sus recordatorios y comprobantes de pago desde este número. Si no desea recibir mensajes, responda NO y no le volveremos a escribir.`,
+    `Hola ${n}, ${r ? `le escribe ${r} de ${app}` : `le escribimos de ${app}`}. A partir de hoy recibirá sus recordatorios y comprobantes de pago desde este número.`,
   (n: string, app: string, r: string | null) =>
-    `Buen día ${n}. ${r ? `Soy ${r}, de ${app}` : `Somos ${app}`}: desde este número le haremos llegar sus comprobantes y avisos de pago. Puede guardarlo en sus contactos. Si prefiere no recibirlos, conteste NO.`,
+    `Buen día ${n}. ${r ? `Soy ${r}, de ${app}` : `Somos ${app}`}: desde este número le haremos llegar sus comprobantes y avisos de pago. Puede guardarlo en sus contactos.`,
   (n: string, app: string, r: string | null) =>
-    `Hola ${n}, este es el nuevo número de ${r ? `${r}, de ${app}` : app}. Por aquí le enviaremos sus recibos y recordatorios. Si no desea recibir estos mensajes, responda NO.`,
+    `Hola ${n}, este es el nuevo número de ${r ? `${r}, de ${app}` : app}. Por aquí le enviaremos sus recibos y recordatorios.`,
   (n: string, app: string, r: string | null) =>
-    `${n}, le saluda ${r ? `${r} de ${app}` : app}. Le avisamos que sus comprobantes y recordatorios de pago llegarán desde este número. Si no quiere recibirlos, solo responda NO.`,
+    `${n}, le saluda ${r ? `${r} de ${app}` : app}. Le avisamos que sus comprobantes y recordatorios de pago llegarán desde este número.`,
 ];
 
 export function textoPresentacion(
@@ -39,7 +38,7 @@ export function textoPresentacion(
 export function lineaPresentacion(nombreApp: string, remitente?: string | null): string {
   const r = nombreRemitente(remitente);
   const quien = r ? `Le escribe ${r} de *${nombreApp}*` : `Le escribimos de *${nombreApp}*`;
-  return `👋 ${quien}. Desde este número recibirá sus comprobantes y recordatorios (si no desea recibirlos, responda NO).`;
+  return `👋 ${quien}. Desde este número recibirá sus comprobantes y recordatorios.`;
 }
 
 /**
@@ -50,14 +49,6 @@ export function lineaPresentacion(nombreApp: string, remitente?: string | null):
 export function nombreRemitente(nombre: string | null | undefined): string | null {
   if (!nombre || /[@\d]/.test(nombre)) return null;
   return primerNombre(nombre) || null;
-}
-
-export function textoConfirmacionBaja(nombreApp: string): string {
-  return `Listo, no le enviaremos más mensajes automáticos de ${nombreApp}. Si cambia de opinión, responda ALTA.`;
-}
-
-export function textoConfirmacionAlta(nombreApp: string): string {
-  return `Listo, volverá a recibir sus comprobantes y recordatorios de ${nombreApp}.`;
 }
 
 function primerNombre(nombre: string): string {

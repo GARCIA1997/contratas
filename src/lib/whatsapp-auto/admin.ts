@@ -5,7 +5,7 @@ import { HttpError } from "@/lib/session";
 import { saldoActual } from "@/lib/services/deudores";
 import { registrarBitacora } from "./bitacora";
 import { normalizarTelefono } from "./telefono";
-import { CUPO_DIARIO, HORA_FIN, HORA_INICIO, LATIDO_MAX_MS, PRIORIDAD } from "./reglas";
+import { CUPO_DIARIO, HORA_FIN, HORA_INICIO, LATIDO_MAX_MS, MOTIVO_SIN_ACUSE, PRIORIDAD } from "./reglas";
 import { RECONEXIONES_ALERTA, eventosDeSesion } from "./sesion-alertas";
 
 /**
@@ -157,16 +157,20 @@ export async function reintentarMensaje(id: string, actor: string) {
   if (r.count === 0) throw new HttpError(409, "Solo se reintentan mensajes fallidos o por revisar");
 }
 
-export async function atenderRevertido(id: string) {
-  await prisma.mensajeWhatsApp.update({ where: { id }, data: { revertido: false } });
+/**
+ * Lo apartado solo por falta de acuse, de una cuenta que no recibía acuses, no
+ * indica que falló. Vuelve a "Enviado" sin mandar nada otra vez.
+ */
+export async function resolverSinAcuse(cuentaId: string, actor: string) {
+  const r = await prisma.mensajeWhatsApp.updateMany({
+    where: { cuentaId, estado: "REVISAR", motivo: MOTIVO_SIN_ACUSE },
+    data: { estado: "ENVIADO", motivo: "Sin confirmación de WhatsApp" },
+  });
+  await registrarBitacora({ cuentaId, tipo: "sin_acuse_resuelto", detalle: { mensajes: r.count }, actor });
 }
 
-export async function reactivarOptOut(cuentaId: string, telefono: string, actor: string) {
-  await prisma.optOutWhatsApp.update({
-    where: { cuentaId_telefono: { cuentaId, telefono } },
-    data: { activo: false, reactivadoEn: new Date() },
-  });
-  await registrarBitacora({ cuentaId, tipo: "opt_out_reactivado", detalle: { telefono }, actor });
+export async function atenderRevertido(id: string) {
+  await prisma.mensajeWhatsApp.update({ where: { id }, data: { revertido: false } });
 }
 
 /* ── Mensaje de prueba ───────────────────────────────────────────────── */
@@ -177,7 +181,7 @@ export const MAX_PRUEBAS_POR_HORA = 5;
  * Encola un mensaje de prueba a cualquier teléfono: sale por la cola normal
  * (worker → WhatsApp → acuse), así que comprueba el camino completo. No
  * depende de que el usuario haya encendido el automático, pero sí respeta
- * pausas, paro global y bajas. Límite por hora para no quemar el número.
+ * pausas y paro global. Límite por hora para no quemar el número.
  */
 export async function enviarPrueba(cuentaId: string, telefono: string, texto: string | null, actor: string) {
   const tel = normalizarTelefono(telefono);
@@ -225,17 +229,14 @@ export type DestinatarioPresentacion = {
 
 /**
  * Clientes con al menos una contrata activa (cuota sin pagar, no pasada a
- * deuda) y deudores con saldo, con teléfono, sin opt-out y sin presentar.
+ * deuda) y deudores con saldo, con teléfono y sin presentar.
  * Un mensaje por teléfono. Primero quienes pagaron más recientemente: ya
  * reconocen el negocio y responden, lo que da reputación al número.
  */
 export async function destinatariosPresentacion(cuentaId: string): Promise<DestinatarioPresentacion[]> {
   const cuenta = await prisma.cuentaWhatsApp.findUniqueOrThrow({ where: { id: cuentaId } });
-  const [bajas, presentados] = await Promise.all([
-    prisma.optOutWhatsApp.findMany({ where: { cuentaId, activo: true }, select: { telefono: true } }),
-    prisma.presentacionWhatsApp.findMany({ where: { cuentaId }, select: { telefono: true } }),
-  ]);
-  const excluidos = new Set([...bajas, ...presentados].map((x) => x.telefono));
+  const presentados = await prisma.presentacionWhatsApp.findMany({ where: { cuentaId }, select: { telefono: true } });
+  const excluidos = new Set(presentados.map((x) => x.telefono));
 
   const clientes = await prisma.cliente.findMany({
     where: {
@@ -469,7 +470,7 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
   );
 
   const alertas: Alerta[] = [];
-  const { cerradas, reconexiones, sinEntregar } = await eventosDeSesion(new Date(ahora));
+  const { cerradas, reconexiones, sinEntregar, sinAcuses } = await eventosDeSesion(new Date(ahora));
   if (control?.paroGlobal) alertas.push({ nivel: "error", texto: `Paro global activo (${control.paroPor ?? "?"})` });
   if (cuentas.length > 0 && !workerVivo) {
     alertas.push({ nivel: "error", texto: "Worker caído: sin latido en más de 2 minutos" });
@@ -503,6 +504,14 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     if (nReconex >= RECONEXIONES_ALERTA) {
       alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${nReconex} desconexiones en la última hora` });
     }
+    const nSinAcuses = sinAcuses.get(f.id) ?? 0;
+    if (nSinAcuses > 0) {
+      alertas.push({
+        nivel: "error",
+        cuentaId: f.id,
+        texto: `${etq}: ${nSinAcuses} mensajes en 24 h sin una sola confirmación de WhatsApp. No se puede saber si llegaron; no los reenvíes en bloque`,
+      });
+    }
     const nSinEntregar = sinEntregar.get(f.id) ?? 0;
     if (nSinEntregar > 0) {
       alertas.push({
@@ -520,9 +529,6 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
     }
     if (f.campana?.estado === "ERROR") {
       alertas.push({ nivel: "error", cuentaId: f.id, texto: `${etq}: campaña de presentación con error — ${f.campana.pausaMotivo ?? ""}` });
-    }
-    if (f.campana?.estado === "PAUSADA" && f.campana.pausaMotivo?.startsWith("Freno")) {
-      alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.campana.pausaMotivo}` });
     }
     if (f.recibosFallidos > 0) {
       alertas.push({
@@ -569,7 +575,7 @@ async function detalleCuenta(cuentaId: string) {
     where: { id: cuentaId },
     include: { owner: { select: { nombre: true, email: true } } },
   });
-  const [porTipoHoy, porEstado, mensajes, revertidos, optOuts, campana, procesos, bitacora, reconexiones, proximo, acks] =
+  const [porTipoHoy, porEstado, mensajes, revertidos, campana, procesos, bitacora, reconexiones, proximo, acks] =
     await Promise.all([
       prisma.envioWhatsApp.groupBy({ by: ["tipo"], where: { cuentaId, enviadoEn: { gte: hoy } }, _count: true }),
       // Por MENSAJE, igual que la tabla de la cola: los avisos que salieron
@@ -584,7 +590,6 @@ async function detalleCuenta(cuentaId: string) {
         include: { envio: { select: { ack: true, enviadoEn: true, texto: true, conPresentacion: true } } },
       }),
       prisma.mensajeWhatsApp.findMany({ where: { cuentaId, revertido: true }, orderBy: { actualizadoEn: "desc" } }),
-      prisma.optOutWhatsApp.findMany({ where: { cuentaId }, orderBy: { fecha: "desc" } }),
       prisma.campanaWhatsApp.findFirst({ where: { cuentaId }, orderBy: { iniciadaEn: "desc" } }),
       prisma.procesoWhatsApp.findMany({
         where: { OR: [{ cuentaId }, { cuentaId: null }] },
@@ -619,13 +624,11 @@ async function detalleCuenta(cuentaId: string) {
 
   let campanaInfo = null;
   if (campana) {
-    const [enviados, faltan, bajas] = await Promise.all([
+    const [enviados, faltan] = await Promise.all([
       prisma.mensajeWhatsApp.count({ where: { campanaId: campana.id, estado: "ENVIADO" } }),
       prisma.mensajeWhatsApp.count({ where: { campanaId: campana.id, estado: "PENDIENTE" } }),
-      prisma.optOutWhatsApp.count({ where: { cuentaId, fecha: { gte: campana.iniciadaEn } } }),
     ]);
-    const bajasHoy = await prisma.optOutWhatsApp.count({ where: { cuentaId, activo: true, fecha: { gte: hoy } } });
-    campanaInfo = { ...campana, enviados, faltan, bajas, bajasHoy };
+    campanaInfo = { ...campana, enviados, faltan };
   }
 
   const qrImagen = cuenta.qr ? await QRCode.toDataURL(cuenta.qr, { margin: 1, width: 280 }) : null;
@@ -638,7 +641,6 @@ async function detalleCuenta(cuentaId: string) {
     acksHoy: acks.map((x) => ({ ack: x.ack, n: x._count })),
     mensajes,
     revertidos,
-    optOuts,
     campana: campanaInfo,
     procesos,
     bitacora,

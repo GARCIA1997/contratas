@@ -62,7 +62,7 @@ async function registrarError(ownerId: string, motivo: string, contexto: Record<
     .catch(() => undefined);
 }
 
-/** Null = no aplica (sin WhatsApp automático, sin teléfono o con baja). Nunca lanza. */
+/** Null = no aplica (sin WhatsApp automático o sin teléfono). Nunca lanza. */
 async function prepararRecibo(opts: {
   ownerId: string;
   destinatario: Destinatario;
@@ -120,11 +120,6 @@ async function prepararRecibo(opts: {
     });
     if (!c?.activo || !c.recibos) return null;
     cuenta = { id: c.id, ownerId: c.ownerId };
-    const optOut = await prisma.optOutWhatsApp.findUnique({
-      where: { cuentaId_telefono: { cuentaId: c.id, telefono } },
-      select: { activo: true },
-    });
-    if (optOut?.activo) return null;
 
     const texto = opts.texto(await nombreAppDe(opts.ownerId));
     // Llegó por la cola offline: espera a que suban las demás operaciones

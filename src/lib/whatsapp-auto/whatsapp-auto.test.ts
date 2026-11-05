@@ -7,9 +7,7 @@ import {
   enHorario,
   espaciadoMs,
   esTransaccional,
-  interpretarRespuesta,
   siguienteApertura,
-  umbralFreno,
 } from "./reglas";
 import { claveDeudor, deudorTocaRecordatorio, recordatoriosDeCuotas, type CuotaParaPlan } from "./planificar";
 import { lineaPresentacion, nombreRemitente, textoPresentacion } from "./textos";
@@ -36,19 +34,6 @@ describe("normalizarTelefono", () => {
   });
   it("lee el teléfono de un JID con dispositivo", () => {
     expect(telefonoDeJid("523121128425:12@s.whatsapp.net")).toBe("523121128425");
-  });
-});
-
-describe("opt-out", () => {
-  it("solo cuenta el mensaje completo", () => {
-    for (const t of ["NO", "no.", " Baja ", "STOP", "alto", "Ya no", "¡No!"]) {
-      expect(interpretarRespuesta(t)).toBe("baja");
-    }
-    expect(interpretarRespuesta("no tengo dinero hoy")).toBeNull();
-    expect(interpretarRespuesta("mañana le pago, no se preocupe")).toBeNull();
-    expect(interpretarRespuesta("Alta")).toBe("alta");
-    expect(interpretarRespuesta("Sí")).toBe("alta");
-    expect(interpretarRespuesta(null)).toBeNull();
   });
 });
 
@@ -82,12 +67,10 @@ describe("reglas de envío", () => {
     expect(espaciadoMs("PRESENTACION", () => 0)).toBe(240_000);
     expect(espaciadoMs("PRESENTACION", () => 1)).toBe(600_000);
   });
-  it("rampa 20 → 30 y freno más estricto los primeros 3 días", () => {
+  it("rampa 20 → 30", () => {
     expect(cupoPresentacion(0)).toBe(20);
     expect(cupoPresentacion(2)).toBe(20);
     expect(cupoPresentacion(3)).toBe(30);
-    expect(umbralFreno(1)).toBe(2);
-    expect(umbralFreno(5)).toBe(3);
   });
 });
 
@@ -167,7 +150,7 @@ describe("textos", () => {
     const b = textoPresentacion("JUAN pérez", "Kredired", 1);
     expect(a).not.toBe(b);
     expect(a).toContain("Juan");
-    expect(a).toContain("NO");
+    expect(a).not.toMatch(/\bNO\b/);
   });
 });
 
@@ -177,10 +160,10 @@ describe("presentación firmada por el usuario", () => {
       const t = textoPresentacion("juan pérez", "Kredired", i, "ALEJANDRO García");
       expect(t).toMatch(/Alejandro,? de Kredired/);
       expect(t).toContain("Juan");
-      expect(t).toContain("NO");
+      expect(t).not.toMatch(/\bNO\b/);
     }
     expect(textoPresentacion("Juan", "Kredired", 0, "Alejandro")).toBe(
-      "Hola Juan, le escribe Alejandro de Kredired. A partir de hoy recibirá sus recordatorios y comprobantes de pago desde este número. Si no desea recibir mensajes, responda NO y no le volveremos a escribir."
+      "Hola Juan, le escribe Alejandro de Kredired. A partir de hoy recibirá sus recordatorios y comprobantes de pago desde este número."
     );
   });
   it("la línea del primer mensaje también lo firma", () => {

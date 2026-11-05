@@ -3,7 +3,6 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
-  type WAMessage,
   type WASocket,
 } from "baileys";
 import type { Boom } from "@hapi/boom";
@@ -13,9 +12,8 @@ import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
 import { MOTIVO_SIN_ACUSE } from "@/lib/whatsapp-auto/reglas";
 import { jidDe, normalizarTelefono, telefonoDeJid } from "@/lib/whatsapp-auto/telefono";
 import { authDesdeBD, borrarSesion } from "./auth-bd";
-import { procesarEntrante } from "./receptor";
 
-const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL ?? "warn" });
+const loggerBase = pino({ level: process.env.WHATSAPP_LOG_LEVEL ?? "warn" });
 
 export type ModoInicio = "normal" | "qr" | "codigo";
 
@@ -74,16 +72,24 @@ export class Sesion {
   private abiertaDesde: number | null = null;
   private rechazados = new Map<string, string>();
   private rechazosSeguidos = 0;
+  /** Diagnóstico para el latido: ¿llegan recibos de WhatsApp y Baileys los convierte en acuses? */
+  recibosCrudos: Record<string, number> = {};
+  acusesEmitidos = 0;
   private reconexion: NodeJS.Timeout | null = null;
   private detenida = false;
   private iniciando = false;
   private codigoPedido = false;
   private jids = new Map<string, { jid: string | null; hasta: number }>();
 
+  /** Cada línea del log dice de qué cuenta es. */
+  private readonly logger: pino.Logger;
+
   constructor(
     readonly cuentaId: string,
     readonly numero: string
-  ) {}
+  ) {
+    this.logger = loggerBase.child({ cuenta: cuentaId.slice(0, 8) });
+  }
 
   async iniciar(modo: ModoInicio) {
     this.detenida = false;
@@ -97,6 +103,7 @@ export class Sesion {
   }
 
   private async conectar(modo: ModoInicio) {
+    const logger = this.logger;
     const { state, guardarCreds } = await authDesdeBD(this.cuentaId);
     const version = await versionWhatsApp();
 
@@ -129,9 +136,10 @@ export class Sesion {
       void this.alActualizarConexion(sock, modo, u).catch((e) => logger.error(e));
     });
 
-    sock.ev.on("messages.upsert", ({ messages, type }) => {
-      if (type !== "notify") return;
-      for (const m of messages) void this.alRecibir(m).catch((e) => logger.error(e));
+    // Diagnóstico: recibos que manda WhatsApp, antes de que Baileys los procese.
+    sock.ws.on("CB:receipt", (node: { attrs?: { type?: string } }) => {
+      const tipo = node.attrs?.type ?? "delivery";
+      this.recibosCrudos[tipo] = (this.recibosCrudos[tipo] ?? 0) + 1;
     });
 
     sock.ev.on("messages.update", (updates) => {
@@ -298,16 +306,6 @@ export class Sesion {
     }
   }
 
-  private async alRecibir(m: WAMessage) {
-    if (m.key.fromMe) return;
-    const jid = m.key.remoteJid ?? "";
-    if (jid.endsWith("@g.us") || jid === "status@broadcast") return;
-    const telefono = jid.endsWith("@s.whatsapp.net") ? telefonoDeJid(jid) : telefonoDeJid(m.key.senderPn);
-    if (!telefono) return;
-    const texto = m.message?.conversation ?? m.message?.extendedTextMessage?.text ?? null;
-    await procesarEntrante(this.cuentaId, telefono, texto);
-  }
-
   /** WhatsApp devolvió error para ese mensaje (el acuse llegó antes de guardar el envío). */
   rechazoDe(waMensajeId: string | null): string | null {
     return waMensajeId ? (this.rechazados.get(waMensajeId) ?? null) : null;
@@ -345,6 +343,7 @@ export class Sesion {
         continue;
       }
       if (update.status >= 2) this.rechazosSeguidos = 0;
+      this.acusesEmitidos++;
       const ack = update.status >= 4 ? "LEIDO" : update.status === 3 ? "ENTREGADO" : update.status === 2 ? "ENVIADO" : null;
       if (!ack) continue;
       await prisma.envioWhatsApp.updateMany({

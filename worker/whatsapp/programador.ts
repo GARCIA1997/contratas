@@ -32,11 +32,6 @@ async function programarCuenta(
   cuenta: { id: string; ownerId: string; porVencer: boolean; vencidas: boolean; deudores: boolean },
   hoy: Date
 ): Promise<number> {
-  const bajas = new Set(
-    (await prisma.optOutWhatsApp.findMany({ where: { cuentaId: cuenta.id, activo: true }, select: { telefono: true } })).map(
-      (o) => o.telefono
-    )
-  );
   const filas = [];
   const base = startOfDay(hoy);
 
@@ -67,7 +62,7 @@ async function programarCuenta(
       if (r.tipo === "POR_VENCER" ? !cuenta.porVencer : !cuenta.vencidas) continue;
       const p = porId.get(`${r.contrataId}:${r.numeroCuota}`)!;
       const telefono = normalizarTelefono(p.contrata.cliente.telefono);
-      if (!telefono || bajas.has(telefono)) continue;
+      if (!telefono) continue;
       filas.push({
         cuentaId: cuenta.id,
         ownerId: cuenta.ownerId,
@@ -90,7 +85,7 @@ async function programarCuenta(
     });
     for (const d of deudores) {
       const telefono = normalizarTelefono(d.telefono);
-      if (!telefono || bajas.has(telefono)) continue;
+      if (!telefono) continue;
       const ultimoRecordatorio = await prisma.mensajeWhatsApp.findFirst({
         where: { deudorId: d.id, tipo: "DEUDOR", estado: { not: "CANCELADO" } },
         orderBy: { creadoEn: "desc" },

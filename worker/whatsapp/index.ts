@@ -182,7 +182,12 @@ async function latido() {
     versionBaileys: VERSION_BAILEYS,
     huella: HUELLA,
     iniciado: INICIADO,
-    sesiones: Array.from(sesiones.values()).map((s) => ({ cuentaId: s.cuentaId, conectada: s.conectada && !s.zombi })),
+    sesiones: Array.from(sesiones.values()).map((s) => ({
+      cuentaId: s.cuentaId,
+      conectada: s.conectada && !s.zombi,
+      recibos: s.recibosCrudos,
+      acuses: s.acusesEmitidos,
+    })),
   };
   for (const s of Array.from(sesiones.values())) {
     if (s.zombi) {
@@ -200,9 +205,18 @@ async function latido() {
 /** "Enviado" que WhatsApp nunca confirmó: se aparta para revisión (reenviable desde el monitor). */
 async function revisarSinAcuse() {
   const ahora = Date.now();
+  // Si la cuenta no recibe NINGÚN acuse, la falta de acuse no dice nada de este
+  // mensaje: no se aparta (se reenviarían mensajes que sí llegaron). De eso avisa
+  // la alerta "cuenta sin acuses" del monitor.
+  const conAcuses = await prisma.envioWhatsApp.findMany({
+    where: { ack: { not: null }, enviadoEn: { gt: new Date(ahora - 48 * 60 * 60_000) } },
+    distinct: ["cuentaId"],
+    select: { cuentaId: true },
+  });
   const r = await prisma.mensajeWhatsApp.updateMany({
     where: {
       estado: "ENVIADO",
+      cuentaId: { in: conAcuses.map((c) => c.cuentaId) },
       envio: { ack: null, enviadoEn: { lt: new Date(ahora - SIN_ACUSE_MS), gt: new Date(ahora - 24 * 60 * 60_000) } },
     },
     data: { estado: "REVISAR", motivo: MOTIVO_SIN_ACUSE },

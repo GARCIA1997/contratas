@@ -90,33 +90,6 @@ export function espaciadoMs(tipo: TipoMensajeWhatsApp, azar: () => number = Math
   return Math.round(min + azar() * (max - min));
 }
 
-/* ── Opt-out ─────────────────────────────────────────────────────────── */
-
-function normalizarTexto(texto: string): string {
-  return texto
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[.!¡¿?,;:]+/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-const BAJA = new Set(["no", "baja", "stop", "alto", "ya no"]);
-const ALTA = new Set(["alta", "si"]);
-
-/**
- * Solo el mensaje COMPLETO cuenta: "no tengo dinero hoy" no es una baja.
- * Devuelve null si no es ni baja ni reactivación.
- */
-export function interpretarRespuesta(texto: string | null | undefined): "baja" | "alta" | null {
-  if (!texto) return null;
-  const t = normalizarTexto(texto);
-  if (BAJA.has(t)) return "baja";
-  if (ALTA.has(t)) return "alta";
-  return null;
-}
-
 /* ── Campaña de presentación ─────────────────────────────────────────── */
 
 /** Días con envíos de la campaña tras los cuales sube la rampa. */
@@ -124,11 +97,6 @@ export const DIAS_RAMPA_INICIAL = 3;
 
 export function cupoPresentacion(diasConEnvio: number): number {
   return diasConEnvio < DIAS_RAMPA_INICIAL ? 20 : 30;
-}
-
-/** Bajas en un día que pausan la campaña sola (más estricto al inicio). */
-export function umbralFreno(diasConEnvio: number): number {
-  return diasConEnvio < DIAS_RAMPA_INICIAL ? 2 : 3;
 }
 
 /* ── Pausas ──────────────────────────────────────────────────────────── */
