@@ -459,6 +459,10 @@ export async function limpiarPago(
   numeroCuota: number
 ): Promise<ContrataConDatos> {
   const contrata = await getContrata(ownerId, contrataId);
+  // Su saldo ya se pasó a Deudores: reabrir una cuota lo contaría dos veces.
+  if (contrata.convertidaADeuda) {
+    throw new HttpError(409, "Esta contrata ya se pasó a Deudores; no se pueden revertir sus cuotas");
+  }
   const pago = contrata.pagos.find((p) => p.numeroCuota === numeroCuota);
   if (!pago) throw new HttpError(404, "Cuota no encontrada");
 
