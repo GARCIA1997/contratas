@@ -57,7 +57,7 @@ export function HistorialContratas({
   conBeneficiarios = false,
   administrar,
 }: {
-  /** Presente para administradores: renombrar, unir o convertir beneficiarios. */
+  /** Presente para administradores: convertir un beneficiario en cliente propio. */
   administrar?: { ownerId: string };
   contratas: ContrataDeCliente[];
   /** Para nombrar al titular en la sección de beneficiarios. */
@@ -136,7 +136,7 @@ export function HistorialContratas({
                     type="button"
                     onClick={() => setEditando({ id: p.clave, nombre: p.nombre })}
                     className="flex w-11 shrink-0 items-center justify-center border-l border-border/60 text-muted-foreground hover:bg-accent/60"
-                    aria-label={`Administrar a ${p.nombre}`}
+                    aria-label={`Convertir a ${p.nombre} en cliente propio`}
                   >
                     <MoreHorizontal className="size-4" />
                   </button>
@@ -159,9 +159,6 @@ export function HistorialContratas({
         <AdministrarBeneficiario
           ownerId={administrar.ownerId}
           beneficiario={editando}
-          otros={personas
-            .filter((p) => p.clave !== TITULAR && p.clave !== editando.id)
-            .map((p) => ({ id: p.clave, nombre: p.nombre }))}
           clienteNombre={clienteNombre}
           onCerrar={() => {
             setEditando(null);

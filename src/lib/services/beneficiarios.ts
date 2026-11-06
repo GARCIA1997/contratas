@@ -3,9 +3,9 @@ import { HttpError } from "@/lib/session";
 import { limpiarNombre, normalizarNombre } from "@/lib/beneficiarios";
 
 /**
- * Mantenimiento de beneficiarios (función "beneficiarios"). Son acciones de
- * administrador y requieren señal: mueven contratas entre personas o
- * clientes, y eso lo decide el servidor, no el teléfono.
+ * Mantenimiento de beneficiarios (función "beneficiarios"). Cambiar nombre y
+ * unir duplicados se hacen desde el monitor (Monitor → Beneficiarios);
+ * convertir en cliente, desde el perfil del cliente en la app (con señal).
  */
 
 async function deEsteEspacio(ownerId: string, id: string) {
@@ -64,4 +64,45 @@ export async function convertirEnCliente(ownerId: string, id: string, telefono: 
     await tx.beneficiario.delete({ where: { id } });
     return { cliente, contratasMovidas: movidas.count };
   });
+}
+
+/** Para el monitor: beneficiarios de todos los espacios, con su cliente y cuántas contratas tienen. */
+export async function listarBeneficiariosMonitor(filtro: { ownerId?: string; texto?: string }) {
+  const texto = filtro.texto?.trim();
+  const filas = await prisma.beneficiario.findMany({
+    where: {
+      ...(filtro.ownerId ? { ownerId: filtro.ownerId } : {}),
+      ...(texto
+        ? {
+            OR: [
+              { nombre: { contains: texto, mode: "insensitive" } },
+              { cliente: { nombre: { contains: texto, mode: "insensitive" } } },
+            ],
+          }
+        : {}),
+    },
+    include: {
+      cliente: { select: { id: true, nombre: true } },
+      owner: { select: { nombre: true, email: true } },
+      _count: { select: { contratas: true } },
+    },
+    orderBy: [{ cliente: { nombre: "asc" } }, { nombre: "asc" }],
+    take: 300,
+  });
+  return filas.map((b) => ({
+    id: b.id,
+    nombre: b.nombre,
+    contratas: b._count.contratas,
+    clienteId: b.cliente.id,
+    clienteNombre: b.cliente.nombre,
+    espacio: b.owner.nombre ?? b.owner.email,
+    ownerId: b.ownerId,
+  }));
+}
+
+/** El monitor actúa sobre cualquier espacio: se resuelve el dueño del beneficiario. */
+export async function duenoDeBeneficiario(id: string): Promise<string> {
+  const b = await prisma.beneficiario.findUnique({ where: { id }, select: { ownerId: true } });
+  if (!b) throw new HttpError(404, "Beneficiario no encontrado");
+  return b.ownerId;
 }

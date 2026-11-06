@@ -912,7 +912,7 @@ const REVISIONES: Revision[] = [
   {
     id: "beneficiarios-parecidos",
     titulo: "Beneficiarios con nombre parecido",
-    descripcion: "Dos beneficiarios del mismo cliente que empiezan igual (p. ej. «Alex» y «Alejandro»): pueden ser la misma persona. Se juntan desde el perfil del cliente con «Unir».",
+    descripcion: "Dos beneficiarios del mismo cliente que empiezan igual (p. ej. «Alex» y «Alejandro»): pueden ser la misma persona. Se juntan en Monitor → Beneficiarios con «Unir con…».",
     severidad: "info",
     consulta: Prisma.sql`
       SELECT u.nombre, cl.nombre, b."creadoEn",
