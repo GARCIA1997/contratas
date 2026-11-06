@@ -41,7 +41,9 @@ export function Popup({
     >
       <div
         className={cn(
-          "w-full max-w-xs rounded-3xl border border-border/60 bg-card p-5 text-center shadow-2xl",
+          // Nunca más alta que la pantalla: si el contenido no cabe, se
+          // desliza dentro de la tarjeta en vez de cortarse arriba y abajo.
+          "max-h-[calc(100dvh-2rem)] w-full max-w-xs overflow-y-auto overscroll-contain rounded-3xl border border-border/60 bg-card p-5 text-center shadow-2xl",
           className
         )}
         onClick={(e) => e.stopPropagation()}
