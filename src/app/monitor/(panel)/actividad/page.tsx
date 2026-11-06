@@ -80,7 +80,7 @@ export default async function ActividadPage({
                     return (
                       <li
                         key={e.id}
-                        className="grid grid-cols-[72px_28px_minmax(0,1fr)_minmax(0,180px)_12px] items-center gap-space-sm rounded-lg bg-surface-container px-space-sm py-1.5 transition-colors hover:bg-surface-container-high"
+                        className="grid grid-cols-[60px_28px_minmax(0,1fr)_12px] items-center sm:grid-cols-[72px_28px_minmax(0,1fr)_minmax(0,180px)_12px] gap-space-sm rounded-lg bg-surface-container px-space-sm py-1.5 transition-colors hover:bg-surface-container-high"
                       >
                         <span className="font-code-sm text-code-sm text-on-surface-variant">{hora(e.creadoEn)}</span>
                         <span className={cn("flex h-6 w-6 items-center justify-center rounded", s.clase)} title={s.etiqueta}>
@@ -89,8 +89,10 @@ export default async function ActividadPage({
                         <div className="min-w-0">
                           <div className="truncate font-title-md text-title-md text-on-surface">{e.titulo}</div>
                           {e.detalle && <div className="truncate font-code-sm text-code-sm text-outline">{e.detalle}</div>}
+                          {/* En celular el usuario va debajo: no cabe en su propia columna. */}
+                          <div className="truncate font-body-sm text-body-sm text-on-surface-variant sm:hidden">{e.usuario}</div>
                         </div>
-                        <span className="truncate text-right font-body-sm text-body-sm text-on-surface-variant">{e.usuario}</span>
+                        <span className="hidden truncate text-right sm:block font-body-sm text-body-sm text-on-surface-variant">{e.usuario}</span>
                         <span
                           className={cn("h-2 w-2 rounded-full", e.ok ? "bg-secondary" : "bg-error")}
                           title={e.ok ? "Correcto" : "Falló"}
