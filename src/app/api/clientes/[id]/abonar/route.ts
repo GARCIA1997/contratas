@@ -7,6 +7,7 @@ import { HttpError } from "@/lib/session";
 import { withIdempotency } from "@/lib/idempotency";
 import { ejecutarAbonoParcial } from "@/lib/services/abono";
 import { leerPersonas } from "@/lib/cobro-por-persona";
+import { hoyDelCobro } from "@/lib/whatsapp-auto/contexto-operacion";
 
 type Params = { params: { id: string } };
 
@@ -29,7 +30,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       req,
       user.ownerId,
       `clientes/${params.id}/abonar`,
-      () => ejecutarAbonoParcial(user.ownerId, params.id, monto, new Date(), leerPersonas(body?.personas))
+      // Con la fecha en que se capturó (cola offline), no la de subida.
+      () => ejecutarAbonoParcial(user.ownerId, params.id, monto, hoyDelCobro(), leerPersonas(body?.personas))
     );
     return NextResponse.json(resultado);
   } catch (error) {

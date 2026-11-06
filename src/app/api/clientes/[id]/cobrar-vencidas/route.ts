@@ -9,6 +9,7 @@ import {
   previewCobroVencidas,
 } from "@/lib/services/cobros";
 import { leerPersonas } from "@/lib/cobro-por-persona";
+import { hoyDelCobro } from "@/lib/whatsapp-auto/contexto-operacion";
 
 type Params = { params: { id: string } };
 
@@ -33,7 +34,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       req,
       user.ownerId,
       `clientes/${params.id}/cobrar-vencidas`,
-      () => ejecutarCobroVencidas(user.ownerId, params.id, new Date(), leerPersonas(body?.personas))
+      // Las cuotas vencidas AL DÍA EN QUE SE CAPTURÓ (cola offline), no al de subida.
+      () => ejecutarCobroVencidas(user.ownerId, params.id, hoyDelCobro(), leerPersonas(body?.personas))
     );
     return NextResponse.json(resultado);
   } catch (error) {
