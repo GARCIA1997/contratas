@@ -31,7 +31,7 @@ export function ElegirPersonas<T>({
               role="checkbox"
               aria-checked={marcada}
               onClick={() => onChange(marcada ? seleccion.filter((c) => c !== p.clave) : [...seleccion, p.clave])}
-              className={cn("flex w-full items-center gap-3 px-3 py-3 transition-colors", marcada ? "bg-pagado/10" : "")}
+              className={cn("flex w-full items-center gap-3 px-3 py-3 text-left transition-colors", marcada ? "bg-pagado/10" : "")}
             >
               <span
                 className={cn(

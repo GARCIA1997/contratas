@@ -105,7 +105,8 @@ async function contrataYaCreada(ownerId: string, id?: string) {
  * Beneficiario de una contrata nueva. Con `beneficiarioNuevo` se reutiliza
  * el que ya tenga ese nombre (normalizado) en el cliente —dos teléfonos sin
  * señal pueden crear "Alejandro" a la vez— o se crea con el id del teléfono.
- * Con `beneficiarioId` se valida que sea de ese cliente. Sin nada → null
+ * Con `beneficiarioId` se valida que sea de ese cliente (si no, queda del
+ * titular: nunca se rechaza una entrega por esto). Sin nada → null
  * (la contrata es del propio cliente, como siempre).
  */
 export async function resolverBeneficiario(
@@ -134,8 +135,10 @@ export async function resolverBeneficiario(
       where: { id: input.beneficiarioId, ownerId, clienteId },
       select: { id: true },
     });
-    if (!b) throw new HttpError(400, "El beneficiario no es de este cliente");
-    return b.id;
+    // Ya no existe (se unió o se convirtió en cliente mientras el teléfono
+    // estaba sin señal) o no es de este cliente: la contrata se guarda del
+    // titular. Rechazarla haría perder una entrega que ya se hizo en la calle.
+    return b?.id ?? null;
   }
   return null;
 }

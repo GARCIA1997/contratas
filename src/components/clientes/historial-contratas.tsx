@@ -1,10 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, MoreHorizontal, Users } from "lucide-react";
+import { UserRoundPlus, Users } from "lucide-react";
 import { AdministrarBeneficiario } from "@/components/beneficiarios/administrar-beneficiario";
 import { Select } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { EstadoBadge } from "@/components/estado-badge";
@@ -72,6 +71,7 @@ export function HistorialContratas({
   // Sin beneficiarios (o con la función apagada) la lista es la de siempre.
   const personas = useMemo(() => personasDe(contratas, clienteNombre), [contratas, clienteNombre]);
   const hayBeneficiarios = conBeneficiarios && personas.some((p) => p.clave !== TITULAR);
+  const personaElegida = personas.find((p) => p.clave === persona);
 
   const visibles = useMemo(() => {
     const filtradas = contratas.filter((c) => {
@@ -103,56 +103,28 @@ export function HistorialContratas({
     <div className="space-y-3">
       {hayBeneficiarios && (
         <section className="space-y-2">
-          <h3 className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-            <Users className="size-4" /> Beneficiarios
-          </h3>
-          <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
-            {personas.map((p) => (
-              <li key={p.clave} className="flex items-stretch">
-                <button
-                  type="button"
-                  onClick={() => setPersona((actual) => (actual === p.clave ? "" : p.clave))}
-                  className={cn(
-                    "flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors",
-                    persona === p.clave ? "bg-accent" : "hover:bg-accent/60"
-                  )}
-                  aria-pressed={persona === p.clave}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">
-                      {p.nombre}
-                      {p.clave === TITULAR && <span className="font-normal text-muted-foreground"> (titular)</span>}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {p.activas === 0
-                        ? "Sin contratas activas"
-                        : `${p.activas} activa${p.activas === 1 ? "" : "s"} · debe ${formatMoneda(p.saldo)}`}
-                    </span>
-                  </span>
-                  <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                </button>
-                {administrar && p.clave !== TITULAR && (
-                  <button
-                    type="button"
-                    onClick={() => setEditando({ id: p.clave, nombre: p.nombre })}
-                    className="flex w-11 shrink-0 items-center justify-center border-l border-border/60 text-muted-foreground hover:bg-accent/60"
-                    aria-label={`Convertir a ${p.nombre} en cliente propio`}
-                  >
-                    <MoreHorizontal className="size-4" />
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-          <Select value={persona} onChange={(e) => setPersona(e.target.value)} aria-label="Ver contratas de">
+          <label htmlFor="ver-persona" className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+            <Users className="size-4" /> Contratas de
+          </label>
+          <Select id="ver-persona" value={persona} onChange={(e) => setPersona(e.target.value)}>
             <option value="">Todas las personas</option>
             {personas.map((p) => (
               <option key={p.clave} value={p.clave}>
                 {p.nombre}
                 {p.clave === TITULAR ? " (titular)" : ""}
+                {p.activas > 0 ? ` · debe ${formatMoneda(p.saldo)}` : " · sin activas"}
               </option>
             ))}
           </Select>
+          {administrar && personaElegida && personaElegida.clave !== TITULAR && (
+            <button
+              type="button"
+              onClick={() => setEditando({ id: personaElegida.clave, nombre: personaElegida.nombre })}
+              className="flex items-center gap-1.5 text-sm font-medium text-primary"
+            >
+              <UserRoundPlus className="size-4" /> Convertir a {personaElegida.nombre} en cliente propio
+            </button>
+          )}
         </section>
       )}
       {editando && administrar && (

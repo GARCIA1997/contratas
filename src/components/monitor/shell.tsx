@@ -109,7 +109,9 @@ export function MonitorShell({
           <div className="px-space-xs">
             <div className="inline-flex items-center gap-space-xs rounded bg-surface-container-high px-space-sm py-space-xs text-primary">
               <span className={cn("h-1.5 w-1.5 rounded-full", saludOk ? "bg-secondary" : "bg-error")} />
-              <span className="font-code-sm text-code-sm uppercase">Producción</span>
+              <span className="font-code-sm text-code-sm uppercase">
+                {process.env.NODE_ENV === "production" ? "Producción" : "Local"}
+              </span>
             </div>
           </div>
           <nav className="mt-space-sm flex flex-col gap-space-xs">

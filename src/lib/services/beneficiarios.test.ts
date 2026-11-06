@@ -48,9 +48,10 @@ describe("resolverBeneficiario", () => {
     expect(await resolverBeneficiario(tx, "o", "c", { beneficiarioNuevo: { id: ID, nombre: "ALEJÁNDRO" } })).toBe("b1");
     expect(filas).toHaveLength(1);
   });
-  it("rechaza un beneficiario de otro cliente", async () => {
+  it("beneficiario de otro cliente o ya inexistente: la entrega no se pierde, queda del titular", async () => {
     const filas: Fila[] = [{ id: "b1", ownerId: "o", clienteId: "otro", nombre: "Lupe", nombreNormalizado: "lupe" }];
-    await expect(resolverBeneficiario(txFalso(filas), "o", "c", { beneficiarioId: "b1" })).rejects.toThrow(/no es de este cliente/);
+    expect(await resolverBeneficiario(txFalso(filas), "o", "c", { beneficiarioId: "b1" })).toBeNull();
+    expect(await resolverBeneficiario(txFalso(filas), "o", "c", { beneficiarioId: "borrado" })).toBeNull();
   });
 });
 

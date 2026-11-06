@@ -15,7 +15,10 @@ const schema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
-    const datos = schema.parse(await req.json());
+    // Petición cancelada a medio camino (cuerpo vacío): no es un error del servidor.
+    const cuerpo = await req.json().catch(() => null);
+    if (!cuerpo) return NextResponse.json({ error: "Cuerpo vacío" }, { status: 400 });
+    const datos = schema.parse(cuerpo);
     return NextResponse.json(await verificarClienteNuevo(user.ownerId, datos));
   } catch (error) {
     return handleApiError(error);

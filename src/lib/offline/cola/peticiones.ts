@@ -28,7 +28,7 @@ const PETICIONES: Record<
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ monto: p.monto, personas: p.personas }),
+      body: JSON.stringify({ monto: p.monto }),
     },
   }),
   "contrata.pago.revertir": (p) => ({
@@ -100,7 +100,7 @@ const PETICIONES: Record<
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ monto: p.monto }),
+      body: JSON.stringify({ monto: p.monto, personas: p.personas }),
     },
   }),
   "cita.crear": (p) => ({

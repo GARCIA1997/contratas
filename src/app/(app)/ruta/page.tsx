@@ -104,19 +104,13 @@ function Parada({
   cobrando,
   onSolicitarCobro,
   ownerId,
-  conBeneficiarios = false,
 }: {
   parada: ParadaRuta;
   nombreApp: string;
   cobrando: boolean;
   onSolicitarCobro: (parada: ParadaRuta) => void;
   ownerId: string | null;
-  conBeneficiarios?: boolean;
 }) {
-  // Beneficiarios con cuotas en esta parada (función "beneficiarios").
-  const nombresBeneficiarios = conBeneficiarios
-    ? Array.from(new Set(parada.cuotas.map((q) => q.beneficiarioNombre).filter(Boolean)))
-    : [];
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -156,11 +150,6 @@ function Parada({
             {formatMoneda(parada.total)}
           </p>
         </div>
-        {nombresBeneficiarios.length > 0 && (
-          <p className="-mt-2 truncate text-xs text-muted-foreground">
-            Incluye a {nombresBeneficiarios.join(", ")}
-          </p>
-        )}
 
         {/* Dos renglones de dos: arriba contactar (llamar / WhatsApp),
             abajo registrar dinero (abonar / cobrado). Separa lo que solo
@@ -403,7 +392,6 @@ export default function RutaDelDiaPage() {
                 cobrando={cobrandoId === p.clienteId}
                 onSolicitarCobro={solicitarCobro}
                 ownerId={ownerId}
-                conBeneficiarios={conBeneficiarios}
               />
             ))}
           </div>
@@ -530,7 +518,7 @@ export default function RutaDelDiaPage() {
       )}
 
       {confirmando && aCobrar && (
-        <Popup open onClose={() => setConfirmando(null)}>
+        <Popup open onClose={() => setConfirmando(null)} className={personasParada ? "max-w-sm" : undefined}>
           <p className="text-sm font-semibold">{confirmando.nombre}</p>
           <p className="text-xs text-muted-foreground">
             {personasParada ? "¿De quién cobras?" : "Confirmar cobro"}
@@ -567,20 +555,29 @@ export default function RutaDelDiaPage() {
               </>
             ) : (
               <>
-                <Button asChild disabled={aCobrar.cuotas.length === 0} onClick={() => marcarCobrado(aCobrar)}>
-                  <a
-                    href={linkWhatsApp(
-                      confirmando.telefono,
-                      reciboDeParada(nombreApp, aCobrar)
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
+                {aCobrar.cuotas.length === 0 ? (
+                  // Un <a> no se deshabilita: sin nada marcado ni siquiera se dibuja
+                  // (abriría WhatsApp con un recibo de $0).
+                  <Button disabled>
                     <MessageCircle className="size-4" /> Cobrar y enviar recibo
-                  </a>
-                </Button>
+                  </Button>
+                ) : (
+                  <Button asChild onClick={() => marcarCobrado(aCobrar)}>
+                    <a
+                      href={linkWhatsApp(
+                        confirmando.telefono,
+                        reciboDeParada(nombreApp, aCobrar)
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle className="size-4" />
+                      {personasParada && !cobraTodo ? "Cobrar seleccionados y enviar recibo" : "Cobrar y enviar recibo"}
+                    </a>
+                  </Button>
+                )}
                 <Button variant="outline" disabled={aCobrar.cuotas.length === 0} onClick={() => marcarCobrado(aCobrar)}>
-                  Solo cobrar
+                  {personasParada ? (cobraTodo ? "Solo cobrar todo" : "Solo cobrar seleccionados") : "Solo cobrar"}
                 </Button>
               </>
             )}

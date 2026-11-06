@@ -7,7 +7,9 @@ export const TITULAR = "__titular__";
 
 export type Persona<T> = { clave: string; nombre: string; esTitular: boolean; items: T[]; total: number };
 
-export function agruparPorPersona<T extends { beneficiarioId?: string | null; beneficiarioNombre?: string | null }>(
+export function agruparPorPersona<
+  T extends { beneficiarioId?: string | null; beneficiarioNombre?: string | null; beneficiario?: string | null },
+>(
   items: T[],
   clienteNombre: string,
   monto: (i: T) => number
@@ -19,7 +21,8 @@ export function agruparPorPersona<T extends { beneficiarioId?: string | null; be
       mapa.get(clave) ??
       ({
         clave,
-        nombre: i.beneficiarioId ? (i.beneficiarioNombre ?? "Beneficiario") : clienteNombre,
+        // Ruta trae `beneficiarioNombre`; Abonar y Cobrar pendiente, `beneficiario`.
+        nombre: i.beneficiarioId ? (i.beneficiarioNombre ?? i.beneficiario ?? "Beneficiario") : clienteNombre,
         esTitular: !i.beneficiarioId,
         items: [],
         total: 0,

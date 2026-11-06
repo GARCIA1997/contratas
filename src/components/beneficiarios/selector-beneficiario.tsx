@@ -63,7 +63,7 @@ export function SelectorBeneficiario({
     setDescartados([]);
   }, [clienteId]);
 
-  const existentes = lista ?? [];
+  const existentes = useMemo(() => lista ?? [], [lista]);
   const exacto = nombre ? buscarPorNombre(nombre, existentes) : undefined;
   const parecidos = useMemo(
     () =>
