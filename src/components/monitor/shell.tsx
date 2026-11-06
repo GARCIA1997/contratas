@@ -10,6 +10,9 @@ import { cn } from "@/lib/utils";
  * Armazón del monitor (barra lateral + barra superior). Marcado y clases
  * copiados del HTML que exporta Stitch; aquí solo se conectan los enlaces,
  * el selector de periodo (?rango=) y el refresco automático.
+ *
+ * En celular (< lg) la barra lateral es un cajón que se abre con el botón
+ * de menú, y la barra superior se acomoda en dos renglones.
  */
 
 const NAV = [
@@ -56,6 +59,10 @@ export function MonitorShell({
   const [actualizado, setActualizado] = useState(() => Date.now());
   const [ahora, setAhora] = useState(() => Date.now());
   const [busqueda, setBusqueda] = useState(params.get("q") ?? "");
+  const [menuAbierto, setMenuAbierto] = useState(false);
+
+  // Al navegar desde el cajón (celular), se cierra solo.
+  useEffect(() => setMenuAbierto(false), [pathname]);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -94,7 +101,19 @@ export function MonitorShell({
 
   return (
     <>
-      <aside className="fixed left-0 top-0 z-50 flex h-full w-64 flex-col justify-between bg-surface-container-low p-space-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+      {menuAbierto && (
+        <div
+          aria-hidden
+          onClick={() => setMenuAbierto(false)}
+          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+        />
+      )}
+      <aside
+        className={cn(
+          "fixed left-0 top-0 z-50 flex h-full w-64 flex-col justify-between overflow-y-auto bg-surface-container-low p-space-md shadow-[0_1px_8px_rgba(0,0,0,0.04)] transition-transform lg:translate-x-0",
+          menuAbierto ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
         <div className="flex flex-col gap-space-md">
           <div className="flex items-center gap-space-sm px-space-xs py-space-xs">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -160,11 +179,19 @@ export function MonitorShell({
         </div>
       </aside>
 
-      <div className="pl-64">
-        <header className="fixed left-64 right-0 top-0 z-40 h-16 bg-surface/80 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl">
-          <div className="flex h-16 w-full items-center justify-between gap-space-md px-margin-desktop">
-            <div className="flex items-center gap-space-lg">
-              <div className="flex items-center gap-space-xs rounded-full bg-surface-container px-space-sm py-space-xs">
+      <div className="lg:pl-64">
+        <header className="sticky top-0 z-30 bg-surface/80 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur-xl">
+          <div className="flex w-full flex-wrap items-center justify-between gap-space-sm px-margin py-space-sm lg:h-16 lg:flex-nowrap lg:gap-space-md lg:px-margin-desktop lg:py-0">
+            <div className="flex items-center gap-space-sm lg:gap-space-lg">
+              <button
+                type="button"
+                onClick={() => setMenuAbierto(true)}
+                aria-label="Abrir menú"
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface-container text-on-surface-variant lg:hidden"
+              >
+                <span className="material-symbols-outlined text-[20px]">menu</span>
+              </button>
+              <div className="hidden items-center gap-space-xs rounded-full bg-surface-container px-space-sm py-space-xs md:flex">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-secondary opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-secondary" />
@@ -190,13 +217,13 @@ export function MonitorShell({
                 ))}
               </div>
             </div>
-            <div className="flex items-center gap-space-md">
-              <form onSubmit={buscar} className="relative flex items-center">
+            <div className="flex w-full items-center gap-space-sm sm:w-auto lg:gap-space-md">
+              <form onSubmit={buscar} className="relative flex flex-1 items-center sm:flex-none">
                 <span className="material-symbols-outlined absolute left-space-sm text-[18px] text-outline">search</span>
                 <input
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
-                  className="h-9 w-64 rounded-lg bg-surface-container-lowest pl-8 pr-3 font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-9 w-full rounded-lg bg-surface-container-lowest sm:w-64 pl-8 pr-3 font-body-sm text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:ring-1 focus:ring-primary"
                   placeholder="Buscar en la actividad…"
                   type="text"
                 />
@@ -209,7 +236,7 @@ export function MonitorShell({
               >
                 <span className="material-symbols-outlined text-[20px]">refresh</span>
               </button>
-              <div className="flex items-center gap-space-sm pl-space-xs">
+              <div className="hidden items-center gap-space-sm pl-space-xs sm:flex">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
                   <span className="material-symbols-outlined text-[18px] text-on-primary">person</span>
                 </div>
@@ -221,7 +248,7 @@ export function MonitorShell({
             </div>
           </div>
         </header>
-        <main className="relative w-full bg-surface px-margin-desktop pt-16">
+        <main className="relative w-full bg-surface px-margin lg:px-margin-desktop">
           <div className="flex w-full flex-col gap-space-lg py-space-md">{children}</div>
         </main>
       </div>
