@@ -37,6 +37,7 @@ model User {
   cortesCaja     CorteCaja[]
   citasAgendadas CitaAgendada[]
   cuentaWhatsApp CuentaWhatsApp?
+  funciones      FuncionEspacio[]
   creadoEn       DateTime           @default(now())
 
   /// Acceso al monitor de operaciones (/monitor): ve datos de TODOS los
@@ -670,4 +671,18 @@ model BitacoraWhatsApp {
 
   @@index([cuentaId, creadoEn])
   @@index([creadoEn])
+}
+
+/// Funciones en prueba encendidas por espacio de trabajo (el dueño y sus
+/// miembros ven lo mismo). Se administran desde el monitor; el catálogo de
+/// claves vive en src/lib/funciones.ts. Sin fila = apagada.
+model FuncionEspacio {
+  owner          User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId        String
+  clave          String
+  activa         Boolean  @default(false)
+  actualizadoPor String?
+  actualizadoEn  DateTime @default(now()) @updatedAt
+
+  @@id([ownerId, clave])
 }

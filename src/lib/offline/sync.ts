@@ -315,6 +315,7 @@ type ConfiguracionApi = {
   diaCobroSemanal: number;
   colorPrimario: string;
   logoUrl: string | null;
+  funciones?: string[];
 };
 
 export async function syncConfiguracion(ownerId: string): Promise<boolean> {
