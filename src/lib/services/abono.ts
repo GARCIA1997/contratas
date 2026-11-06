@@ -1,5 +1,6 @@
 import { startOfDay, addDays } from "date-fns";
 import { cuotasPendientesAtrasadas } from "@/lib/mensajes-whatsapp";
+import { esDePersonas } from "@/lib/cobro-por-persona";
 import type { TipoContrata } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
@@ -276,7 +277,9 @@ export async function ejecutarAbonoParcial(
   ownerId: string,
   clienteId: string,
   monto: number,
-  hoy: Date = new Date()
+  hoy: Date = new Date(),
+  /** Solo las contratas de estas personas (función "beneficiarios"); sin lista = todas. */
+  personas?: string[]
 ): Promise<ResultadoAbonoParcial> {
   if (monto <= 0) throw new HttpError(400, "El monto debe ser mayor a cero");
 
@@ -291,7 +294,7 @@ export async function ejecutarAbonoParcial(
     include: { pagos: true, beneficiario: { select: { id: true, nombre: true } } },
   });
 
-  const paraAbono: ContrataParaAbono[] = contratas.map((c) => ({
+  const paraAbono: ContrataParaAbono[] = contratas.filter((c) => esDePersonas(c.beneficiarioId, personas)).map((c) => ({
     contrataId: c.id,
     beneficiario: c.beneficiario?.nombre ?? null,
     beneficiarioId: c.beneficiario?.id ?? null,

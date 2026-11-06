@@ -6,6 +6,7 @@ import { handleApiError } from "@/lib/api";
 import { HttpError } from "@/lib/session";
 import { withIdempotency } from "@/lib/idempotency";
 import { ejecutarAbonoParcial } from "@/lib/services/abono";
+import { leerPersonas } from "@/lib/cobro-por-persona";
 
 type Params = { params: { id: string } };
 
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       req,
       user.ownerId,
       `clientes/${params.id}/abonar`,
-      () => ejecutarAbonoParcial(user.ownerId, params.id, monto)
+      () => ejecutarAbonoParcial(user.ownerId, params.id, monto, new Date(), leerPersonas(body?.personas))
     );
     return NextResponse.json(resultado);
   } catch (error) {

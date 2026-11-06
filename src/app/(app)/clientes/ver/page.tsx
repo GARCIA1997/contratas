@@ -246,6 +246,7 @@ export default function ClientePerfilPage() {
               totalInicial={extras.cobroPreview.total}
               cuotasInicial={extras.cobroPreview.items.length}
               ownerId={ownerId}
+              clienteNombre={perfil.nombre}
               enFila
             />
           )}
@@ -257,6 +258,7 @@ export default function ClientePerfilPage() {
               totalInicial={previewLocal.total}
               cuotasInicial={previewLocal.items}
               ownerId={ownerId}
+              clienteNombre={perfil.nombre}
               enFila
             />
           )}

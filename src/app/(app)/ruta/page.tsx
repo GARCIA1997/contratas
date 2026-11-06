@@ -25,6 +25,9 @@ import { linkWhatsApp } from "@/lib/whatsapp";
 import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
 import { AvisoReciboAutomatico } from "@/components/whatsapp/aviso-recibo-automatico";
 import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
+import { ElegirPersonas } from "@/components/beneficiarios/elegir-personas";
+import { agruparPorPersona, hayBeneficiarios, TITULAR } from "@/lib/cobro-por-persona";
+import { useFuncion } from "@/lib/offline/use-funcion";
 import {
   mensajeCobro,
   mensajeRecordatorio,
@@ -60,6 +63,7 @@ function recordatorioDeParada(nombreApp: string, r: ParadaRuta) {
       numCuotas: c.numCuotas,
       pendiente: c.pendiente,
       diasAtraso: c.diasAtraso,
+      beneficiario: c.beneficiarioNombre ?? null,
     })),
   });
 }
@@ -79,6 +83,7 @@ function reciboDeParada(nombreApp: string, r: ParadaRuta) {
       grupo.subtotal = Math.round((grupo.subtotal + c.pendiente) * 100) / 100;
     } else {
       porContrata.set(c.contrataId, {
+        ...(c.beneficiarioNombre ? { beneficiario: c.beneficiarioNombre } : {}),
         numCuotas: c.numCuotas,
         cuotas: [{ numeroCuota: c.numeroCuota, monto: c.pendiente }],
         subtotal: c.pendiente,
@@ -99,13 +104,19 @@ function Parada({
   cobrando,
   onSolicitarCobro,
   ownerId,
+  conBeneficiarios = false,
 }: {
   parada: ParadaRuta;
   nombreApp: string;
   cobrando: boolean;
   onSolicitarCobro: (parada: ParadaRuta) => void;
   ownerId: string | null;
+  conBeneficiarios?: boolean;
 }) {
+  // Beneficiarios con cuotas en esta parada (función "beneficiarios").
+  const nombresBeneficiarios = conBeneficiarios
+    ? Array.from(new Set(parada.cuotas.map((q) => q.beneficiarioNombre).filter(Boolean)))
+    : [];
   return (
     <Card>
       <CardContent className="space-y-3 p-4">
@@ -145,6 +156,11 @@ function Parada({
             {formatMoneda(parada.total)}
           </p>
         </div>
+        {nombresBeneficiarios.length > 0 && (
+          <p className="-mt-2 truncate text-xs text-muted-foreground">
+            Incluye a {nombresBeneficiarios.join(", ")}
+          </p>
+        )}
 
         {/* Dos renglones de dos: arriba contactar (llamar / WhatsApp),
             abajo registrar dinero (abonar / cobrado). Separa lo que solo
@@ -230,6 +246,28 @@ export default function RutaDelDiaPage() {
   //    haber un modal de cobro abierto a la vez — antes se podían abrir
   //    varios si se tocaba "Cobrado" en más de una tarjeta seguido.
   const [confirmando, setConfirmando] = useState<ParadaRuta | null>(null);
+  // Función "beneficiarios": de quién se cobra (todos marcados = pago completo).
+  const conBeneficiarios = useFuncion("beneficiarios");
+  const [personasSel, setPersonasSel] = useState<string[]>([]);
+  const personasParada =
+    confirmando && conBeneficiarios && hayBeneficiarios(confirmando.cuotas)
+      ? agruparPorPersona(confirmando.cuotas, confirmando.nombre, (q) => q.pendiente)
+      : null;
+  // Lo que de verdad se cobra: la parada completa o solo las personas marcadas.
+  const aCobrar: ParadaRuta | null =
+    confirmando && personasParada
+      ? (() => {
+          const cuotas = confirmando.cuotas.filter((q) => personasSel.includes(q.beneficiarioId ?? TITULAR));
+          return { ...confirmando, cuotas, total: Math.round(cuotas.reduce((s, q) => s + q.pendiente, 0) * 100) / 100 };
+        })()
+      : confirmando;
+  const cobraTodo = !personasParada || personasSel.length === personasParada.length;
+  function solicitarCobro(parada: ParadaRuta) {
+    setPersonasSel(
+      agruparPorPersona(parada.cuotas, parada.nombre, (q) => q.pendiente).map((p) => p.clave)
+    );
+    setConfirmando(parada);
+  }
   const reciboAutomatico = useReciboAutomatico(ownerId);
   // Último cobro hecho con recibo automático: se sigue su envío en un aviso
   // flotante (el popup ya se cerró).
@@ -363,8 +401,9 @@ export default function RutaDelDiaPage() {
                 parada={p}
                 nombreApp={nombreApp}
                 cobrando={cobrandoId === p.clienteId}
-                onSolicitarCobro={setConfirmando}
+                onSolicitarCobro={solicitarCobro}
                 ownerId={ownerId}
+                conBeneficiarios={conBeneficiarios}
               />
             ))}
           </div>
@@ -490,12 +529,28 @@ export default function RutaDelDiaPage() {
         </div>
       )}
 
-      {confirmando && (
+      {confirmando && aCobrar && (
         <Popup open onClose={() => setConfirmando(null)}>
           <p className="text-sm font-semibold">{confirmando.nombre}</p>
-          <p className="text-xs text-muted-foreground">Confirmar cobro</p>
+          <p className="text-xs text-muted-foreground">
+            {personasParada ? "¿De quién cobras?" : "Confirmar cobro"}
+          </p>
+          {personasParada && (
+            <div className="pt-2">
+              <ElegirPersonas
+                personas={personasParada}
+                seleccion={personasSel}
+                onChange={setPersonasSel}
+                detalle={(p) =>
+                  p.items.length === 1
+                    ? `Cuota ${p.items[0].numeroCuota} de ${p.items[0].numCuotas}`
+                    : `${p.items.length} cuotas`
+                }
+              />
+            </div>
+          )}
           <p className="py-2 text-3xl font-bold text-pagado">
-            {formatMoneda(confirmando.total)}
+            {formatMoneda(aCobrar.total)}
           </p>
           <div className="flex flex-col gap-2 pt-2">
             {/* El envío se dispara desde el propio click del <a> (navegación
@@ -505,16 +560,18 @@ export default function RutaDelDiaPage() {
                 bloquee la apertura por no venir de un click síncrono. */}
             {reciboAutomatico && confirmando.telefono ? (
               <>
-                <Button onClick={() => marcarCobrado(confirmando)}>Cobrar</Button>
+                <Button disabled={aCobrar.cuotas.length === 0} onClick={() => marcarCobrado(aCobrar)}>
+                  {personasParada ? (cobraTodo ? "Cobrar todo" : "Cobrar seleccionados") : "Cobrar"}
+                </Button>
                 <AvisoReciboAutomatico />
               </>
             ) : (
               <>
-                <Button asChild onClick={() => marcarCobrado(confirmando)}>
+                <Button asChild disabled={aCobrar.cuotas.length === 0} onClick={() => marcarCobrado(aCobrar)}>
                   <a
                     href={linkWhatsApp(
                       confirmando.telefono,
-                      reciboDeParada(nombreApp, confirmando)
+                      reciboDeParada(nombreApp, aCobrar)
                     )}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -522,7 +579,7 @@ export default function RutaDelDiaPage() {
                     <MessageCircle className="size-4" /> Cobrar y enviar recibo
                   </a>
                 </Button>
-                <Button variant="outline" onClick={() => marcarCobrado(confirmando)}>
+                <Button variant="outline" disabled={aCobrar.cuotas.length === 0} onClick={() => marcarCobrado(aCobrar)}>
                   Solo cobrar
                 </Button>
               </>

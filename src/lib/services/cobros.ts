@@ -5,6 +5,7 @@ import { HttpError } from "@/lib/session";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { DIAS_PROXIMO_VENCIMIENTO, saldoPendiente } from "@/lib/contrata";
 import { guardarCobro, prepararReciboCobro } from "@/lib/whatsapp-auto/recibos";
+import { esDePersonas } from "@/lib/cobro-por-persona";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -45,7 +46,9 @@ export type PreviewCobroVencidas = {
 export async function previewCobroVencidas(
   ownerId: string,
   clienteId: string,
-  hoy: Date = new Date()
+  hoy: Date = new Date(),
+  /** Solo las contratas de estas personas (función "beneficiarios"); sin lista = todas. */
+  personas?: string[]
 ): Promise<PreviewCobroVencidas> {
   const contratas = await prisma.contrata.findMany({
     where: { ownerId, clienteId, convertidaADeuda: false },
@@ -57,6 +60,7 @@ export async function previewCobroVencidas(
   const items: CuotaVencidaItem[] = [];
 
   for (const c of contratas) {
+    if (!esDePersonas(c.beneficiarioId, personas)) continue;
     for (const p of c.pagos) {
       if (p.pagado) continue;
       if (anclarFechaCliente(p.fechaProgramada) > limite) continue;
@@ -167,7 +171,8 @@ export function agruparCobroPorContrata(
 export async function ejecutarCobroVencidas(
   ownerId: string,
   clienteId: string,
-  hoy: Date = new Date()
+  hoy: Date = new Date(),
+  personas?: string[]
 ): Promise<ResultadoCobroVencidas> {
   const cliente = await prisma.cliente.findFirst({
     where: { id: clienteId, ownerId },
@@ -175,7 +180,7 @@ export async function ejecutarCobroVencidas(
   });
   if (!cliente) throw new HttpError(404, "Cliente no encontrado");
 
-  const { items } = await previewCobroVencidas(ownerId, clienteId, hoy);
+  const { items } = await previewCobroVencidas(ownerId, clienteId, hoy, personas);
   if (items.length === 0) {
     throw new HttpError(400, "No hay cuotas pendientes para cobrar");
   }

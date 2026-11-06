@@ -1,6 +1,7 @@
 import { addDays, startOfDay } from "date-fns";
 import type { TipoContrata } from "@prisma/client";
 import { normalizarNombre } from "@/lib/beneficiarios";
+import { esDePersonas } from "@/lib/cobro-por-persona";
 import { db, type ContrataLocal, type PagoLocal } from "@/lib/offline/db";
 import { reintentarSiCursorInvalido } from "@/lib/offline/dexie-retry";
 import {
@@ -681,15 +682,19 @@ export async function getDeudor(
  * por día calendario (antes comparaba `Date` completos contra "ahora", lo
  * que con una ventana de varios días es más frágil ante desfases de hora).
  */
-async function itemsCobroVencido(
+export async function itemsCobroVencido(
   ownerId: string,
   clienteId: string,
-  hoy: Date
+  hoy: Date,
+  /** Solo las contratas de estas personas (función "beneficiarios"); sin lista = todas. */
+  personas?: string[]
 ): Promise<CuotaVencidaItem[]> {
   if (!db) return [];
   const contratas = (
     await db.contratas.where("clienteId").equals(clienteId).toArray()
-  ).filter((c) => !c._deletedAt && !c.convertidaADeuda && c.ownerId === ownerId);
+  ).filter(
+    (c) => !c._deletedAt && !c.convertidaADeuda && c.ownerId === ownerId && esDePersonas(c.beneficiarioId, personas)
+  );
   const base = startOfDay(hoy);
   const limite = addDays(base, DIAS_PROXIMO_VENCIMIENTO);
   const items: CuotaVencidaItem[] = [];
@@ -741,13 +746,14 @@ export async function getCobroVencidoPreview(
 export async function getCobroVencidoDetalle(
   ownerId: string,
   clienteId: string,
-  hoy: Date = new Date()
+  hoy: Date = new Date(),
+  personas?: string[]
 ): Promise<ResultadoCobroVencidas | null> {
   if (!db) return null;
   const cliente = await db.clientes.get(clienteId);
   if (!cliente || cliente.ownerId !== ownerId || cliente._deletedAt) return null;
 
-  const items = await itemsCobroVencido(ownerId, clienteId, hoy);
+  const items = await itemsCobroVencido(ownerId, clienteId, hoy, personas);
   if (items.length === 0) return null;
 
   return {
@@ -820,6 +826,8 @@ export async function getRutaDelDia(
       const contratas = await Promise.all(
         contratasRaw.map(async (c) => ({
           id: c.id,
+          beneficiarioId: c.beneficiarioId ?? null,
+          beneficiarioNombre: c.beneficiarioNombre ?? null,
           abono: c.abono,
           convertidaADeuda: c.convertidaADeuda,
           pagos: (await pagosDeContrata(c.id)).map((p) => ({
