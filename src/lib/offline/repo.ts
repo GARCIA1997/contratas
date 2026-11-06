@@ -158,6 +158,8 @@ export type ContrataConSaldoLocal = {
    * salta la 3 y se paga la 4, debe mostrar 4/10, no 1/10. */
   cuotaPagadaMax: number;
   numCuotas: number;
+  /** A nombre de quién está (beneficiario); null = del titular. */
+  beneficiarioNombre: string | null;
 };
 
 async function contratasDelClienteParaSaldo(
@@ -201,6 +203,7 @@ export async function getContratasConSaldo(
       tipo: contrata.tipo,
       cuotaPagadaMax: cuotaPagadaMax(pagos),
       numCuotas: contrata.numCuotas,
+      beneficiarioNombre: contrata.beneficiarioNombre ?? null,
       saldo: saldoPendiente(
         pagos.map((p) => ({ ...p, fechaProgramada: new Date(p.fechaProgramada) })),
         contrata.abono
@@ -223,6 +226,7 @@ export async function getContratasConVencido(
       tipo: contrata.tipo,
       cuotaPagadaMax: cuotaPagadaMax(pagos),
       numCuotas: contrata.numCuotas,
+      beneficiarioNombre: contrata.beneficiarioNombre ?? null,
       saldo: montoVencidoOVigente(
         pagos.map((p) => ({
           ...p,

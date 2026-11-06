@@ -57,7 +57,13 @@ const TIPO_LABEL: Record<TipoContrata, string> = {
   MENSUAL: "Mensual",
 };
 
-type OtraContrata = { id: string; tipo: TipoContrata; saldo: number };
+type OtraContrata = {
+  id: string;
+  tipo: TipoContrata;
+  saldo: number;
+  /** A nombre de quién está (beneficiario); null = del titular. */
+  beneficiarioNombre?: string | null;
+};
 
 export function RenovarForm({
   contrataId,
@@ -331,7 +337,10 @@ export function RenovarForm({
                 <ul className="space-y-1 pl-1 text-xs text-muted-foreground">
                   {otras.map((c) => (
                     <li key={c.id} className="flex justify-between">
-                      <span>{TIPO_LABEL[c.tipo]}</span>
+                      <span>
+                        {TIPO_LABEL[c.tipo]}
+                        {c.beneficiarioNombre && ` · ${c.beneficiarioNombre}`}
+                      </span>
                       <span>{formatMoneda(c.saldo)}</span>
                     </li>
                   ))}

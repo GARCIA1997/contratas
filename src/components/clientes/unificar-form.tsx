@@ -48,7 +48,13 @@ const TIPO_LABEL: Record<TipoContrata, string> = {
   MENSUAL: "Mensual",
 };
 
-type ContrataElegible = { id: string; tipo: TipoContrata; saldo: number };
+type ContrataElegible = {
+  id: string;
+  tipo: TipoContrata;
+  saldo: number;
+  /** A nombre de quién está (beneficiario); null = del titular. */
+  beneficiarioNombre?: string | null;
+};
 
 function siguienteMillar(n: number) {
   return Math.ceil(n / 1000) * 1000;
@@ -304,6 +310,11 @@ export function UnificarForm({
                 <label className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-secondary/30 px-3 py-2.5">
                   <span className="text-sm">
                     {TIPO_LABEL[c.tipo]} · {formatMoneda(c.saldo)}
+                    {c.beneficiarioNombre && (
+                      <span className="block text-xs text-muted-foreground">
+                        A nombre de {c.beneficiarioNombre}
+                      </span>
+                    )}
                   </span>
                   <input
                     type="checkbox"

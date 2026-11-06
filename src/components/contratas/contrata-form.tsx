@@ -496,7 +496,10 @@ export function ContrataForm({
                 <ul className="space-y-1 pl-1 text-xs text-muted-foreground">
                   {otras.map((c) => (
                     <li key={c.id} className="flex justify-between">
-                      <span>{TIPO_LABEL[c.tipo]}</span>
+                      <span>
+                        {TIPO_LABEL[c.tipo]}
+                        {c.beneficiarioNombre && ` · ${c.beneficiarioNombre}`}
+                      </span>
                       <span>{formatMoneda(c.saldo)}</span>
                     </li>
                   ))}

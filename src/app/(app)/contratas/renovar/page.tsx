@@ -134,7 +134,12 @@ export default function RenovarContrataPage() {
         clienteNombre={contrata.clienteNombre}
         tipoOriginal={contrata.tipo}
         saldoOriginal={saldoOriginal}
-        otras={otras.map((c) => ({ id: c.id, tipo: c.tipo, saldo: c.saldo }))}
+        otras={otras.map((c) => ({
+          id: c.id,
+          tipo: c.tipo,
+          saldo: c.saldo,
+          beneficiarioNombre: c.beneficiarioNombre,
+        }))}
         cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
         maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}
         nombreApp={config?.nombreApp ?? CONFIG_DEFAULTS.nombreApp}
