@@ -337,6 +337,7 @@ export default function ClientePerfilPage() {
           contratas={perfil.contratas}
           clienteNombre={perfil.nombre}
           conBeneficiarios={conBeneficiarios}
+          administrar={esAdmin && ownerId ? { ownerId } : undefined}
         />
       </div>
     </div>

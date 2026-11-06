@@ -910,6 +910,19 @@ const REVISIONES: Revision[] = [
       WHERE NOT b."convertidaADeuda" AND EXISTS (SELECT 1 FROM "Pago" px WHERE px."contrataId" = b.id AND NOT px.pagado)`,
   },
   {
+    id: "beneficiarios-parecidos",
+    titulo: "Beneficiarios con nombre parecido",
+    descripcion: "Dos beneficiarios del mismo cliente que empiezan igual (p. ej. «Alex» y «Alejandro»): pueden ser la misma persona. Se juntan desde el perfil del cliente con «Unir».",
+    severidad: "info",
+    consulta: Prisma.sql`
+      SELECT u.nombre, cl.nombre, b."creadoEn",
+        '«' || a.nombre || '» y «' || b.nombre || '»',
+        a.id || ':' || b.id AS clave
+      FROM "Beneficiario" a JOIN "Beneficiario" b ON b."clienteId" = a."clienteId" AND b.id > a.id
+        AND left(b."nombreNormalizado", 3) = left(a."nombreNormalizado", 3)
+      JOIN "User" u ON u.id = a."ownerId" JOIN "Cliente" cl ON cl.id = a."clienteId"`,
+  },
+  {
     id: "clientes-duplicados",
     titulo: "Posibles clientes duplicados",
     descripcion: "Mismo nombre (y mismo teléfono, si tienen) en el mismo espacio.",

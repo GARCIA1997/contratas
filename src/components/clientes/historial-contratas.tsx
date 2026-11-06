@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, Users } from "lucide-react";
+import { ChevronRight, MoreHorizontal, Users } from "lucide-react";
+import { AdministrarBeneficiario } from "@/components/beneficiarios/administrar-beneficiario";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -54,7 +55,10 @@ export function HistorialContratas({
   contratas,
   clienteNombre = "Titular",
   conBeneficiarios = false,
+  administrar,
 }: {
+  /** Presente para administradores: renombrar, unir o convertir beneficiarios. */
+  administrar?: { ownerId: string };
   contratas: ContrataDeCliente[];
   /** Para nombrar al titular en la sección de beneficiarios. */
   clienteNombre?: string;
@@ -63,6 +67,7 @@ export function HistorialContratas({
 }) {
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>("ACTIVAS");
   const [persona, setPersona] = useState("");
+  const [editando, setEditando] = useState<{ id: string; nombre: string } | null>(null);
 
   // Sin beneficiarios (o con la función apagada) la lista es la de siempre.
   const personas = useMemo(() => personasDe(contratas, clienteNombre), [contratas, clienteNombre]);
@@ -103,12 +108,12 @@ export function HistorialContratas({
           </h3>
           <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60">
             {personas.map((p) => (
-              <li key={p.clave}>
+              <li key={p.clave} className="flex items-stretch">
                 <button
                   type="button"
                   onClick={() => setPersona((actual) => (actual === p.clave ? "" : p.clave))}
                   className={cn(
-                    "flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors",
+                    "flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors",
                     persona === p.clave ? "bg-accent" : "hover:bg-accent/60"
                   )}
                   aria-pressed={persona === p.clave}
@@ -126,6 +131,16 @@ export function HistorialContratas({
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
                 </button>
+                {administrar && p.clave !== TITULAR && (
+                  <button
+                    type="button"
+                    onClick={() => setEditando({ id: p.clave, nombre: p.nombre })}
+                    className="flex w-11 shrink-0 items-center justify-center border-l border-border/60 text-muted-foreground hover:bg-accent/60"
+                    aria-label={`Administrar a ${p.nombre}`}
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -139,6 +154,20 @@ export function HistorialContratas({
             ))}
           </Select>
         </section>
+      )}
+      {editando && administrar && (
+        <AdministrarBeneficiario
+          ownerId={administrar.ownerId}
+          beneficiario={editando}
+          otros={personas
+            .filter((p) => p.clave !== TITULAR && p.clave !== editando.id)
+            .map((p) => ({ id: p.clave, nombre: p.nombre }))}
+          clienteNombre={clienteNombre}
+          onCerrar={() => {
+            setEditando(null);
+            setPersona("");
+          }}
+        />
       )}
       <SegmentedControl
         value={estadoFiltro}
