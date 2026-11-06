@@ -125,6 +125,12 @@ export default function RenovarContrataPage() {
       <RenovarForm
         contrataId={contrata.id}
         ownerId={ownerId}
+        clienteId={contrata.clienteId}
+        beneficiarioInicial={
+          contrata.beneficiarioId && contrata.beneficiarioNombre
+            ? { id: contrata.beneficiarioId, nombre: contrata.beneficiarioNombre }
+            : null
+        }
         clienteNombre={contrata.clienteNombre}
         tipoOriginal={contrata.tipo}
         saldoOriginal={saldoOriginal}

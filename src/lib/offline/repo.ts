@@ -1,5 +1,6 @@
 import { addDays, startOfDay } from "date-fns";
 import type { TipoContrata } from "@prisma/client";
+import { normalizarNombre } from "@/lib/beneficiarios";
 import { db, type ContrataLocal, type PagoLocal } from "@/lib/offline/db";
 import { reintentarSiCursorInvalido } from "@/lib/offline/dexie-retry";
 import {
@@ -101,6 +102,9 @@ export type ContrataDetalleLocal = {
   notas: string | null;
   convertidaADeuda: boolean;
   creadoEn: string;
+  /** A nombre de quién está (función "beneficiarios"); null = del cliente. */
+  beneficiarioId: string | null;
+  beneficiarioNombre: string | null;
   pagos: {
     numeroCuota: number;
     fechaProgramada: string;
@@ -132,6 +136,8 @@ export async function getContrata(
     notas: c.notas,
     convertidaADeuda: c.convertidaADeuda,
     creadoEn: c.creadoEn,
+    beneficiarioId: c.beneficiarioId ?? null,
+    beneficiarioNombre: c.beneficiarioNombre ?? null,
     pagos: pagos.map((p) => ({
       numeroCuota: p.numeroCuota,
       fechaProgramada: p.fechaProgramada,
@@ -450,6 +456,8 @@ export async function getClientePerfil(
           : estadoContrata(pagosParaCalculo),
         creadoEn: c.creadoEn,
         ultimaFechaPago: ultimaFechaPagoLocal(pagosParaCalculo),
+        beneficiarioId: c.beneficiarioId ?? null,
+        beneficiarioNombre: c.beneficiarioNombre ?? null,
       };
     })
   );
@@ -702,6 +710,8 @@ async function itemsCobroVencido(
         fechaProgramada: p.fechaProgramada,
         pendiente,
         montoContrata: c.monto,
+        beneficiarioId: c.beneficiarioId ?? null,
+        beneficiario: c.beneficiarioNombre ?? null,
         saldoContrata: Math.round(todosLosPagos.reduce((s, p) => s + (p.pagado ? 0 : Math.max(c.abono - p.montoAbonado, 0)), 0) * 100) / 100,
       });
     }
@@ -764,6 +774,8 @@ export async function getContratasParaAbono(
   const conPagos = await contratasDelClienteParaSaldo(ownerId, clienteId);
   return conPagos.map(({ contrata, pagos }) => ({
       contrataId: contrata.id,
+      beneficiario: contrata.beneficiarioNombre ?? null,
+      beneficiarioId: contrata.beneficiarioId ?? null,
       tipo: contrata.tipo,
       monto: contrata.monto,
       abono: contrata.abono,
@@ -859,4 +871,27 @@ export async function getCita(
   const cita = await db.citas.get(id);
   if (!cita || cita._deletedAt || cita.ownerId !== ownerId) return null;
   return cita;
+}
+
+/**
+ * Beneficiarios de un cliente que conoce el teléfono: los que mandó el
+ * servidor más los de contratas creadas aquí y aún sin sincronizar (sin
+ * duplicar por id ni por nombre).
+ */
+export async function getBeneficiariosCliente(
+  ownerId: string,
+  clienteId: string
+): Promise<{ id: string; nombre: string }[]> {
+  if (!db) return [];
+  const cliente = await db.clientes.get(clienteId);
+  if (!cliente || cliente.ownerId !== ownerId) return [];
+  const lista = [...(cliente.beneficiarios ?? [])];
+  const contratas = await db.contratas.where("clienteId").equals(clienteId).toArray();
+  for (const c of contratas) {
+    if (c._deletedAt || !c.beneficiarioId || !c.beneficiarioNombre) continue;
+    const n = normalizarNombre(c.beneficiarioNombre);
+    if (lista.some((b) => b.id === c.beneficiarioId || normalizarNombre(b.nombre) === n)) continue;
+    lista.push({ id: c.beneficiarioId, nombre: c.beneficiarioNombre });
+  }
+  return lista.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
 }

@@ -21,6 +21,11 @@ import { syncAll } from "@/lib/offline/sync";
 import { verificarClienteNuevo, type Verificacion } from "@/lib/offline/verificar-cliente";
 import { AvisoClienteExistente } from "@/components/clientes/aviso-cliente-existente";
 import { guardarOperacion } from "@/lib/offline/guardar";
+import {
+  SelectorBeneficiario,
+  camposBeneficiario,
+  type EleccionBeneficiario,
+} from "@/components/beneficiarios/selector-beneficiario";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
 import { getContratasConVencido } from "@/lib/offline/repo";
 import { mensajeDeError } from "@/lib/offline/conexion";
@@ -119,6 +124,8 @@ export function ContrataForm({
   );
   const [sugerenciasAbiertas, setSugerenciasAbiertas] = useState(false);
   const [clienteNombre, setClienteNombre] = useState("");
+  // A nombre de quién va (función "beneficiarios"); null = del propio cliente.
+  const [beneficiario, setBeneficiario] = useState<EleccionBeneficiario>(null);
   const [tipo, setTipo] = useState<TipoContrata>(inicial?.tipo ?? tipoInicial);
   const [monto, setMonto] = useState(
     inicial ? String(inicial.monto) : montoInicial ? String(montoInicial) : ""
@@ -321,6 +328,7 @@ export function ContrataForm({
           input,
           hoy,
           cubrirVencidasDe: liquidaOtras ? (otras ?? []).map((o) => o.id) : [],
+          beneficiario: clienteNuevo ? null : beneficiario,
         })
       : null;
 
@@ -336,7 +344,7 @@ export function ContrataForm({
             ...input,
             ...(clienteNuevo
               ? { clienteNombre: clienteNuevo.nombre, clienteNuevoId: clienteNuevo.id }
-              : { clienteId, incluirOtras: liquidaOtras }),
+              : { clienteId, incluirOtras: liquidaOtras, ...camposBeneficiario(beneficiario) }),
             id,
             fechaCaptura: hoy.toISOString(),
             ...(entrega ? { _local: entrega.filas } : {}),
@@ -574,6 +582,16 @@ export function ContrataForm({
             />
           </div>
         </div>
+
+        {!editando && clienteMode === "existente" && clienteId && (
+          <SelectorBeneficiario
+            ownerId={ownerId}
+            clienteId={clienteId}
+            clienteNombre={clientes.find((c) => c.id === clienteId)?.nombre ?? clientePreseleccionado?.nombre ?? "el cliente"}
+            value={beneficiario}
+            onChange={setBeneficiario}
+          />
+        )}
 
         <div className="space-y-2">
           <Label htmlFor="notas">Notas</Label>

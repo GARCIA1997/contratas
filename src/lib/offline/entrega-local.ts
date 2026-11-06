@@ -93,6 +93,8 @@ export async function prepararEntregaLocal(
     liquidarCompletas?: string[];
     /** "Incluir otras": cubre lo vencido/vigente de estas otras contratas. */
     cubrirVencidasDe?: string[];
+    /** A nombre de quién va la contrata (existente o recién creado en el teléfono). */
+    beneficiario?: { id: string; nombre: string } | null;
   }
 ): Promise<EntregaLocal> {
   if (!db) throw new Error("Sin base de datos local");
@@ -132,6 +134,8 @@ export async function prepararEntregaLocal(
     convertidaADeuda: false,
     deudorId: null,
     creadoEn: opts.hoy.toISOString(),
+    beneficiarioId: opts.beneficiario?.id ?? null,
+    beneficiarioNombre: opts.beneficiario?.nombre ?? null,
     _dirty: true,
   };
   const pagos: PagoLocal[] = fechas.map((f, i) => ({
@@ -175,6 +179,7 @@ export async function prepararEntregaLocal(
     }));
     otrasLiquidadas.push({
       contrataId: cid,
+      ...(c.beneficiarioNombre ? { beneficiario: c.beneficiarioNombre, beneficiarioId: c.beneficiarioId ?? null } : {}),
       tipo: c.tipo,
       numCuotas: c.numCuotas,
       montoContrata: c.monto,
@@ -214,6 +219,7 @@ export async function prepararEntregaLocal(
         numeroCuota: p.numeroCuota,
         fechaProgramada: p.fechaProgramada,
       })),
+      beneficiario: opts.beneficiario ? { nombre: opts.beneficiario.nombre } : null,
       otrasLiquidadas,
     },
   };

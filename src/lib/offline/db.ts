@@ -18,6 +18,9 @@ export type ClienteLocal = {
   referencia: string | null;
   notas: string | null;
   creadoEn: string;
+  /** Beneficiarios del cliente (función "beneficiarios"). Ausente en
+   *  registros guardados por versiones anteriores = ninguno conocido. */
+  beneficiarios?: { id: string; nombre: string }[];
   _dirty?: boolean;
   _deletedAt?: string | null;
 };
@@ -49,6 +52,9 @@ export type ContrataLocal = {
   convertidaADeuda: boolean;
   deudorId: string | null;
   creadoEn: string;
+  /** A nombre de quién está (función "beneficiarios"); null = del cliente. */
+  beneficiarioId?: string | null;
+  beneficiarioNombre?: string | null;
   _dirty?: boolean;
   _deletedAt?: string | null;
 };

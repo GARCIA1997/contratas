@@ -24,6 +24,8 @@ export type CuotaVencidaItem = {
    *  para no romper cobros encolados por una versión anterior. */
   montoContrata?: number;
   saldoContrata?: number;
+  beneficiarioId?: string | null;
+  beneficiario?: string | null;
 };
 
 export type PreviewCobroVencidas = {
@@ -47,7 +49,7 @@ export async function previewCobroVencidas(
 ): Promise<PreviewCobroVencidas> {
   const contratas = await prisma.contrata.findMany({
     where: { ownerId, clienteId, convertidaADeuda: false },
-    include: { pagos: true },
+    include: { pagos: true, beneficiario: { select: { id: true, nombre: true } } },
   });
 
   const base = startOfDay(hoy);
@@ -70,6 +72,8 @@ export async function previewCobroVencidas(
         pendiente,
         montoContrata: c.monto,
         saldoContrata: saldoPendiente(c.pagos, c.abono),
+        beneficiarioId: c.beneficiario?.id ?? null,
+        beneficiario: c.beneficiario?.nombre ?? null,
       });
     }
   }
@@ -109,6 +113,9 @@ export type ContrataResumenCobro = {
   saldoTrasCobro?: number;
   /** Cuotas vencidas que siguen sin pagar o a medias (ver CobroContrata). */
   pendientes?: { numeroCuota: number; falta: number }[];
+  /** A nombre de quién está la contrata (función "beneficiarios"). */
+  beneficiario?: string | null;
+  beneficiarioId?: string | null;
   cuotas: CuotaCobrada[];
   subtotal: number;
 };
@@ -143,6 +150,7 @@ export function agruparCobroPorContrata(
         tipo: i.tipo,
         numCuotas: i.numCuotas,
         ...(i.montoContrata !== undefined ? { montoContrata: i.montoContrata } : {}),
+        ...(i.beneficiario ? { beneficiario: i.beneficiario, beneficiarioId: i.beneficiarioId ?? null } : {}),
         ...(i.saldoContrata !== undefined ? { saldoTrasCobro: Math.max(0, round(i.saldoContrata - i.pendiente)) } : {}),
         cuotas: [{ numeroCuota: i.numeroCuota, monto: i.pendiente }],
         subtotal: i.pendiente,

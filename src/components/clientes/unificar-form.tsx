@@ -15,6 +15,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { syncAll } from "@/lib/offline/sync";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
+import {
+  SelectorBeneficiario,
+  camposBeneficiario,
+  type EleccionBeneficiario,
+} from "@/components/beneficiarios/selector-beneficiario";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import type { ResultadoRenovacion } from "@/components/contratas/renovar-form";
@@ -33,6 +38,8 @@ type DatosUnificacion = {
   fechaInicio: string;
   numCuotas: number;
   notas: string | null;
+  beneficiarioId?: string;
+  beneficiarioNuevo?: { id: string; nombre: string };
 };
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
@@ -102,6 +109,7 @@ export function UnificarForm({
   const [fechaInicio, setFechaInicio] = usePrimerPago(tipo);
   const [abono, setAbono] = useState("");
   const [notas, setNotas] = useState("");
+  const [beneficiario, setBeneficiario] = useState<EleccionBeneficiario>(null);
   const abonoTocado = useRef(false);
   const [fechas, setFechas] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +196,7 @@ export function UnificarForm({
       fechaInicio,
       numCuotas,
       notas: notas.trim() || null,
+      ...camposBeneficiario(beneficiario),
     };
 
     setGuardando(true);
@@ -211,6 +220,7 @@ export function UnificarForm({
           input,
           hoy,
           liquidarCompletas: contrataIds,
+          beneficiario,
         })
       : null;
 
@@ -394,6 +404,14 @@ export function UnificarForm({
             />
           </div>
         </div>
+
+        <SelectorBeneficiario
+          ownerId={ownerId}
+          clienteId={clienteId}
+          clienteNombre={clienteNombre}
+          value={beneficiario}
+          onChange={setBeneficiario}
+        />
 
         <div className="space-y-2">
           <Label htmlFor="notas">Notas</Label>
