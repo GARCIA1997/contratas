@@ -368,6 +368,11 @@ export function AgendarForm({
                             : "Mensual"}{" "}
                         · cuota {c.cuotaPagadaMax}/{c.numCuotas} · saldo{" "}
                         {formatMoneda(c.saldo)}
+                        {c.beneficiarioNombre && (
+                          <span className="block text-xs text-muted-foreground">
+                            A nombre de {c.beneficiarioNombre}
+                          </span>
+                        )}
                       </span>
                       <input
                         type="radio"
@@ -409,6 +414,11 @@ export function AgendarForm({
                             : "Mensual"}{" "}
                         · cuota {c.cuotaPagadaMax}/{c.numCuotas} · saldo{" "}
                         {formatMoneda(c.saldo)}
+                        {c.beneficiarioNombre && (
+                          <span className="block text-xs text-muted-foreground">
+                            A nombre de {c.beneficiarioNombre}
+                          </span>
+                        )}
                       </span>
                       <input
                         type="checkbox"

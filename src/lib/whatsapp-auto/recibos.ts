@@ -324,6 +324,7 @@ export function cobroDeContrata(
     monto: number;
     abono: number;
     pagos: { numeroCuota: number; montoAbonado: number; pagado?: boolean; fechaProgramada?: Date | string }[];
+    beneficiario?: { nombre: string } | null;
   },
   aplicaciones: { numeroCuota: number; monto: number; quedaPagada: boolean }[],
   // Sin señal, "hoy" es cuando se capturó el cobro (no cuando sincronizó).
@@ -337,6 +338,7 @@ export function cobroDeContrata(
   );
   return {
     ...(contrata.id ? { contrataId: contrata.id } : {}),
+    ...(contrata.beneficiario ? { beneficiario: contrata.beneficiario.nombre } : {}),
     tipo: contrata.tipo,
     numCuotas: contrata.pagos.length,
     montoContrata: contrata.monto,

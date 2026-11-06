@@ -8,6 +8,7 @@ import {
   ejecutarCobroVencidas,
   previewCobroVencidas,
 } from "@/lib/services/cobros";
+import { leerPersonas } from "@/lib/cobro-por-persona";
 
 type Params = { params: { id: string } };
 
@@ -26,11 +27,13 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const user = await requireAdmin();
+    // Sin cuerpo (versiones anteriores de la app) = todas las personas.
+    const body = await req.json().catch(() => ({}));
     const resultado = await withIdempotency(
       req,
       user.ownerId,
       `clientes/${params.id}/cobrar-vencidas`,
-      () => ejecutarCobroVencidas(user.ownerId, params.id)
+      () => ejecutarCobroVencidas(user.ownerId, params.id, new Date(), leerPersonas(body?.personas))
     );
     return NextResponse.json(resultado);
   } catch (error) {

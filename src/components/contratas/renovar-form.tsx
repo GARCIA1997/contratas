@@ -16,6 +16,11 @@ import { formatMoneda } from "@/lib/utils";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { syncAll } from "@/lib/offline/sync";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
+import {
+  SelectorBeneficiario,
+  camposBeneficiario,
+  type EleccionBeneficiario,
+} from "@/components/beneficiarios/selector-beneficiario";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import { useIdempotencia } from "@/lib/offline/use-idempotencia";
@@ -36,6 +41,8 @@ type DatosRenovacion = {
   numCuotas: number;
   notas: string | null;
   incluirOtras: boolean;
+  beneficiarioId?: string;
+  beneficiarioNuevo?: { id: string; nombre: string };
 };
 
 /** Lo que responde /api/contratas/[id]/renovar (y unificar). */
@@ -50,11 +57,19 @@ const TIPO_LABEL: Record<TipoContrata, string> = {
   MENSUAL: "Mensual",
 };
 
-type OtraContrata = { id: string; tipo: TipoContrata; saldo: number };
+type OtraContrata = {
+  id: string;
+  tipo: TipoContrata;
+  saldo: number;
+  /** A nombre de quién está (beneficiario); null = del titular. */
+  beneficiarioNombre?: string | null;
+};
 
 export function RenovarForm({
   contrataId,
   ownerId,
+  clienteId,
+  beneficiarioInicial,
   clienteNombre,
   tipoOriginal,
   saldoOriginal,
@@ -68,6 +83,10 @@ export function RenovarForm({
   contrataId: string;
   /** Presente cuando la página vive en la capa offline (ver repo/useLiveQuery). */
   ownerId?: string | null;
+  /** Para el selector de beneficiario (función "beneficiarios"). */
+  clienteId?: string | null;
+  /** Beneficiario de la contrata que se renueva: la nueva va a su nombre por defecto. */
+  beneficiarioInicial?: { id: string; nombre: string } | null;
   clienteNombre: string;
   tipoOriginal: TipoContrata;
   saldoOriginal: number;
@@ -88,6 +107,9 @@ export function RenovarForm({
   onRenovada?: () => void;
 }) {
   const idem = useIdempotencia();
+  const [beneficiario, setBeneficiario] = useState<EleccionBeneficiario>(
+    beneficiarioInicial ? { ...beneficiarioInicial, nuevo: false } : null
+  );
   const [incluirOtras, setIncluirOtras] = useState(false);
   const [renovada, setRenovada] = useState<ContrataEntregada & { id: string } | null>(
     null
@@ -168,6 +190,7 @@ export function RenovarForm({
       numCuotas,
       notas: notas.trim() || null,
       incluirOtras,
+      ...camposBeneficiario(beneficiario),
     };
 
     setGuardando(true);
@@ -198,6 +221,7 @@ export function RenovarForm({
           hoy,
           liquidarCompletas: [contrataId],
           cubrirVencidasDe: otrasIds,
+          beneficiario,
         })
       : null;
 
@@ -313,7 +337,10 @@ export function RenovarForm({
                 <ul className="space-y-1 pl-1 text-xs text-muted-foreground">
                   {otras.map((c) => (
                     <li key={c.id} className="flex justify-between">
-                      <span>{TIPO_LABEL[c.tipo]}</span>
+                      <span>
+                        {TIPO_LABEL[c.tipo]}
+                        {c.beneficiarioNombre && ` · ${c.beneficiarioNombre}`}
+                      </span>
                       <span>{formatMoneda(c.saldo)}</span>
                     </li>
                   ))}
@@ -403,6 +430,14 @@ export function RenovarForm({
             />
           </div>
         </div>
+
+        <SelectorBeneficiario
+          ownerId={ownerId}
+          clienteId={clienteId}
+          clienteNombre={clienteNombre}
+          value={beneficiario}
+          onChange={setBeneficiario}
+        />
 
         <div className="space-y-2">
           <Label htmlFor="notas">Notas</Label>

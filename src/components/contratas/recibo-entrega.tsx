@@ -17,6 +17,8 @@ export type ContrataEntregada = {
   abono: number;
   numCuotas: number;
   pagos: { numeroCuota: number; fechaProgramada: string }[];
+  /** A nombre de quién está (función "beneficiarios"). */
+  beneficiario?: { nombre: string } | null;
 };
 
 /**
@@ -44,6 +46,7 @@ export function construirMensajeEntrega(
     abono: c.abono,
     numCuotas: c.numCuotas,
     descuentos,
+    beneficiario: c.beneficiario?.nombre ?? null,
     pagos: c.pagos.map((p) => ({
       numeroCuota: p.numeroCuota,
       fecha: anclarFechaCliente(p.fechaProgramada),
@@ -91,6 +94,9 @@ export function ReciboEntregaPanel({
             {contrata.cliente.nombre} · {formatMoneda(contrata.monto)} ·{" "}
             {contrata.numCuotas} pagos de {formatMoneda(contrata.abono)}
           </p>
+          {contrata.beneficiario && (
+            <p className="text-sm font-medium text-primary">A nombre de {contrata.beneficiario.nombre}</p>
+          )}
           {enMano !== null && (
             <p className="text-sm font-semibold text-pagado">Entregas en mano: {formatMoneda(enMano)}</p>
           )}

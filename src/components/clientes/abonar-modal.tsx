@@ -17,6 +17,9 @@ import { syncContratas } from "@/lib/offline/sync";
 import { linkWhatsApp } from "@/lib/whatsapp";
 import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
 import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
+import { Select } from "@/components/ui/select";
+import { agruparPorPersona, esDePersonas, hayBeneficiarios } from "@/lib/cobro-por-persona";
+import { useFuncion } from "@/lib/offline/use-funcion";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import { mensajeDeError } from "@/lib/offline/conexion";
 
@@ -67,6 +70,9 @@ export function AbonarModal({
   const [resultado, setResultado] = useState<ResultadoAbono | null>(null);
   const [offlinePendiente, setOfflinePendiente] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
+  // Función "beneficiarios": de quién es el abono ("" = todas sus contratas, como siempre).
+  const conBeneficiarios = useFuncion("beneficiarios");
+  const [persona, setPersona] = useState("");
 
   useEffect(() => setMontado(true), []);
 
@@ -75,10 +81,23 @@ export function AbonarModal({
     [abierto, ownerId, clienteId]
   );
 
+  const personas = useMemo(
+    () =>
+      conBeneficiarios && contratas && hayBeneficiarios(contratas)
+        ? agruparPorPersona(contratas, clienteNombre, (c) =>
+            c.pagos.reduce((s, p) => s + (p.pagado ? 0 : Math.max(c.abono - p.montoAbonado, 0)), 0)
+          )
+        : null,
+    [conBeneficiarios, contratas, clienteNombre]
+  );
+  const delAbono = useMemo(
+    () => (contratas && personas && persona ? contratas.filter((c) => esDePersonas(c.beneficiarioId, [persona])) : contratas),
+    [contratas, personas, persona]
+  );
   const montoNum = Number(monto) || 0;
   const preview = useMemo(
-    () => (contratas && montoNum > 0 ? distribuirAbono(contratas, montoNum) : null),
-    [contratas, montoNum]
+    () => (delAbono && montoNum > 0 ? distribuirAbono(delAbono, montoNum) : null),
+    [delAbono, montoNum]
   );
 
   function cerrar() {
@@ -88,6 +107,7 @@ export function AbonarModal({
     setResultado(null);
     setOfflinePendiente(false);
     setIdempotencyKey(null);
+    setPersona("");
   }
 
   async function confirmar() {
@@ -102,7 +122,12 @@ export function AbonarModal({
       const r = await guardarOperacion<ResultadoAbono>({
         ownerId,
         clave,
-        lote: [{ type: "cliente.abonarParcial", payload: { clienteId, monto: montoNum } }],
+        lote: [
+          {
+            type: "cliente.abonarParcial",
+            payload: { clienteId, monto: montoNum, ...(personas && persona ? { personas: [persona] } : {}) },
+          },
+        ],
       });
       if (r.enServidor) {
         setResultado(r.datos);
@@ -180,6 +205,7 @@ export function AbonarModal({
                               · {formatMoneda(c.montoContrata)}
                             </span>
                           )}
+                          {c.beneficiario && <span className="font-normal text-primary"> · {c.beneficiario}</span>}
                         </span>
                         <span className="font-semibold">{formatMoneda(c.subtotal)}</span>
                       </div>
@@ -214,6 +240,20 @@ export function AbonarModal({
             ) : (
               <div className="space-y-3">
                 <p className="text-sm font-semibold">Registrar abono — {clienteNombre}</p>
+                {personas && (
+                  <div className="space-y-2 text-left">
+                    <Label htmlFor="abono-persona">¿De quién es el abono?</Label>
+                    <Select id="abono-persona" value={persona} onChange={(e) => setPersona(e.target.value)}>
+                      <option value="">Todos</option>
+                      {personas.map((p) => (
+                        <option key={p.clave} value={p.clave}>
+                          {p.nombre}
+                          {p.esTitular ? " (titular)" : ""} · debe {formatMoneda(p.total)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2 text-left">
                   <Label htmlFor="monto-abono">¿Cuánto te dio?</Label>
                   <Input
@@ -249,6 +289,9 @@ export function AbonarModal({
                                     {" "}
                                     · {formatMoneda(c.montoContrata)}
                                   </span>
+                                )}
+                                {c.beneficiario && (
+                                  <span className="font-normal text-primary"> · {c.beneficiario}</span>
                                 )}
                               </span>
                               <span className="font-semibold">{formatMoneda(c.subtotal)}</span>

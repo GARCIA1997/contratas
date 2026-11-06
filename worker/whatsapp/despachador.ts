@@ -302,7 +302,11 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
     for (const m of mensajes) {
       const pago = await prisma.pago.findFirst({
         where: { contrataId: m.contrataId ?? "", numeroCuota: m.numeroCuota ?? -1, contrata: { ownerId: cuenta.ownerId } },
-        include: { contrata: { include: { cliente: true, pagos: { select: { id: true } } } } },
+        include: {
+          contrata: {
+            include: { cliente: true, pagos: { select: { id: true } }, beneficiario: { select: { nombre: true } } },
+          },
+        },
       });
       const pendiente = pago ? Math.round((pago.contrata.abono - pago.montoAbonado) * 100) / 100 : 0;
       const motivo = !pago
@@ -325,6 +329,7 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
         numCuotas: pago.contrata.pagos.length,
         pendiente,
         diasAtraso: differenceInCalendarDays(startOfDay(ahora), anclarFechaCliente(pago.fechaProgramada)),
+        beneficiario: pago.contrata.beneficiario?.nombre ?? null,
       });
     }
     if (cuotas.length === 0) return { texto: null, validos, cancelados };

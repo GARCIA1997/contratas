@@ -5,6 +5,7 @@ import { HttpError } from "@/lib/session";
 import { anclarFechaCliente } from "@/lib/fechas";
 import { DIAS_PROXIMO_VENCIMIENTO, saldoPendiente } from "@/lib/contrata";
 import { guardarCobro, prepararReciboCobro } from "@/lib/whatsapp-auto/recibos";
+import { esDePersonas } from "@/lib/cobro-por-persona";
 
 function round(n: number) {
   return Math.round(n * 100) / 100;
@@ -24,6 +25,8 @@ export type CuotaVencidaItem = {
    *  para no romper cobros encolados por una versión anterior. */
   montoContrata?: number;
   saldoContrata?: number;
+  beneficiarioId?: string | null;
+  beneficiario?: string | null;
 };
 
 export type PreviewCobroVencidas = {
@@ -43,11 +46,13 @@ export type PreviewCobroVencidas = {
 export async function previewCobroVencidas(
   ownerId: string,
   clienteId: string,
-  hoy: Date = new Date()
+  hoy: Date = new Date(),
+  /** Solo las contratas de estas personas (función "beneficiarios"); sin lista = todas. */
+  personas?: string[]
 ): Promise<PreviewCobroVencidas> {
   const contratas = await prisma.contrata.findMany({
     where: { ownerId, clienteId, convertidaADeuda: false },
-    include: { pagos: true },
+    include: { pagos: true, beneficiario: { select: { id: true, nombre: true } } },
   });
 
   const base = startOfDay(hoy);
@@ -55,6 +60,7 @@ export async function previewCobroVencidas(
   const items: CuotaVencidaItem[] = [];
 
   for (const c of contratas) {
+    if (!esDePersonas(c.beneficiarioId, personas)) continue;
     for (const p of c.pagos) {
       if (p.pagado) continue;
       if (anclarFechaCliente(p.fechaProgramada) > limite) continue;
@@ -70,6 +76,8 @@ export async function previewCobroVencidas(
         pendiente,
         montoContrata: c.monto,
         saldoContrata: saldoPendiente(c.pagos, c.abono),
+        beneficiarioId: c.beneficiario?.id ?? null,
+        beneficiario: c.beneficiario?.nombre ?? null,
       });
     }
   }
@@ -109,6 +117,9 @@ export type ContrataResumenCobro = {
   saldoTrasCobro?: number;
   /** Cuotas vencidas que siguen sin pagar o a medias (ver CobroContrata). */
   pendientes?: { numeroCuota: number; falta: number }[];
+  /** A nombre de quién está la contrata (función "beneficiarios"). */
+  beneficiario?: string | null;
+  beneficiarioId?: string | null;
   cuotas: CuotaCobrada[];
   subtotal: number;
 };
@@ -143,6 +154,7 @@ export function agruparCobroPorContrata(
         tipo: i.tipo,
         numCuotas: i.numCuotas,
         ...(i.montoContrata !== undefined ? { montoContrata: i.montoContrata } : {}),
+        ...(i.beneficiario ? { beneficiario: i.beneficiario, beneficiarioId: i.beneficiarioId ?? null } : {}),
         ...(i.saldoContrata !== undefined ? { saldoTrasCobro: Math.max(0, round(i.saldoContrata - i.pendiente)) } : {}),
         cuotas: [{ numeroCuota: i.numeroCuota, monto: i.pendiente }],
         subtotal: i.pendiente,
@@ -159,7 +171,8 @@ export function agruparCobroPorContrata(
 export async function ejecutarCobroVencidas(
   ownerId: string,
   clienteId: string,
-  hoy: Date = new Date()
+  hoy: Date = new Date(),
+  personas?: string[]
 ): Promise<ResultadoCobroVencidas> {
   const cliente = await prisma.cliente.findFirst({
     where: { id: clienteId, ownerId },
@@ -167,7 +180,7 @@ export async function ejecutarCobroVencidas(
   });
   if (!cliente) throw new HttpError(404, "Cliente no encontrado");
 
-  const { items } = await previewCobroVencidas(ownerId, clienteId, hoy);
+  const { items } = await previewCobroVencidas(ownerId, clienteId, hoy, personas);
   if (items.length === 0) {
     throw new HttpError(400, "No hay cuotas pendientes para cobrar");
   }

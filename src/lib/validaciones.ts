@@ -36,6 +36,14 @@ export const contrataSchema = z.object({
    *  liquida lo vencido/vigente/próximo del resto de sus contratas
    *  activas. Se ignora al editar. */
   incluirOtras: z.boolean().optional(),
+  /** Beneficiario existente del cliente (función "beneficiarios"). */
+  beneficiarioId: z.string().min(1).max(40).optional().nullable(),
+  /** Beneficiario nuevo, con id generado en el teléfono (sirve sin señal). Si
+   *  ya existe uno con el mismo nombre normalizado, se usa ese. */
+  beneficiarioNuevo: z
+    .object({ id: z.string().uuid(), nombre: z.string().trim().min(1).max(80) })
+    .optional()
+    .nullable(),
   /** Id generado en el teléfono al entregar en modo local/sin señal: la
    *  contrata nace con su id definitivo y se puede ver, cobrar y mandar
    *  por WhatsApp antes de sincronizar. */
@@ -46,11 +54,20 @@ export const contrataSchema = z.object({
   fechaCaptura: z.string().datetime().optional(),
 });
 
+// El beneficiario no se cambia después de crear la contrata.
 export const contrataUpdateSchema = contrataSchema
-  .omit({ id: true, fechaCaptura: true, clienteNuevoId: true })
+  .omit({ id: true, fechaCaptura: true, clienteNuevoId: true, beneficiarioId: true, beneficiarioNuevo: true })
   .partial();
 
 const nuevaContrataBaseSchema = z.object({
+  /** Beneficiario existente del cliente (función "beneficiarios"). */
+  beneficiarioId: z.string().min(1).max(40).optional().nullable(),
+  /** Beneficiario nuevo, con id generado en el teléfono (sirve sin señal). Si
+   *  ya existe uno con el mismo nombre normalizado, se usa ese. */
+  beneficiarioNuevo: z
+    .object({ id: z.string().uuid(), nombre: z.string().trim().min(1).max(80) })
+    .optional()
+    .nullable(),
   tipo: z.enum(["SEMANAL", "QUINCENAL", "MENSUAL"]),
   monto: z.number().positive("El monto debe ser mayor a 0"),
   abono: z.number().positive("El abono debe ser mayor a 0"),

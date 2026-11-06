@@ -16,6 +16,9 @@ export type PagoParaRuta = {
 
 export type ContrataParaRuta = {
   id: string;
+  /** A nombre de quién está (función "beneficiarios"). */
+  beneficiarioId?: string | null;
+  beneficiarioNombre?: string | null;
   abono: number;
   convertidaADeuda: boolean;
   pagos: PagoParaRuta[];
@@ -37,6 +40,9 @@ export type CuotaRuta = {
   pendiente: number;
   fechaProgramada: string;
   diasAtraso: number;
+  /** A nombre de quién está la contrata (función "beneficiarios"). */
+  beneficiarioId?: string | null;
+  beneficiarioNombre?: string | null;
 };
 
 export type ParadaRuta = {
@@ -89,6 +95,7 @@ export function aggregarRutaDelDia(
           // días (ya no se recorta a 0 — antes una cuota "próxima" se veía
           // idéntica a una de hoy en la UI).
           diasAtraso: differenceInCalendarDays(base, fechaCuota),
+          ...(c.beneficiarioId ? { beneficiarioId: c.beneficiarioId, beneficiarioNombre: c.beneficiarioNombre ?? null } : {}),
         });
       }
     }
@@ -115,7 +122,7 @@ export async function computeRutaDelDia(
 ): Promise<ParadaRuta[]> {
   const clientes = await prisma.cliente.findMany({
     where: { ownerId },
-    include: { contratas: { include: { pagos: true } } },
+    include: { contratas: { include: { pagos: true, beneficiario: { select: { id: true, nombre: true } } } } },
   });
 
   return aggregarRutaDelDia(
@@ -126,6 +133,8 @@ export async function computeRutaDelDia(
       direccion: c.direccion,
       contratas: c.contratas.map((k) => ({
         id: k.id,
+        beneficiarioId: k.beneficiario?.id ?? null,
+        beneficiarioNombre: k.beneficiario?.nombre ?? null,
         abono: k.abono,
         convertidaADeuda: k.convertidaADeuda,
         pagos: k.pagos.map((p) => ({

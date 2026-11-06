@@ -23,6 +23,7 @@ import { ScorePagoBadge } from "@/components/score-pago-badge";
 import { CitaCard } from "@/components/citas/cita-card";
 import { cn, formatMoneda } from "@/lib/utils";
 import { useAuthClaims } from "@/lib/offline/use-auth-claims";
+import { useFuncion } from "@/lib/offline/use-funcion";
 import {
   getClientePerfil,
   getCobroVencidoPreview,
@@ -103,6 +104,7 @@ export default function ClientePerfilPage() {
   }, [router, params.id, perfil]);
 
   const extras = useExtrasOnline(params.id, esAdmin);
+  const conBeneficiarios = useFuncion("beneficiarios");
   // Respaldo offline: si no se pudo pedir el preview real al servidor
   // (sin red), se calcula localmente sobre los datos ya sincronizados.
   const previewLocal = useLiveQuery(
@@ -244,6 +246,7 @@ export default function ClientePerfilPage() {
               totalInicial={extras.cobroPreview.total}
               cuotasInicial={extras.cobroPreview.items.length}
               ownerId={ownerId}
+              clienteNombre={perfil.nombre}
               enFila
             />
           )}
@@ -255,6 +258,7 @@ export default function ClientePerfilPage() {
               totalInicial={previewLocal.total}
               cuotasInicial={previewLocal.items}
               ownerId={ownerId}
+              clienteNombre={perfil.nombre}
               enFila
             />
           )}
@@ -329,7 +333,12 @@ export default function ClientePerfilPage() {
         <h2 className="mb-2 text-sm font-semibold text-muted-foreground">
           Historial de contratas
         </h2>
-        <HistorialContratas contratas={perfil.contratas} />
+        <HistorialContratas
+          contratas={perfil.contratas}
+          clienteNombre={perfil.nombre}
+          conBeneficiarios={conBeneficiarios}
+          administrar={esAdmin && ownerId ? { ownerId } : undefined}
+        />
       </div>
     </div>
   );

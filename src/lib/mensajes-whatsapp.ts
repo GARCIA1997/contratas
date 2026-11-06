@@ -117,6 +117,8 @@ export type CobroContrata = {
    * cobro). "Cuota 7 de 20" sola hacía creer al cliente que iba al corriente.
    */
   pendientes?: { numeroCuota: number; falta: number }[];
+  /** A nombre de quién está la contrata cuando no es del propio cliente. */
+  beneficiario?: string | null;
 };
 
 /** Cuotas vencidas antes de hoy que no están cubiertas (con lo que les falta), excepto `excluir`. */
@@ -152,8 +154,12 @@ export function mensajeCobro(opts: {
   const detalle: string[] = [];
 
   for (const c of opts.contratas) {
-    const contexto =
-      c.montoContrata !== undefined ? `préstamo de ${formatMoneda(c.montoContrata)}` : "";
+    const contexto = [
+      c.montoContrata !== undefined ? `préstamo de ${formatMoneda(c.montoContrata)}` : "",
+      c.beneficiario ? `de ${c.beneficiario}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     const conEncabezado = Boolean(c.tipo) || Boolean(contexto);
     if (c.tipo) {
       detalle.push(`🔹 *${TIPO_LABEL[c.tipo]}*${contexto ? ` · ${contexto}` : ""}`);
@@ -320,6 +326,8 @@ export function mensajeEntrega(opts: {
   pagos: { numeroCuota: number; fecha: Date }[];
   fecha?: Date;
   hechoPor?: string | null;
+  /** A nombre de quién está la contrata cuando no es del propio cliente. */
+  beneficiario?: string | null;
   descuentos?: DescuentosEntrega | null;
 }): string {
   const fecha = opts.fecha ?? new Date();
@@ -380,6 +388,7 @@ export function mensajeEntrega(opts: {
     titulo: "Comprobante de entrega",
     cuerpo: [
       `👤 *${opts.clienteNombre}*`,
+      ...(opts.beneficiario ? [`👥 A nombre de: *${opts.beneficiario}*`] : []),
       `📅 Entregado el ${fechaLarga(fecha)}`,
       ...atendio(opts.hechoPor),
       ``,
@@ -410,6 +419,8 @@ export type CuotaPendiente = {
   pendiente: number;
   /** Positivo = vencida hace N días · 0 = hoy · negativo = vence en N días. */
   diasAtraso: number;
+  /** A nombre de quién está la contrata cuando no es del propio cliente. */
+  beneficiario?: string | null;
 };
 
 function frasePlazo(dias: number) {
@@ -440,7 +451,7 @@ export function mensajeRecordatorio(opts: {
           ``,
           ...opts.cuotas.map(
             (q) =>
-              `🔸 Cuota ${q.numeroCuota} de ${q.numCuotas} — ${formatMoneda(q.pendiente)}  _(${frasePlazo(q.diasAtraso)})_`
+              `🔸 Cuota ${q.numeroCuota} de ${q.numCuotas}${q.beneficiario ? ` (${q.beneficiario})` : ""} — ${formatMoneda(q.pendiente)}  _(${frasePlazo(q.diasAtraso)})_`
           ),
           ``,
         ]

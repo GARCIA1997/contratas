@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import { getConfig } from "@/lib/config";
 import { calcularFechasPago } from "@/lib/fechas";
+import { limpiarNombre, normalizarNombre } from "@/lib/beneficiarios";
 import { saldoPendiente, montoVencidoOVigente, cuotasVencidasOVigentes, errorDeMontos } from "@/lib/contrata";
 import type { ContrataResumenCobro } from "@/lib/services/cobros";
 import {
@@ -19,10 +20,14 @@ import { anclarFechaCliente } from "@/lib/fechas";
 import { mensajeEntrega, type DescuentosEntrega } from "@/lib/mensajes-whatsapp";
 
 export type ContrataConDatos = Prisma.ContrataGetPayload<{
-  include: { cliente: true; pagos: true };
+  include: { cliente: true; pagos: true; beneficiario: { select: { id: true; nombre: true } } };
 }>;
 
-const includeDatos = { cliente: true, pagos: { orderBy: { numeroCuota: "asc" } } } as const;
+const includeDatos = {
+  cliente: true,
+  pagos: { orderBy: { numeroCuota: "asc" } },
+  beneficiario: { select: { id: true, nombre: true } },
+} as const;
 
 /** Todas las contratas del usuario, opcionalmente filtradas por tipo. */
 export async function listContratas(
@@ -49,7 +54,13 @@ export async function getContrata(
   return contrata;
 }
 
-type CrearInput = {
+/** Beneficiario elegido al crear la contrata (ver resolverBeneficiario). */
+type BeneficiarioInput = {
+  beneficiarioId?: string | null;
+  beneficiarioNuevo?: { id: string; nombre: string } | null;
+};
+
+type CrearInput = BeneficiarioInput & {
   clienteId?: string;
   clienteNombre?: string;
   clienteNuevoId?: string;
@@ -88,6 +99,48 @@ export function hoyDeCaptura(fechaCaptura?: string): Date {
 async function contrataYaCreada(ownerId: string, id?: string) {
   if (!id) return null;
   return prisma.contrata.findFirst({ where: { id, ownerId }, include: includeDatos });
+}
+
+/**
+ * Beneficiario de una contrata nueva. Con `beneficiarioNuevo` se reutiliza
+ * el que ya tenga ese nombre (normalizado) en el cliente —dos teléfonos sin
+ * señal pueden crear "Alejandro" a la vez— o se crea con el id del teléfono.
+ * Con `beneficiarioId` se valida que sea de ese cliente (si no, queda del
+ * titular: nunca se rechaza una entrega por esto). Sin nada → null
+ * (la contrata es del propio cliente, como siempre).
+ */
+export async function resolverBeneficiario(
+  tx: Prisma.TransactionClient,
+  ownerId: string,
+  clienteId: string,
+  input: BeneficiarioInput
+): Promise<string | null> {
+  if (input.beneficiarioNuevo) {
+    const nombre = limpiarNombre(input.beneficiarioNuevo.nombre);
+    const nombreNormalizado = normalizarNombre(nombre);
+    if (!nombreNormalizado) return null;
+    const existente = await tx.beneficiario.findFirst({
+      where: { ownerId, clienteId, OR: [{ nombreNormalizado }, { id: input.beneficiarioNuevo.id }] },
+      select: { id: true },
+    });
+    if (existente) return existente.id;
+    const nuevo = await tx.beneficiario.create({
+      data: { id: input.beneficiarioNuevo.id, ownerId, clienteId, nombre, nombreNormalizado },
+      select: { id: true },
+    });
+    return nuevo.id;
+  }
+  if (input.beneficiarioId) {
+    const b = await tx.beneficiario.findFirst({
+      where: { id: input.beneficiarioId, ownerId, clienteId },
+      select: { id: true },
+    });
+    // Ya no existe (se unió o se convirtió en cliente mientras el teléfono
+    // estaba sin señal) o no es de este cliente: la contrata se guarda del
+    // titular. Rechazarla haría perder una entrega que ya se hizo en la calle.
+    return b?.id ?? null;
+  }
+  return null;
 }
 
 /** Resuelve el cliente destino garantizando que pertenece al usuario. */
@@ -183,11 +236,14 @@ export async function crearContrata(
 
   const nueva = await prisma.$transaction(async (tx) => {
     const clienteId = await resolverClienteId(ownerId, input, tx);
+    // Un cliente que se da de alta con esta contrata todavía no tiene beneficiarios.
+    const beneficiarioId = input.clienteId ? await resolverBeneficiario(tx, ownerId, clienteId, input) : null;
     const creada = await tx.contrata.create({
       data: {
         ...(input.id ? { id: input.id } : {}),
         ownerId,
         clienteId,
+        beneficiarioId,
         tipo: input.tipo,
         monto: input.monto,
         abono: input.abono,
@@ -243,6 +299,7 @@ async function encolarRecibosDeEntrega(
           abono: nueva.abono,
           numCuotas: nueva.numCuotas,
           descuentos,
+          beneficiario: nueva.beneficiario?.nombre ?? null,
           fecha: hoy,
           pagos: nueva.pagos.map((p) => ({ numeroCuota: p.numeroCuota, fecha: anclarFechaCliente(p.fechaProgramada) })),
         }),
@@ -549,7 +606,7 @@ export async function convertirADeuda(
 // Renovación / unificación de contratas
 // ---------------------------------------------------------------------------
 
-type NuevaContrataInput = {
+type NuevaContrataInput = BeneficiarioInput & {
   tipo: TipoContrata;
   monto: number;
   abono: number;
@@ -600,7 +657,7 @@ export async function contratasConVencido(
       convertidaADeuda: false,
       ...(excluirId ? { id: { not: excluirId } } : {}),
     },
-    include: { pagos: true },
+    include: { pagos: true, beneficiario: { select: { id: true, nombre: true } } },
   });
   return contratas
     .map((c) => ({ ...c, saldo: montoVencidoOVigente(c.pagos, c.abono, hoy) }))
@@ -624,6 +681,7 @@ function desgloseOtrasLiquidadas(
     tipo: c.tipo,
     numCuotas: c.numCuotas,
     montoContrata: c.monto,
+    ...(c.beneficiario ? { beneficiario: c.beneficiario.nombre, beneficiarioId: c.beneficiario.id } : {}),
     saldoTrasCobro: Math.max(0, round2(saldoPendiente(c.pagos, c.abono) - c.saldo)),
     cuotas: cuotasVencidasOVigentes(c.pagos, hoy).map((p) => ({
       numeroCuota: p.numeroCuota,
@@ -653,6 +711,7 @@ async function crearContrataTx(
     config.diaCobroSemanal
   );
   const mes = format(fechaInicio, "LLLL yyyy", { locale: es });
+  const beneficiarioId = await resolverBeneficiario(tx, ownerId, clienteId, input);
   return tx.contrata.create({
     data: {
       ...(input.id ? { id: input.id } : {}),
@@ -664,6 +723,7 @@ async function crearContrataTx(
       fechaInicio,
       numCuotas: input.numCuotas,
       mes,
+      beneficiarioId,
       notas: input.notas ?? null,
       pagos: {
         create: fechas.map((fechaProgramada, i) => ({

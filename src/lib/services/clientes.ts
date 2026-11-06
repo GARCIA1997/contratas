@@ -13,13 +13,20 @@ import {
 } from "@/lib/contrata";
 
 export type ClienteConConteo = Prisma.ClienteGetPayload<{
-  include: { _count: { select: { contratas: true } } };
+  include: {
+    _count: { select: { contratas: true } };
+    beneficiarios: { select: { id: true; nombre: true } };
+  };
 }>;
 
 export async function listClientes(ownerId: string): Promise<ClienteConConteo[]> {
   return prisma.cliente.findMany({
     where: { ownerId },
-    include: { _count: { select: { contratas: true } } },
+    include: {
+      _count: { select: { contratas: true } },
+      // Viajan al teléfono para el selector de beneficiario (también sin señal).
+      beneficiarios: { select: { id: true, nombre: true }, orderBy: { nombre: "asc" } },
+    },
     orderBy: { nombre: "asc" },
   });
 }
@@ -52,6 +59,9 @@ export type ContrataDeCliente = {
    * por cuándo se creó la contrata (pueden no coincidir). `null` si ninguna
    * cuota tiene pago registrado todavía. */
   ultimaFechaPago: string | null;
+  /** A nombre de quién está (función "beneficiarios"); null = del cliente. */
+  beneficiarioId?: string | null;
+  beneficiarioNombre?: string | null;
 };
 
 export type ClientePerfil = {

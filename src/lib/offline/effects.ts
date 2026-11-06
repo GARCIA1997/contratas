@@ -1,4 +1,5 @@
 import { startOfDay, addDays } from "date-fns";
+import { esDePersonas } from "@/lib/cobro-por-persona";
 import { aplicarFilasEntrega, type FilasEntregaLocal } from "@/lib/offline/entrega-local";
 import { db } from "@/lib/offline/db";
 import type { QueueOpType } from "@/lib/offline/db";
@@ -210,10 +211,10 @@ export async function applyLocalEffect(
   }
 
   if (type === "cliente.cobrarVencidas") {
-    const { clienteId } = payload as { clienteId: string };
+    const { clienteId, personas } = payload as { clienteId: string; personas?: string[] };
     const contratas = (
       await db.contratas.where("clienteId").equals(clienteId).toArray()
-    ).filter((c) => !c._deletedAt && !c.convertidaADeuda);
+    ).filter((c) => !c._deletedAt && !c.convertidaADeuda && esDePersonas(c.beneficiarioId, personas));
     const ahora = new Date().toISOString();
     // Mismo umbral que previewCobroVencidas/getCobroVencidoPreview: vencidas
     // Y próximas (no solo cuotasVencidasOVigentes, que se corta en "hoy") —
@@ -240,10 +241,10 @@ export async function applyLocalEffect(
   }
 
   if (type === "cliente.abonarParcial") {
-    const { clienteId, monto } = payload as { clienteId: string; monto: number };
+    const { clienteId, monto, personas } = payload as { clienteId: string; monto: number; personas?: string[] };
     const contratas = (
       await db.contratas.where("clienteId").equals(clienteId).toArray()
-    ).filter((c) => !c._deletedAt && !c.convertidaADeuda);
+    ).filter((c) => !c._deletedAt && !c.convertidaADeuda && esDePersonas(c.beneficiarioId, personas));
 
     const pagosPorId = new Map<string, { montoAbonado: number }>();
     const paraAbono = await Promise.all(

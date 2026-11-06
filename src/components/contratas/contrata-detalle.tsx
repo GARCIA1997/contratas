@@ -13,6 +13,7 @@ import {
   Pencil,
   RefreshCw,
   Trash2,
+  Users,
 } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,8 @@ type ContrataUI = {
   notas: string | null;
   convertidaADeuda: boolean;
   creadoEn: string;
+  /** A nombre de quién está (función "beneficiarios"). */
+  beneficiarioNombre?: string | null;
   pagos: PagoUI[];
 };
 
@@ -347,6 +350,11 @@ export function ContrataDetalle({
           </Link>
           <EstadoBadge estado={estado} />
         </div>
+        {contrata.beneficiarioNombre && (
+          <p className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            <Users className="size-3" /> A nombre de {contrata.beneficiarioNombre}
+          </p>
+        )}
         <p className="text-sm text-muted-foreground">
           {TIPO_LABEL[contrata.tipo]} · inicio{" "}
           {fecha(contrata.fechaInicio)}

@@ -14,11 +14,14 @@ export function Popup({
   onClose,
   children,
   className,
+  capa = "z-50",
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
+  /** Capa (z-index). Los diálogos de confirmación van por encima de otras ventanas. */
+  capa?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -33,7 +36,7 @@ export function Popup({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className={cn("fixed inset-0 flex items-center justify-center bg-black/50 p-4", capa)}
       onClick={onClose}
     >
       <div

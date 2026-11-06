@@ -89,14 +89,18 @@ const PETICIONES: Record<
   }),
   "cliente.cobrarVencidas": (p) => ({
     url: `/api/clientes/${p.clienteId}/cobrar-vencidas`,
-    init: { method: "POST" },
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ personas: p.personas }),
+    },
   }),
   "cliente.abonarParcial": (p) => ({
     url: `/api/clientes/${p.clienteId}/abonar`,
     init: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ monto: p.monto }),
+      body: JSON.stringify({ monto: p.monto, personas: p.personas }),
     },
   }),
   "cita.crear": (p) => ({

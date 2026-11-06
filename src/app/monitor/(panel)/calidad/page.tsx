@@ -130,6 +130,15 @@ export default async function CalidadPage({
                           <td className="px-2.5 py-1.5 text-right">
                             <div className="flex justify-end gap-1.5">
                               {r.id === "contratas-duplicadas" && <ComparaContratas revision={r.id} clave={f.clave} />}
+                              {r.id === "beneficiarios-parecidos" && (
+                                <a
+                                  href={`/monitor/beneficiarios?q=${encodeURIComponent(f.cliente ?? "")}`}
+                                  className="flex items-center gap-1 rounded-lg bg-primary/15 px-2 py-1 font-label-sm text-label-sm text-primary transition-colors hover:bg-primary/25"
+                                >
+                                  <span className="material-symbols-outlined text-[15px]">merge</span>
+                                  Revisar
+                                </a>
+                              )}
                               <BotonIgnorar revision={r.id} clave={f.clave} />
                             </div>
                           </td>

@@ -15,6 +15,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { formatMoneda } from "@/lib/utils";
 import { syncAll } from "@/lib/offline/sync";
 import { obtenerPreview, prepararEntregaLocal } from "@/lib/offline/entrega-local";
+import {
+  SelectorBeneficiario,
+  camposBeneficiario,
+  type EleccionBeneficiario,
+} from "@/components/beneficiarios/selector-beneficiario";
 import { guardarOperacion } from "@/lib/offline/guardar";
 import { mensajeDeError } from "@/lib/offline/conexion";
 import type { ResultadoRenovacion } from "@/components/contratas/renovar-form";
@@ -33,6 +38,8 @@ type DatosUnificacion = {
   fechaInicio: string;
   numCuotas: number;
   notas: string | null;
+  beneficiarioId?: string;
+  beneficiarioNuevo?: { id: string; nombre: string };
 };
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
@@ -41,7 +48,13 @@ const TIPO_LABEL: Record<TipoContrata, string> = {
   MENSUAL: "Mensual",
 };
 
-type ContrataElegible = { id: string; tipo: TipoContrata; saldo: number };
+type ContrataElegible = {
+  id: string;
+  tipo: TipoContrata;
+  saldo: number;
+  /** A nombre de quién está (beneficiario); null = del titular. */
+  beneficiarioNombre?: string | null;
+};
 
 function siguienteMillar(n: number) {
   return Math.ceil(n / 1000) * 1000;
@@ -102,6 +115,7 @@ export function UnificarForm({
   const [fechaInicio, setFechaInicio] = usePrimerPago(tipo);
   const [abono, setAbono] = useState("");
   const [notas, setNotas] = useState("");
+  const [beneficiario, setBeneficiario] = useState<EleccionBeneficiario>(null);
   const abonoTocado = useRef(false);
   const [fechas, setFechas] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +202,7 @@ export function UnificarForm({
       fechaInicio,
       numCuotas,
       notas: notas.trim() || null,
+      ...camposBeneficiario(beneficiario),
     };
 
     setGuardando(true);
@@ -211,6 +226,7 @@ export function UnificarForm({
           input,
           hoy,
           liquidarCompletas: contrataIds,
+          beneficiario,
         })
       : null;
 
@@ -294,6 +310,11 @@ export function UnificarForm({
                 <label className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-secondary/30 px-3 py-2.5">
                   <span className="text-sm">
                     {TIPO_LABEL[c.tipo]} · {formatMoneda(c.saldo)}
+                    {c.beneficiarioNombre && (
+                      <span className="block text-xs text-muted-foreground">
+                        A nombre de {c.beneficiarioNombre}
+                      </span>
+                    )}
                   </span>
                   <input
                     type="checkbox"
@@ -394,6 +415,14 @@ export function UnificarForm({
             />
           </div>
         </div>
+
+        <SelectorBeneficiario
+          ownerId={ownerId}
+          clienteId={clienteId}
+          clienteNombre={clienteNombre}
+          value={beneficiario}
+          onChange={setBeneficiario}
+        />
 
         <div className="space-y-2">
           <Label htmlFor="notas">Notas</Label>

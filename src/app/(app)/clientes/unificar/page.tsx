@@ -97,7 +97,12 @@ export default function UnificarContratasPage() {
         clienteId={perfil.id}
         ownerId={ownerId}
         clienteNombre={perfil.nombre}
-        contratas={elegibles.map((c) => ({ id: c.id, tipo: c.tipo, saldo: c.saldo }))}
+        contratas={elegibles.map((c) => ({
+          id: c.id,
+          tipo: c.tipo,
+          saldo: c.saldo,
+          beneficiarioNombre: c.beneficiarioNombre,
+        }))}
         preseleccion={cita?.contratasUnificarIds}
         cuotasPorDefecto={config?.cuotasPorDefecto ?? CONFIG_DEFAULTS.cuotasPorDefecto}
         maxCuotas={config?.maxCuotas ?? CONFIG_DEFAULTS.maxCuotas}

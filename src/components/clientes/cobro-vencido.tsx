@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { CircleDollarSign, MessageCircle } from "lucide-react";
 import type { TipoContrata } from "@prisma/client";
@@ -15,7 +16,12 @@ import { useReciboAutomatico } from "@/lib/whatsapp-auto/use-recibo-automatico";
 import { SeguimientoRecibo } from "@/components/whatsapp/seguimiento-recibo";
 import { mensajeCobro } from "@/lib/mensajes-whatsapp";
 import { mensajeDeError } from "@/lib/offline/conexion";
-import { getCobroVencidoDetalle } from "@/lib/offline/repo";
+import { getCobroVencidoDetalle, itemsCobroVencido } from "@/lib/offline/repo";
+import { Popup } from "@/components/ui/popup";
+import { ElegirPersonas } from "@/components/beneficiarios/elegir-personas";
+import { agruparPorPersona, hayBeneficiarios, type Persona } from "@/lib/cobro-por-persona";
+import { useFuncion } from "@/lib/offline/use-funcion";
+import type { CuotaVencidaItem } from "@/lib/services/cobros";
 import { confirmar } from "@/lib/dialogo";
 
 const TIPO_LABEL: Record<TipoContrata, string> = {
@@ -40,7 +46,10 @@ export function CobroVencido({
   cuotasInicial,
   ownerId,
   enFila = false,
+  clienteNombre,
 }: {
+  /** Para nombrar al titular al elegir personas (función "beneficiarios"). */
+  clienteNombre?: string;
   clienteId: string;
   nombreApp: string;
   totalInicial: number;
@@ -72,11 +81,35 @@ export function CobroVencido({
   // con la misma key hace que el servidor devuelva el resultado ya
   // registrado en vez de cobrar dos veces.
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
+  // Función "beneficiarios": de quién se cobra (todas marcadas = pago completo).
+  const conBeneficiarios = useFuncion("beneficiarios");
+  const [eligiendo, setEligiendo] = useState<Persona<CuotaVencidaItem>[] | null>(null);
+  const [personasSel, setPersonasSel] = useState<string[]>([]);
+  const [personasCobro, setPersonasCobro] = useState<string[] | undefined>(undefined);
+  const [montado, setMontado] = useState(false);
+  useEffect(() => setMontado(true), []);
 
   if (total <= 0 && !resultado && !sinRecibo) return null;
 
-  async function cobrar(opts?: { esReintento?: boolean }) {
-    if (!opts?.esReintento) {
+  /** Con beneficiarios se elige de quién; sin ellos, la confirmación de siempre. */
+  async function solicitarCobro() {
+    if (idempotencyKey !== null) return cobrar({ esReintento: true, personas: personasCobro });
+    if (conBeneficiarios && ownerId) {
+      const items = await itemsCobroVencido(ownerId, clienteId, new Date());
+      if (hayBeneficiarios(items)) {
+        const personas = agruparPorPersona(items, clienteNombre ?? "Titular", (i) => i.pendiente);
+        setPersonasSel(personas.map((p) => p.clave));
+        setEligiendo(personas);
+        return;
+      }
+    }
+    return cobrar();
+  }
+
+  async function cobrar(opts?: { esReintento?: boolean; personas?: string[]; yaConfirmado?: boolean }) {
+    const personas = opts?.personas;
+    setPersonasCobro(personas);
+    if (!opts?.esReintento && !opts?.yaConfirmado) {
       const ok = await confirmar(
         `Vas a registrar el pago completo de ${cuotas} cuota(s) por un total de ${formatMoneda(total)} (incluye vencidas y próximas a vencer). ¿Confirmar?`
       );
@@ -88,16 +121,24 @@ export function CobroVencido({
       // El desglose se calcula ANTES de guardar: si termina en la cola, el
       // efecto optimista marca las cuotas como pagadas y ya no habría nada
       // que desglosar. Sale de Dexie (ver getCobroVencidoDetalle).
-      const detalle = ownerId ? await getCobroVencidoDetalle(ownerId, clienteId) : null;
+      const detalle = ownerId ? await getCobroVencidoDetalle(ownerId, clienteId, new Date(), personas) : null;
       const clave = idempotencyKey ?? crypto.randomUUID();
       setIdempotencyKey(clave);
       const r = await guardarOperacion<ResultadoCobroVencidas>({
         ownerId,
         clave,
-        lote: [{ type: "cliente.cobrarVencidas", payload: { clienteId } }],
+        lote: [{ type: "cliente.cobrarVencidas", payload: { clienteId, ...(personas ? { personas } : {}) } }],
       });
-      setTotal(0);
-      setCuotas(0);
+      if (personas && ownerId) {
+        // Solo se cobró a algunas personas: lo demás sigue pendiente.
+        const resto = await itemsCobroVencido(ownerId, clienteId, new Date());
+        const restantes = resto.filter((i) => !personas.includes(i.beneficiarioId ?? "__titular__"));
+        setTotal(Math.round(restantes.reduce((s, i) => s + i.pendiente, 0) * 100) / 100);
+        setCuotas(restantes.length);
+      } else {
+        setTotal(0);
+        setCuotas(0);
+      }
       if (r.enServidor) {
         setResultado(r.datos);
         // La caché local no se entera sola del cobro hecho en el servidor.
@@ -188,7 +229,12 @@ export function CobroVencido({
           <Button
             variant="ghost"
             className="w-full"
-            onClick={() => setResultado(null)}
+            onClick={() => {
+              setResultado(null);
+              // Si quedó algo por cobrar (se cobró solo a algunas personas),
+              // el siguiente cobro es una operación nueva.
+              setIdempotencyKey(null);
+            }}
           >
             Cerrar
           </Button>
@@ -197,13 +243,52 @@ export function CobroVencido({
     );
   }
 
+  const totalElegido = eligiendo
+    ? Math.round(eligiendo.filter((p) => personasSel.includes(p.clave)).reduce((s, p) => s + p.total, 0) * 100) / 100
+    : 0;
+  const popupPersonas =
+    eligiendo && montado
+      ? createPortal(
+          <Popup open onClose={() => setEligiendo(null)} className="max-w-sm">
+            <p className="text-sm font-semibold">Cobrar pendiente</p>
+            <p className="text-xs text-muted-foreground">¿De quién cobras? (pago completo de sus cuotas)</p>
+            <div className="pt-2">
+              <ElegirPersonas
+                personas={eligiendo}
+                seleccion={personasSel}
+                onChange={setPersonasSel}
+                detalle={(p) => `${p.items.length} cuota${p.items.length === 1 ? "" : "s"}`}
+              />
+            </div>
+            <p className="py-2 text-3xl font-bold text-pagado">{formatMoneda(totalElegido)}</p>
+            <div className="flex flex-col gap-2">
+              <Button
+                disabled={personasSel.length === 0}
+                onClick={() => {
+                  const todas = personasSel.length === eligiendo.length;
+                  setEligiendo(null);
+                  void cobrar({ yaConfirmado: true, personas: todas ? undefined : personasSel });
+                }}
+              >
+                {personasSel.length === eligiendo.length ? "Cobrar todo" : "Cobrar seleccionados"}
+              </Button>
+              <Button variant="ghost" onClick={() => setEligiendo(null)}>
+                Cancelar
+              </Button>
+            </div>
+          </Popup>,
+          document.body
+        )
+      : null;
+
   return (
     <div className={cn("space-y-1.5", enFila && "min-w-0")}>
+      {popupPersonas}
       <Button
         className={cn("w-full min-w-0", enFila && "h-auto py-1.5")}
         variant="default"
         disabled={cargando}
-        onClick={() => cobrar({ esReintento: idempotencyKey !== null })}
+        onClick={() => void solicitarCobro()}
       >
         <CircleDollarSign className="size-4" />
         {/*

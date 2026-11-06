@@ -15,6 +15,7 @@ type ContrataApi = {
   convertidaADeuda: boolean;
   deudorId: string | null;
   creadoEn: string;
+  beneficiario?: { id: string; nombre: string } | null;
   cliente: {
     id: string;
     nombre: string;
@@ -82,9 +83,15 @@ export async function syncContratas(ownerId: string): Promise<boolean> {
         convertidaADeuda: c.convertidaADeuda,
         deudorId: c.deudorId,
         creadoEn: c.creadoEn,
+        beneficiarioId: c.beneficiario?.id ?? null,
+        beneficiarioNombre: c.beneficiario?.nombre ?? null,
       });
 
+      // La respuesta de contratas no trae los beneficiarios del cliente:
+      // se conservan los que dejó syncClientes.
+      const clienteLocal = await database.clientes.get(c.cliente.id);
       await database.clientes.put({
+        beneficiarios: clienteLocal?.beneficiarios,
         id: c.cliente.id,
         ownerId,
         nombre: c.cliente.nombre,
@@ -143,6 +150,7 @@ type ClienteApi = {
   referencia: string | null;
   notas: string | null;
   creadoEn: string;
+  beneficiarios?: { id: string; nombre: string }[];
 };
 
 /** Trae el catálogo completo de clientes (incluye los que aún no tienen contrata). */
@@ -177,6 +185,7 @@ export async function syncClientes(ownerId: string): Promise<boolean> {
         referencia: c.referencia,
         notas: c.notas,
         creadoEn: c.creadoEn,
+        beneficiarios: c.beneficiarios ?? [],
       });
     }
 

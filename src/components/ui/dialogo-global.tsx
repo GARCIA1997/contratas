@@ -12,7 +12,8 @@ export function DialogoGlobal() {
   if (!d) return null;
   const cancelar = () => cerrarDialogo(d.id, false);
   return (
-    <Popup open onClose={d.tipo === "aviso" ? () => cerrarDialogo(d.id, true) : cancelar}>
+    // z-[60]: por encima de cualquier Popup (z-50) que haya pedido la confirmación.
+    <Popup open onClose={d.tipo === "aviso" ? () => cerrarDialogo(d.id, true) : cancelar} capa="z-[60]">
       <p role="alertdialog" className="whitespace-pre-line text-sm">
         {d.mensaje}
       </p>

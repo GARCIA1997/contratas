@@ -38,6 +38,7 @@ model User {
   citasAgendadas CitaAgendada[]
   cuentaWhatsApp CuentaWhatsApp?
   funciones      FuncionEspacio[]
+  beneficiarios  Beneficiario[]
   creadoEn       DateTime           @default(now())
 
   /// Acceso al monitor de operaciones (/monitor): ve datos de TODOS los
@@ -136,6 +137,7 @@ model Cliente {
   notas      String?
   contratas  Contrata[]
   citas      CitaAgendada[]
+  beneficiarios Beneficiario[] @relation("BeneficiariosDeCliente")
   creadoEn   DateTime       @default(now())
 
   @@index([ownerId])
@@ -154,6 +156,11 @@ model Contrata {
   numCuotas        Int            @default(10)
   mes              String
   notas            String?
+  /// Persona a cuyo nombre está la contrata cuando no es la del propio
+  /// cliente (que la cobra y recibe los mensajes). Null = del cliente. Solo
+  /// se asigna al crear (función "beneficiarios").
+  beneficiario     Beneficiario?  @relation(fields: [beneficiarioId], references: [id], onDelete: SetNull)
+  beneficiarioId   String?
   pagos            Pago[]
   /// Se marcó el saldo pendiente como deuda (proceso manual, ver Deudor).
   convertidaADeuda Boolean        @default(false)
@@ -166,6 +173,7 @@ model Contrata {
   @@index([clienteId])
   @@index([ownerId])
   @@index([deudorId])
+  @@index([beneficiarioId])
 }
 
 model Pago {
@@ -685,4 +693,25 @@ model FuncionEspacio {
   actualizadoEn  DateTime @default(now()) @updatedAt
 
   @@id([ownerId, clave])
+}
+
+/// Persona por la que el cliente pide contratas y a quien él mismo cobra
+/// (su hijo, una comadre…). Depende del cliente: los mensajes van a su
+/// teléfono. El nombre se compara normalizado (sin mayúsculas, acentos ni
+/// espacios de más) para no duplicar "alejandro" y "Alejandro".
+model Beneficiario {
+  id                String     @id @default(cuid())
+  owner             User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId           String
+  cliente           Cliente    @relation("BeneficiariosDeCliente", fields: [clienteId], references: [id], onDelete: Cascade)
+  clienteId         String
+  nombre            String
+  nombreNormalizado String
+  /// Cliente propio en que se convirtió (sus contratas se movieron ahí).
+  clienteConvertidoId String?
+  creadoEn          DateTime   @default(now())
+  contratas         Contrata[]
+
+  @@unique([clienteId, nombreNormalizado])
+  @@index([ownerId])
 }
