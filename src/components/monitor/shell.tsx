@@ -20,6 +20,7 @@ const NAV = [
   { href: "/monitor/negocio", icono: "payments", texto: "Negocio" },
   { href: "/monitor/calidad", icono: "fact_check", texto: "Calidad" },
   { href: "/monitor/whatsapp", icono: "chat", texto: "WhatsApp" },
+  { href: "/monitor/funciones", icono: "toggle_on", texto: "Funciones" },
 ];
 
 const RANGOS = [

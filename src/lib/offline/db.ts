@@ -93,6 +93,9 @@ export type ConfiguracionLocal = {
   diaCobroSemanal: number;
   colorPrimario: string;
   logoUrl: string | null;
+  /** Funciones en prueba encendidas para el espacio (ver lib/funciones.ts).
+   *  Ausente en configuraciones guardadas por versiones anteriores = ninguna. */
+  funciones?: string[];
 };
 
 export type MetaLocal = {
