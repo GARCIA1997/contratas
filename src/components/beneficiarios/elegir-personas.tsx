@@ -21,7 +21,9 @@ export function ElegirPersonas<T>({
   detalle?: (p: Persona<T>) => string;
 }) {
   return (
-    <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border/60 text-left">
+    // Con muchos beneficiarios la lista se desliza sola y los botones de
+    // cobrar quedan siempre a la vista.
+    <ul className="max-h-[45dvh] divide-y divide-border/60 overflow-y-auto overscroll-contain rounded-2xl border border-border/60 text-left">
       {personas.map((p) => {
         const marcada = seleccion.includes(p.clave);
         return (
