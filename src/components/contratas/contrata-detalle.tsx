@@ -197,7 +197,14 @@ export function ContrataDetalle({
     await registrarAbono(numeroCuota, monto);
   }
 
-  async function limpiar(numeroCuota: number) {
+  async function limpiar(numeroCuota: number, montoAbonado: number) {
+    // No hay historial de abonos por cuota: revertir borra TODO lo abonado,
+    // no solo el último abono. Por eso se confirma con el monto exacto.
+    const ok = await confirmar(
+      `¿Revertir la cuota ${numeroCuota}? Se borra todo lo abonado a esa cuota (${formatMoneda(montoAbonado)}) y vuelve a quedar pendiente. Si solo querías corregir un abono, después registra de nuevo el monto correcto.`,
+      { aceptar: "Revertir", peligro: true }
+    );
+    if (!ok) return;
     setCargando(true);
     setError(null);
     try {
@@ -512,7 +519,7 @@ export function ContrataDetalle({
                           size="sm"
                           variant="ghost"
                           disabled={cargando}
-                          onClick={() => limpiar(p.numeroCuota)}
+                          onClick={() => limpiar(p.numeroCuota, p.montoAbonado)}
                         >
                           Revertir
                         </Button>
