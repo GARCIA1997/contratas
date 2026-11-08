@@ -9,7 +9,7 @@ import type { Boom } from "@hapi/boom";
 import pino from "pino";
 import { prisma } from "@/lib/prisma";
 import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
-import { MOTIVO_SIN_ACUSE } from "@/lib/whatsapp-auto/reglas";
+import { antesDeEnviar, MOTIVO_SIN_ACUSE } from "@/lib/whatsapp-auto/reglas";
 import { jidDe, normalizarTelefono, telefonoDeJid } from "@/lib/whatsapp-auto/telefono";
 import { authDesdeBD, borrarSesion } from "./auth-bd";
 
@@ -80,6 +80,10 @@ export class Sesion {
   private iniciando = false;
   private codigoPedido = false;
   private jids = new Map<string, { jid: string | null; hasta: number }>();
+  /** Último envío, o cuando arrancó o se calentó la conexión (ver `listaParaEnviar`). */
+  private ultimoUso = Date.now();
+  /** El cierre en curso lo pedimos para calentar la conexión: no es una caída. */
+  private calentando = false;
 
   /** Cada línea del log dice de qué cuenta es. */
   private readonly logger: pino.Logger;
@@ -235,6 +239,25 @@ export class Sesion {
       this.abiertaDesde = null;
       const codigo = (u.lastDisconnect?.error as Boom | undefined)?.output?.statusCode;
       const motivo = motivoCierre(u.lastDisconnect?.error);
+
+      // Cierre pedido por `calentar`: se reconecta de inmediato sin marcar la
+      // cuenta DESCONECTADO (la app cancelaría el recibo automático y ofrecería
+      // mandarlo a mano) ni contar como desconexión para las alertas.
+      const calentada = this.calentando;
+      this.calentando = false;
+      if (
+        calentada &&
+        !this.detenida &&
+        codigo !== DisconnectReason.loggedOut &&
+        codigo !== DisconnectReason.connectionReplaced
+      ) {
+        await registrarBitacora({ cuentaId: this.cuentaId, tipo: "conexion_calentada" });
+        this.reconexion = setTimeout(() => {
+          this.reconexion = null;
+          void this.iniciar("normal");
+        }, 1_000);
+        return;
+      }
       await registrarBitacora({
         cuentaId: this.cuentaId,
         tipo: "desconectado",
@@ -375,6 +398,25 @@ export class Sesion {
     return !this.sock && !this.reconexion && !this.iniciando;
   }
 
+  /**
+   * ¿Se puede mandar ya? Recién abierta la conexión espera unos segundos; si
+   * lleva mucho sin uso, la reconecta primero (ver INACTIVIDAD_PARA_CALENTAR_MS)
+   * y el mensaje sale en cuanto vuelva. Se llama solo cuando hay algo que mandar.
+   */
+  listaParaEnviar(): boolean {
+    if (!this.sock || !this.conectada) return false;
+    const decision = antesDeEnviar(Date.now(), this.abiertaDesde, this.ultimoUso);
+    if (decision === "calentar") {
+      // Una sola vez por inactividad, aunque la reconexión tarde.
+      this.ultimoUso = Date.now();
+      this.calentando = true;
+      this.logger.info("Conexión sin uso: se reconecta antes de enviar");
+      this.forzarCierre("Calentar la conexión tras inactividad");
+      return false;
+    }
+    return decision === "listo";
+  }
+
   /** Devuelve el id del mensaje en WhatsApp. Lanza SinWhatsApp si el número no tiene cuenta. */
   async enviar(telefono: string, texto: string): Promise<string | null> {
     const sock = this.sock;
@@ -382,6 +424,7 @@ export class Sesion {
     const jid = await this.resolverJid(sock, telefono);
     if (!jid) throw new SinWhatsApp(`${telefono} no tiene WhatsApp`);
     const enviado = await sock.sendMessage(jid, { text: texto });
+    this.ultimoUso = Date.now();
     return enviado?.key.id ?? null;
   }
 

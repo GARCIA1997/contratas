@@ -128,3 +128,30 @@ export const ENVIANDO_ABANDONADO_MS = 5 * 60 * 1000;
 
 /** Sin latido del worker por más que esto se considera caído (monitor, push y aviso de la app). */
 export const LATIDO_MAX_MS = 2 * 60 * 1000;
+
+/**
+ * Tras horas sin mandar nada, la conexión con WhatsApp puede quedar "medio
+ * muerta": el worker la ve abierta y el primer mensaje sale de nuestro lado,
+ * pero WhatsApp nunca lo recibe (pasó el 5 y el 8 de noviembre: primer envío
+ * tras 22 h y 12.5 h, sin un solo acuse; el siguiente sí llegó). Si hay algo
+ * que mandar y la conexión lleva esto sin uso, primero se reconecta.
+ */
+export const INACTIVIDAD_PARA_CALENTAR_MS = 60 * 60 * 1000;
+
+/** Recién abierta la conexión se espera esto antes de mandar: WhatsApp aún entrega lo pendiente. */
+export const ASENTAR_CONEXION_MS = 10_000;
+
+/**
+ * Qué hacer antes de mandar un mensaje: mandarlo, esperar a que la conexión
+ * recién abierta se asiente, o reconectar primero porque lleva mucho sin uso.
+ * `ultimoUso`: último envío, o cuando arrancó o se calentó la conexión.
+ */
+export function antesDeEnviar(
+  ahora: number,
+  abiertaDesde: number | null,
+  ultimoUso: number
+): "listo" | "asentando" | "calentar" {
+  if (abiertaDesde !== null && ahora - abiertaDesde < ASENTAR_CONEXION_MS) return "asentando";
+  if (ahora - ultimoUso > INACTIVIDAD_PARA_CALENTAR_MS) return "calentar";
+  return "listo";
+}

@@ -71,7 +71,7 @@ export async function despacharCuenta(sesion: Sesion, paroGlobal: boolean): Prom
 async function intentarUno(
   sesion: Sesion,
   cuenta: Cuenta
-): Promise<"enviado" | "sin_candidatos" | "nada_enviado_reintentar" | "error"> {
+): Promise<"enviado" | "sin_candidatos" | "nada_enviado_reintentar" | "esperando_conexion" | "error"> {
   const ahora = new Date();
   const hoy = startOfDay(ahora);
   const enviadosHoy = await prisma.envioWhatsApp.count({ where: { cuentaId: cuenta.id, enviadoEn: { gte: hoy } } });
@@ -131,6 +131,11 @@ async function intentarUno(
     }
     return "sin_candidatos";
   }
+
+  // Hay algo que mandar: la conexión debe estar asentada y "caliente" (tras
+  // mucho sin uso se reconecta primero). Nada cambia de estado: el mensaje
+  // sigue PENDIENTE y sale en una vuelta siguiente.
+  if (!sesion.listaParaEnviar()) return "esperando_conexion";
 
   // Se juntan los avisos del mismo destinatario que pueden ir en un mensaje.
   const familia = familiaDe(primero);
