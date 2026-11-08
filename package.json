@@ -1,6 +1,6 @@
 {
   "name": "contratas",
-  "version": "5.7.1",
+  "version": "5.7.2",
   "private": true,
   "scripts": {
     "dev": "next dev",
