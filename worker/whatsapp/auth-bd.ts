@@ -13,6 +13,8 @@ import { cifrar, descifrar } from "./cifrado";
  * Estado de autenticación de Baileys guardado en Postgres (cifrado), en vez
  * de `useMultiFileAuthState` (archivos en disco: se pierden con cada deploy
  * y no van cifrados). Cada llave de Signal es un renglón de WhatsAppLlave.
+ * Genérico por tipo: los de Baileys 7 (`lid-mapping`, `device-list`,
+ * `tctoken`, `identity-key`) se guardan igual, sin cambios en la tabla.
  */
 export async function authDesdeBD(cuentaId: string) {
   async function leer<T>(tipo: string, llaveId: string): Promise<T | null> {
@@ -40,7 +42,7 @@ export async function authDesdeBD(cuentaId: string) {
         ids.map(async (id) => {
           let valor = await leer<SignalDataTypeMap[typeof type]>(type, id);
           if (type === "app-state-sync-key" && valor) {
-            valor = proto.Message.AppStateSyncKeyData.fromObject(valor) as unknown as SignalDataTypeMap[typeof type];
+            valor = proto.Message.AppStateSyncKeyData.fromObject(valor as object) as unknown as SignalDataTypeMap[typeof type];
           }
           if (valor) data[id] = valor;
         })

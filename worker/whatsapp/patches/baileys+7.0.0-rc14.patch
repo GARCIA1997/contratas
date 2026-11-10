@@ -1,0 +1,15 @@
+diff --git a/node_modules/baileys/lib/Socket/messages-recv.js b/node_modules/baileys/lib/Socket/messages-recv.js
+index f2003ac..2767275 100644
+--- a/node_modules/baileys/lib/Socket/messages-recv.js
++++ b/node_modules/baileys/lib/Socket/messages-recv.js
+@@ -1299,7 +1299,9 @@ export const makeMessagesRecvSocket = (config) => {
+                 if (msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT && msg.category !== 'peer') {
+                     if (msg?.messageStubParameters?.[0] === MISSING_KEYS_ERROR_TEXT) {
+                         acked = true;
+-                        return sendMessageAck(node, NACK_REASONS.ParsingError);
++                        // Kredired: sin NACK. El worker no usa mensajes entrantes y un NACK
++                        // deja la stanza pendiente: el servidor corta el stream a los 50 min.
++                        return sendMessageAck(node);
+                     }
+                     if (msg.messageStubParameters?.[0] === NO_MESSAGE_FOUND_ERROR_TEXT) {
+                         // Message arrived without encryption (e.g. CTWA ads messages).

@@ -26,7 +26,7 @@ const colaArranque: { cuentaId: string; numero: string }[] = [];
 const ESCALON_MIN_MS = 20_000;
 const ESCALON_MAX_MS = 40_000;
 
-const VERSION_BAILEYS = "6.7.24";
+const VERSION_BAILEYS = "7.0.0-rc14";
 /** Se calcula al arrancar: es la del código con que corre este proceso. */
 let HUELLA = "?";
 const INICIADO = new Date().toISOString();

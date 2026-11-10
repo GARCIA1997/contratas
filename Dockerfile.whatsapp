@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 #
-# Worker de WhatsApp (Baileys). Imagen aparte de la app web: Baileys y su
-# dependencia libsignal (que se instala desde GitHub) nunca entran a la
-# imagen de Next.js. Ver docs/whatsapp.md.
+# Worker de WhatsApp (Baileys). Imagen aparte de la app web: Baileys y sus
+# dependencias (libsignal, el puente WebAssembly) nunca entran a la imagen
+# de Next.js. Ver docs/whatsapp.md.
 
 FROM node:20-alpine
 WORKDIR /app
@@ -10,10 +10,6 @@ ENV NODE_ENV=production
 ENV SENTRYCLI_SKIP_DOWNLOAD=1
 # Misma zona horaria que la app: horario 9–22 y "hoy" de los recordatorios.
 ENV TZ=America/Mexico_City
-
-# libsignal viene de GitHub: git para clonarlo, por https (sin llaves SSH).
-RUN apk add --no-cache git \
-  && git config --system url."https://github.com/".insteadOf "ssh://git@github.com/"
 
 # Dependencias de la app (Prisma Client, date-fns… que usa src/lib) + tsx.
 COPY package.json package-lock.json ./
