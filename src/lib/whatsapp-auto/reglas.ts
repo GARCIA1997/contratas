@@ -5,7 +5,10 @@ import type { TipoMensajeWhatsApp } from "@prisma/client";
  * Funciones puras: el worker las aplica y las pruebas las cubren sin BD.
  */
 
-/** Tope diario por número. Los recibos cuentan pero nunca se bloquean. */
+/**
+ * Tope diario por número, por defecto (cada cuenta puede tener el suyo: ver
+ * ajustes-envio.ts). Los recibos cuentan pero nunca se bloquean.
+ */
 export const CUPO_DIARIO = 200;
 
 /** Menor = sale primero. */
@@ -27,20 +30,24 @@ export function esTransaccional(tipo: TipoMensajeWhatsApp): boolean {
   return tipo === "RECIBO" || tipo === "CONFIRMACION_BAJA" || tipo === "PRUEBA";
 }
 
-/** Ventana para recordatorios, deudores y presentación: 9:00–22:00 (hora local del worker: America/Mexico_City). */
+/**
+ * Ventana para recordatorios, deudores y presentación, por defecto
+ * 9:00–22:00 (hora local del worker: America/Mexico_City). Cada cuenta puede
+ * tener la suya (ajustes-envio.ts).
+ */
 export const HORA_INICIO = 9;
 export const HORA_FIN = 22;
 
-export function enHorario(ahora: Date): boolean {
+export function enHorario(ahora: Date, inicio = HORA_INICIO, fin = HORA_FIN): boolean {
   const h = ahora.getHours();
-  return h >= HORA_INICIO && h < HORA_FIN;
+  return h >= inicio && h < fin;
 }
 
 /** Siguiente momento en que abre la ventana (para reprogramar lo que no cupo). */
-export function siguienteApertura(ahora: Date): Date {
+export function siguienteApertura(ahora: Date, inicio = HORA_INICIO, fin = HORA_FIN): Date {
   const d = new Date(ahora);
-  if (ahora.getHours() >= HORA_FIN) d.setDate(d.getDate() + 1);
-  d.setHours(HORA_INICIO, 0, 0, 0);
+  if (ahora.getHours() >= fin) d.setDate(d.getDate() + 1);
+  d.setHours(inicio, 0, 0, 0);
   return d;
 }
 

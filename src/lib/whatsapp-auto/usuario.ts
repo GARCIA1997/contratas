@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { HttpError } from "@/lib/session";
 import { registrarBitacora } from "./bitacora";
 import { normalizarTelefono } from "./telefono";
-import { CUPO_DIARIO, LATIDO_MAX_MS } from "./reglas";
+import { LATIDO_MAX_MS } from "./reglas";
 
 /**
  * Lo que el usuario ve y controla de SU número en Configuración: estado,
@@ -33,7 +33,7 @@ export async function cuentaDelUsuario(ownerId: string) {
     pausadaPorAdmin: cuenta.pausadaPorAdmin || (control?.paroGlobal ?? false),
     numeroManual: cuenta.numeroManual,
     enviadosHoy,
-    cupo: CUPO_DIARIO,
+    cupo: cuenta.cupoDiario,
     ultimoEnvio: ultimo?.enviadoEn ?? null,
   };
 }

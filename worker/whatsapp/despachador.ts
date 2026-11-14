@@ -6,7 +6,6 @@ import { mensajeRecordatorio, mensajeRecordatorioAbono, type CuotaPendiente } fr
 import { saldoActual } from "@/lib/services/deudores";
 import { registrarBitacora } from "@/lib/whatsapp-auto/bitacora";
 import {
-  CUPO_DIARIO,
   RECIBO_VIGENCIA_MS,
   cupoPresentacion,
   recibosListosEn,
@@ -14,6 +13,7 @@ import {
   espaciadoMs,
   esTransaccional,
 } from "@/lib/whatsapp-auto/reglas";
+import { ajustesDe } from "@/lib/whatsapp-auto/ajustes-envio";
 import { SUFIJO_ENTREGA } from "@/lib/whatsapp-auto/recibos";
 import { unirRecibos } from "@/lib/whatsapp-auto/unir-recibos";
 import { lineaPresentacion, textoPresentacion } from "@/lib/whatsapp-auto/textos";
@@ -75,8 +75,10 @@ async function intentarUno(
   const ahora = new Date();
   const hoy = startOfDay(ahora);
   const enviadosHoy = await prisma.envioWhatsApp.count({ where: { cuentaId: cuenta.id, enviadoEn: { gte: hoy } } });
-  const hayCupo = enviadosHoy < CUPO_DIARIO;
-  const horario = enHorario(ahora);
+  // Ajustes de envío de la cuenta (monitor); por defecto, los de siempre.
+  const ajustes = ajustesDe(cuenta);
+  const hayCupo = enviadosHoy < ajustes.cupoDiario;
+  const horario = enHorario(ahora, ajustes.horaInicio, ajustes.horaFin);
 
   const campana = await prisma.campanaWhatsApp.findFirst({ where: { cuentaId: cuenta.id, estado: "ACTIVA" } });
   let presentacionPermitida = false;

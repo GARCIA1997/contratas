@@ -5,7 +5,8 @@ import { HttpError } from "@/lib/session";
 import { saldoActual } from "@/lib/services/deudores";
 import { registrarBitacora } from "./bitacora";
 import { normalizarTelefono } from "./telefono";
-import { CUPO_DIARIO, LATIDO_MAX_MS, MOTIVO_SIN_CONFIRMACION, PRIORIDAD } from "./reglas";
+import { LATIDO_MAX_MS, MOTIVO_SIN_CONFIRMACION, PRIORIDAD } from "./reglas";
+import { ajustesDe, type AjustesEnvio } from "./ajustes-envio";
 import { RECONEXIONES_ALERTA, eventosDeSesion } from "./sesion-alertas";
 
 /**
@@ -110,6 +111,17 @@ export async function pausarComoAdmin(cuentaId: string, pausada: boolean, actor:
     },
   });
   await registrarBitacora({ cuentaId, tipo: pausada ? "pausa_admin" : "reanudar_admin", actor });
+}
+
+/**
+ * Ajustes de envío de una cuenta (cuándo y cuánto se manda). Los valida
+ * `esquemaAjustes` en la ruta del monitor. Lo que ya estaba en la cola sale
+ * como se programó; los cambios cuentan desde la siguiente programación.
+ */
+export async function guardarAjustesEnvio(cuentaId: string, ajustes: AjustesEnvio, actor: string) {
+  const cuenta = await prisma.cuentaWhatsApp.findUniqueOrThrow({ where: { id: cuentaId } });
+  await prisma.cuentaWhatsApp.update({ where: { id: cuentaId }, data: ajustes });
+  await registrarBitacora({ cuentaId, tipo: "ajustes_envio", detalle: { antes: ajustesDe(cuenta), despues: ajustes }, actor });
 }
 
 export async function paroGlobal(activo: boolean, actor: string) {
@@ -529,8 +541,8 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
         texto: `${etq}: ${nSinEntregar} mensaje(s) rechazados o sin confirmar por WhatsApp en la última hora — ver Cola`,
       });
     }
-    if (f.enviadosHoy > CUPO_DIARIO) {
-      alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.enviadosHoy} mensajes hoy (tope ${CUPO_DIARIO}, por recibos)` });
+    if (f.enviadosHoy > f.cupoDiario) {
+      alertas.push({ nivel: "aviso", cuentaId: f.id, texto: `${etq}: ${f.enviadosHoy} mensajes hoy (tope ${f.cupoDiario}, por recibos)` });
     }
     const totalHoy = f.enviadosHoy + f.fallidosHoy;
     if (totalHoy >= 10 && f.fallidosHoy / totalHoy > 0.02) {
@@ -631,6 +643,7 @@ async function detalleCuenta(cuentaId: string) {
 
   return {
     cuenta: { ...cuenta, qr: undefined },
+    ajustes: ajustesDe(cuenta),
     qrImagen,
     porTipoHoy: porTipoHoy.map((x) => ({ tipo: x.tipo, n: x._count })),
     porEstado: porEstado.map((x) => ({ estado: x.estado, n: Number(x.n) })),

@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { panelWhatsApp, MAX_CUENTAS } from "@/lib/whatsapp-auto/admin";
-import { CUPO_DIARIO, MOTIVO_SIN_CONFIRMACION } from "@/lib/whatsapp-auto/reglas";
+import { MOTIVO_SIN_CONFIRMACION } from "@/lib/whatsapp-auto/reglas";
+import { resumenAjustes } from "@/lib/whatsapp-auto/ajustes-envio";
 import { fechaHora, haceCuanto, numero } from "@/components/monitor/formato";
 import { Chips, Encabezado, KpiSimple, Tarjeta } from "@/components/monitor/ui";
 import {
   BotonAccion,
+  FormAjustesEnvio,
   FormCambiarNumero,
   FormPrueba,
   ProbarAviso,
@@ -166,8 +168,8 @@ export default async function WhatsAppPage({
                 <td>
                   <Insignia estado={c.estado} pausada={c.pausadaPorAdmin || c.pausadaPorUsuario} />
                 </td>
-                <td className={cn(c.enviadosHoy > CUPO_DIARIO && "text-tertiary")}>
-                  {c.enviadosHoy}/{CUPO_DIARIO}
+                <td className={cn(c.enviadosHoy > c.cupoDiario && "text-tertiary")}>
+                  {c.enviadosHoy}/{c.cupoDiario}
                 </td>
                 <td>
                   {c.pendientes}
@@ -258,7 +260,7 @@ export default async function WhatsAppPage({
               <KpiSimple
                 titulo="Enviados hoy"
                 icono="send"
-                valor={`${numero(d.porTipoHoy.reduce((s, x) => s + x.n, 0))}/${CUPO_DIARIO}`}
+                valor={`${numero(d.porTipoHoy.reduce((s, x) => s + x.n, 0))}/${d.ajustes.cupoDiario}`}
                 pie={d.porTipoHoy.map((x) => `${TIPO[x.tipo]} ${x.n}`).join(" · ") || "Sin envíos"}
               />
               {(() => {
@@ -287,6 +289,16 @@ export default async function WhatsAppPage({
                 pie={[d.cuenta.recibos && "recibos", d.cuenta.porVencer && "por vencer", d.cuenta.vencidas && "vencidas", d.cuenta.deudores && "deudores"].filter(Boolean).join(" · ") || "Ningún tipo activo"}
               />
             </div>
+          </Tarjeta>
+
+          {/* Ajustes de envío */}
+          <Tarjeta className="gap-space-sm">
+            <span className="font-headline-sm text-headline-sm text-on-surface">Ajustes de envío</span>
+            <span className="font-body-sm text-body-sm text-on-surface-variant">
+              Cuándo y cuánto se manda a los clientes de este usuario. Él sigue encendiendo y apagando cada tipo desde su
+              Configuración. Actual: {resumenAjustes(d.ajustes)}.
+            </span>
+            <FormAjustesEnvio key={JSON.stringify(d.ajustes)} cuentaId={d.cuenta.id} inicial={d.ajustes} />
           </Tarjeta>
 
           {/* Mensaje de prueba */}
