@@ -379,7 +379,7 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 - `sesion.ts`: una conexión de Baileys por cuenta, aislada. Vinculación por **código** (`requestPairingCode`) o QR; verifica que el número vinculado sea el capturado; reconexión 5 s → 15 s → 1 min → 5 min; 401 → sesión borrada; 403/402 → cuenta BLOQUEADA y pausada.
 - `auth-bd.ts` + `cifrado.ts`: sesión de Baileys en `WhatsAppLlave`, cifrada AES-256-GCM con `WHATSAPP_SESSION_KEY`.
 - `despachador.ts` (P3), `programador.ts` (P2), `campana.ts` (P5).
-- Tiene su **propio `package.json`**: Baileys depende de `libsignal` desde GitHub, así que se mantiene fuera de la imagen y del lockfile de la app web.
+- Tiene su **propio `package.json`**: Baileys y sus dependencias (libsignal, el puente WebAssembly `whatsapp-rust-bridge`) se mantienen fuera de la imagen y del lockfile de la app web.
 
 ### Decisiones tomadas al implementar
 
@@ -425,7 +425,9 @@ Conexiones, desconexiones, QR generados, pausas, paros, envíos, errores y alert
 
 ### Parche de Baileys
 
-`worker/whatsapp/patches/baileys+6.7.24.patch` (lo aplica `patch-package` en el `npm ci`; si no aplica, el build falla). Le confirma a WhatsApp cada mensaje entrante: Baileys dejó de hacerlo en 6.7.20 y el servidor corta el stream a los 50 minutos con `Stream Errored (ack)` ([issue #1910](https://github.com/WhiskeySockets/Baileys/issues/1910)). También quita el NACK de los que no se pueden descifrar, porque el worker no usa mensajes entrantes. Al subir de versión de Baileys hay que revisar si sigue haciendo falta.
+`worker/whatsapp/patches/baileys+7.0.0-rc14.patch` (lo aplica `patch-package` en el `npm ci`; si no aplica, el build falla). Quita el NACK de los mensajes entrantes que no se pueden descifrar y los confirma: el worker no usa mensajes entrantes y un NACK deja la stanza pendiente, con lo que el servidor corta el stream a los 50 minutos con `Stream Errored (ack)`. En 6.7.x el parche también regresaba el ack de cada mensaje entrante que Baileys quitó en 6.7.20 ([issue #1910](https://github.com/WhiskeySockets/Baileys/issues/1910)); Baileys 7 ya lo manda. Al subir de versión de Baileys hay que revisar si sigue haciendo falta.
+
+Se pasó de 6.7.24 a 7.0.0-rc14 (nov 2026) porque muchos mensajes llegaban como "Esperando mensaje" en el teléfono del cliente (y "no se ha sincronizado" en el del dueño): el latido registraba cientos de recibos `retry` (el teléfono no pudo descifrar y pide reenvío). Baileys 7 maneja el identificador nuevo de WhatsApp (LID), migra las sesiones y responde los reintentos desde un caché de lo recién enviado.
 
 ### Actualizar el worker
 

@@ -1,6 +1,7 @@
 {
   "name": "kredired-whatsapp-worker",
   "private": true,
+  "type": "module",
   "description": "Proceso aparte que mantiene las sesiones de WhatsApp (Baileys) y despacha la cola de salida. Ver docs/whatsapp.md.",
   "scripts": {
     "start": "tsx --tsconfig tsconfig.json index.ts",
@@ -8,13 +9,10 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
-    "baileys": "6.7.24",
+    "baileys": "7.0.0-rc14",
     "patch-package": "8.0.0",
     "pg": "8.16.3",
     "pino": "9.7.0"
-  },
-  "overrides": {
-    "libsignal": "git+https://github.com/whiskeysockets/libsignal-node.git#bcea72df9ec34d9d9140ab30619cf479c7c144c7"
   },
   "devDependencies": {
     "@types/pg": "8.15.5"
