@@ -165,9 +165,10 @@ Normalizar a E.164 (`+52…`) al guardar y al comparar. Resolver el JID con `onW
 
 ### 5.2 Recordatorios de cuota
 
-- **Ventana:** la misma que usa la Ruta (`aggregarRutaDelDia`, `src/lib/services/ruta.ts`), con `anclarFechaCliente` y `DIAS_ANTICIPACION_COBRO`.
-- **Por vencer:** el primer día en que la cuota entra a la Ruta (`fechaProgramada − DIAS_ANTICIPACION_COBRO`).
-- **Vencida:** `fechaProgramada + 1 día`, si no está pagada. **Una sola vez.**
+Cuándo salen se ajusta **por cuenta desde el monitor** (5.8). Por defecto:
+
+- **Por vencer:** 2 días antes del pago, la misma ventana que la Ruta (`aggregarRutaDelDia`, `src/lib/services/ruta.ts`, con `anclarFechaCliente`). Si el worker no pudo mandarlo ese día, sale al siguiente hasta el día del pago.
+- **Vencida:** `fechaProgramada + 1 día`, si no está pagada, con 3 días de gracia. **Una sola vez.**
 - **Horario:** 9:00–22:00, todos los días.
 - **Monto:** se calcula **al momento de enviar** (`abono − montoAbonado`). Si ya está pagada, se cancela.
 - **Agrupación:** varias cuotas del mismo cliente el mismo día → un solo mensaje.
@@ -176,14 +177,14 @@ Normalizar a E.164 (`+52…`) al guardar y al comparar. Resolver el JID con `onW
 
 ### 5.3 Recordatorios a deudores
 
-- Cada **15 días** desde lo más reciente entre su último abono y su último recordatorio.
+- Cada **15 días** (ajustable por cuenta, 5.8) desde lo más reciente entre su último abono y su último recordatorio.
 - Solo si saldo > 0 y tiene teléfono. Sin teléfono no se genera nada.
 - Texto: el mensaje default de la feature de deudores.
 - Horario 9:00–22:00, todos los días.
 
 ### 5.4 Cupo diario y prioridades
 
-Tope de **200 mensajes por día por número** (cada número lleva su propio contador). Orden de prioridad:
+Tope de **200 mensajes por día por número** por defecto, ajustable por cuenta hasta 250 (5.8). Cada número lleva su propio contador. Orden de prioridad:
 
 1. Recibos (siempre salen, aunque se pase de 100)
 2. Recordatorios de cuota
@@ -204,6 +205,25 @@ Lo que no cabe pasa al día siguiente con la misma prioridad y se **revalida** a
 | Inicio | Desde el monitor, con lista, conteo y casilla de confirmación |
 | Requisito previo | Fase 2 cumplida: 3–4 semanas con conversaciones reales con respuesta |
 | Primer mensaje | Si un cliente recibe un recibo o recordatorio antes de su turno en la campaña, ese mensaje lleva antes la línea de presentación y se registra en `Presentacion`. |
+
+### 5.8 Ajustes de envío por cuenta
+
+Monitor → WhatsApp → detalle del número → **Ajustes de envío** (`src/lib/whatsapp-auto/ajustes-envio.ts`, columnas en `CuentaWhatsApp`). El usuario sigue encendiendo y apagando cada tipo desde su Configuración; el monitor decide **cuándo y cuánto**:
+
+| Ajuste | Opciones | Por defecto |
+|---|---|---|
+| Aviso antes del pago | 3, 2, 1 días antes y/o el mismo día (cada uno es un aviso) | 2 días antes |
+| Primer aviso de vencida | 1–3 días después | 1 día |
+| Repetir vencida | cada 1–7 días, 1–5 veces más (o no repetir) | no |
+| Horario de recordatorios, deudores y presentación | de 6:00–20:00 a 8:00–23:00, mínimo 2 h | 9:00–22:00 |
+| Deudores | cada 7–60 días | 15 días |
+| Tope diario | 20–250 | 200 |
+
+- Cada día elegido abre una ventana hasta el siguiente: con "2 días antes y el mismo día", el de 2 días puede salir a 2 o 1 día del pago y el del mismo día solo ese día. Las repeticiones de vencida tienen la misma gracia de 3 días pero nunca se enciman.
+- **Claves de deduplicación:** el aviso de 2 días antes y el primero de vencida conservan las claves originales (`por_vencer:{contrata}:{cuota}`, `vencida:{contrata}:{cuota}`); los demás llevan sufijo (`:d0`, `:d1`, `:d3`, `:r1`…). Así, al desplegar o al cambiar los ajustes no se repite un aviso que ya salió.
+- Lo que ya está en la cola sale como se programó; los cambios cuentan desde la siguiente programación (cada hora).
+- El monitor muestra cuántos avisos puede recibir un cliente por cuota y pide confirmación si son más de 3: muchos avisos aumentan el riesgo de restricción del número.
+- Cada cambio queda en la bitácora (`ajustes_envio`, con el antes y el después).
 
 ### 5.6 Sin opción de baja
 
@@ -270,7 +290,7 @@ Una fila por número (hasta 6): número, **usuario al que pertenece**, estado co
 - Recursos del worker: memoria (MB), CPU (%), uptime.
 
 ### 7.3 Cupo del día
-- Barra `enviados / 100`, con desglose por tipo (recibos, por vencer, vencidas, deudores, presentación).
+- Barra `enviados / tope de la cuenta`, con desglose por tipo (recibos, por vencer, vencidas, deudores, presentación).
 - Indicador de "pasado del tope por recibos" y cuántos.
 - Hora del próximo envío programado.
 

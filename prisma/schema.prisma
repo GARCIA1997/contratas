@@ -513,6 +513,21 @@ model CuentaWhatsApp {
   /// Solo informativo: desde qué WhatsApp se envía a mano.
   numeroManual             String?
   numeroManualConfirmadoEn DateTime?
+  /// Ajustes de envío (solo los cambia el monitor; ver src/lib/whatsapp-auto/ajustes-envio.ts).
+  /// Los valores por defecto son el comportamiento original para todos.
+  /// Días antes del pago en que sale "por vencer" (0 = el mismo día).
+  avisoDiasAntes           Int[]                @default([2])
+  /// Primer aviso de vencida: días después del pago.
+  vencidaDiasDespues       Int                  @default(1)
+  /// Repetir el aviso de vencida cada N días (0 = no repetir) …
+  vencidaRepetirCada       Int                  @default(0)
+  /// … hasta N veces más.
+  vencidaRepeticiones      Int                  @default(0)
+  /// Horario de recordatorios, deudores y presentación (los recibos salen a cualquier hora).
+  horaInicio               Int                  @default(9)
+  horaFin                  Int                  @default(22)
+  diasEntreDeudor          Int                  @default(15)
+  cupoDiario               Int                  @default(200)
   creadoEn                 DateTime             @default(now())
   actualizadoEn            DateTime             @updatedAt
 

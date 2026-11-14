@@ -14,6 +14,7 @@ import {
   destinatariosPresentacion,
   eliminarCuenta,
   enviarPrueba,
+  guardarAjustesEnvio,
   iniciarCampana,
   panelWhatsApp,
   paroGlobal,
@@ -21,6 +22,7 @@ import {
   reintentarMensaje,
   solicitar,
 } from "@/lib/whatsapp-auto/admin";
+import { esquemaAjustes } from "@/lib/whatsapp-auto/ajustes-envio";
 
 export async function GET(req: NextRequest) {
   try {
@@ -53,6 +55,7 @@ const schema = z.discriminatedUnion("accion", [
   z.object({ accion: z.literal("iniciar_campana"), cuentaId: id, total: z.number().int().min(1) }),
   z.object({ accion: z.literal("prueba"), cuentaId: id, telefono: z.string().max(30), texto: z.string().max(1000).nullable().optional() }),
   z.object({ accion: z.literal("campana"), campanaId: id, operacion: z.enum(["pausar", "reanudar", "terminar"]) }),
+  z.object({ accion: z.literal("ajustes_envio"), cuentaId: id, ajustes: esquemaAjustes }),
 ]);
 
 export async function POST(req: NextRequest) {
@@ -105,6 +108,9 @@ export async function POST(req: NextRequest) {
         break;
       case "campana":
         await cambiarEstadoCampana(a.campanaId, a.operacion, actor);
+        break;
+      case "ajustes_envio":
+        await guardarAjustesEnvio(a.cuentaId, a.ajustes, actor);
         break;
     }
     return NextResponse.json({ ok: true });

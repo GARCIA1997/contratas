@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { saldoActual } from "@/lib/services/deudores";
 import { PRIORIDAD } from "@/lib/whatsapp-auto/reglas";
 import { normalizarTelefono } from "@/lib/whatsapp-auto/telefono";
-import { claveDeudor, deudorTocaRecordatorio, recordatoriosDeCuotas } from "@/lib/whatsapp-auto/planificar";
+import { claveDeudor, deudorTocaRecordatorio, GRACIA_VENCIDA_DIAS, recordatoriosDeCuotas } from "@/lib/whatsapp-auto/planificar";
+import { ajustesDe, ultimoDiaVencida, type AjustesEnvio } from "@/lib/whatsapp-auto/ajustes-envio";
 import { conProceso } from "./procesos";
 
 /**
@@ -29,18 +30,25 @@ export async function programarRecordatorios(hoy = new Date()) {
 }
 
 async function programarCuenta(
-  cuenta: { id: string; ownerId: string; porVencer: boolean; vencidas: boolean; deudores: boolean },
+  cuenta: { id: string; ownerId: string; porVencer: boolean; vencidas: boolean; deudores: boolean } & Partial<AjustesEnvio>,
   hoy: Date
 ): Promise<number> {
   const filas = [];
   const base = startOfDay(hoy);
+  const ajustes = ajustesDe(cuenta);
 
   if (cuenta.porVencer || cuenta.vencidas) {
     // Ventana amplia en UTC: el planificador decide con la fecha anclada.
     const pagos = await prisma.pago.findMany({
       where: {
         pagado: false,
-        fechaProgramada: { gte: addDays(base, -5), lte: addDays(base, 5) },
+        // Lo más atrás que puede tocar un aviso de vencida (con repeticiones) y lo
+        // más adelante que puede tocar uno de "por vencer", con un día de holgura
+        // por la zona horaria.
+        fechaProgramada: {
+          gte: addDays(base, -(ultimoDiaVencida(ajustes, GRACIA_VENCIDA_DIAS) + 2)),
+          lte: addDays(base, Math.max(...ajustes.avisoDiasAntes) + 2),
+        },
         contrata: { ownerId: cuenta.ownerId, convertidaADeuda: false },
       },
       include: { contrata: { include: { cliente: { select: { id: true, nombre: true, telefono: true } } } } },
@@ -56,7 +64,8 @@ async function programarCuenta(
         abono: p.contrata.abono,
         convertidaADeuda: p.contrata.convertidaADeuda,
       })),
-      hoy
+      hoy,
+      ajustes
     );
     for (const r of plan) {
       if (r.tipo === "POR_VENCER" ? !cuenta.porVencer : !cuenta.vencidas) continue;
@@ -98,6 +107,7 @@ async function programarCuenta(
         ultimoAbono: d.abonos.at(-1)?.fecha ?? null,
         ultimoRecordatorio: ultimoRecordatorio?.creadoEn ?? null,
         hoy,
+        cadaDias: ajustes.diasEntreDeudor,
       });
       if (!toca) continue;
       filas.push({
