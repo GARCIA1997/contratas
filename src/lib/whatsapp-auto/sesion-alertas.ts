@@ -15,12 +15,16 @@ export type SesionCerrada = { id: string; cuentaId: string; motivo: string | nul
  *    reemplazada) en las últimas 24 h y la cuenta sigue sin conectarse;
  *  - `reconexiones`: cierres de conexión de la última hora por cuenta;
  *  - `sinAcuses`: cuentas que enviaron en 24 h sin recibir un solo acuse (no se puede saber si llegaron);
- *  - `sinEntregar`: mensajes que WhatsApp rechazó o no confirmó en la última hora.
+ *  - `sinEntregar`: mensajes que WhatsApp rechazó o no confirmó en la última hora;
+ *  - `caidaDesde`: desde cuándo está sin conexión cada cuenta caída (su última
+ *    desconexión). La alerta de "sesión caída" mide desde aquí y NO desde la
+ *    última conexión: una cuenta que estuvo conectada una hora y se reconecta
+ *    en 5 s no lleva "más de 10 minutos caída".
  */
 export async function eventosDeSesion(ahora = new Date()) {
   const hace24h = new Date(ahora.getTime() - 24 * 60 * 60_000);
   const haceUnaHora = new Date(ahora.getTime() - 60 * 60_000);
-  const [filas, cierres, sinConexion, noEntregados, envios24h] = await Promise.all([
+  const [filas, cierres, sinConexion, noEntregados, envios24h, desconexiones] = await Promise.all([
     prisma.bitacoraWhatsApp.findMany({
       where: { tipo: "sesion_cerrada_por_whatsapp", creadoEn: { gte: hace24h } },
       orderBy: { creadoEn: "desc" },
@@ -49,6 +53,11 @@ export async function eventosDeSesion(ahora = new Date()) {
       where: { enviadoEn: { gte: new Date(ahora.getTime() - 24 * 60 * 60_000), lt: new Date(ahora.getTime() - SIN_ACUSE_MS) } },
       _count: { _all: true, ack: true },
     }),
+    prisma.bitacoraWhatsApp.groupBy({
+      by: ["cuentaId"],
+      where: { tipo: "desconectado", cuentaId: { not: null } },
+      _max: { creadoEn: true },
+    }),
   ]);
   const sinConexionIds = new Set(sinConexion.map((c) => c.id));
   const cerradas: SesionCerrada[] = [];
@@ -67,5 +76,9 @@ export async function eventosDeSesion(ahora = new Date()) {
   for (const e of envios24h) {
     if (e._count._all >= ENVIOS_PARA_ALERTA_SIN_ACUSES && e._count.ack === 0) sinAcuses.set(e.cuentaId, e._count._all);
   }
-  return { cerradas, reconexiones, sinEntregar, sinAcuses };
+  const caidaDesde = new Map<string, Date>();
+  for (const d of desconexiones) {
+    if (d.cuentaId && sinConexionIds.has(d.cuentaId) && d._max.creadoEn) caidaDesde.set(d.cuentaId, d._max.creadoEn);
+  }
+  return { cerradas, reconexiones, sinEntregar, sinAcuses, caidaDesde };
 }
