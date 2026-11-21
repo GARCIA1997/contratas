@@ -1,8 +1,18 @@
 diff --git a/node_modules/baileys/lib/Socket/messages-recv.js b/node_modules/baileys/lib/Socket/messages-recv.js
-index f2003ac..2767275 100644
+index f2003ac..4440de0 100644
 --- a/node_modules/baileys/lib/Socket/messages-recv.js
 +++ b/node_modules/baileys/lib/Socket/messages-recv.js
-@@ -1299,7 +1299,9 @@ export const makeMessagesRecvSocket = (config) => {
+@@ -1268,7 +1268,8 @@ export const makeMessagesRecvSocket = (config) => {
+         // TODO: temporary fix for crashes and issues resulting of failed msmsg decryption
+         if (encNode?.attrs.type === 'msmsg') {
+             logger.debug({ key: node.attrs.key }, 'ignored msmsg');
+-            await sendMessageAck(node, NACK_REASONS.MissingMessageSecret);
++            // Kredired: ack en vez de NACK (el worker no usa mensajes entrantes).
++            await sendMessageAck(node);
+             return;
+         }
+         let acked = false;
+@@ -1299,7 +1300,9 @@ export const makeMessagesRecvSocket = (config) => {
                  if (msg.messageStubType === proto.WebMessageInfo.StubType.CIPHERTEXT && msg.category !== 'peer') {
                      if (msg?.messageStubParameters?.[0] === MISSING_KEYS_ERROR_TEXT) {
                          acked = true;
@@ -13,3 +23,34 @@ index f2003ac..2767275 100644
                      }
                      if (msg.messageStubParameters?.[0] === NO_MESSAGE_FOUND_ERROR_TEXT) {
                          // Message arrived without encryption (e.g. CTWA ads messages).
+@@ -1385,7 +1388,9 @@ export const makeMessagesRecvSocket = (config) => {
+                                 logger.error({ err }, 'Failed to send retry');
+                             }
+                             acked = true;
+-                            await sendMessageAck(node, NACK_REASONS.UnhandledError);
++                            // Kredired: ack en vez de NACK. El worker no usa mensajes entrantes y
++                            // un NACK deja la stanza pendiente: el servidor corta el stream cada 50 min.
++                            await sendMessageAck(node);
+                         });
+                     }
+                 }
+@@ -1435,7 +1440,8 @@ export const makeMessagesRecvSocket = (config) => {
+         catch (error) {
+             logger.error({ error, node: binaryNodeToString(node) }, 'error in handling message');
+             if (!acked) {
+-                await sendMessageAck(node, NACK_REASONS.UnhandledError).catch(ackErr => logger.error({ ackErr }, 'failed to ack message after error'));
++                // Kredired: ack en vez de NACK (ver arriba).
++                await sendMessageAck(node).catch(ackErr => logger.error({ ackErr }, 'failed to ack message after error'));
+             }
+         }
+     };
+@@ -1597,7 +1603,8 @@ export const makeMessagesRecvSocket = (config) => {
+             ignoreJid = !isNodeFromMe || isJidGroup(attrs.from) ? attrs.from : attrs.recipient;
+         }
+         if (ignoreJid && ignoreJid !== S_WHATSAPP_NET && shouldIgnoreJid(ignoreJid)) {
+-            await sendMessageAck(node, type === 'message' ? NACK_REASONS.UnhandledError : undefined);
++            // Kredired: ack en vez de NACK (ver arriba).
++            await sendMessageAck(node);
+             return;
+         }
+         const isOffline = !!node.attrs.offline;

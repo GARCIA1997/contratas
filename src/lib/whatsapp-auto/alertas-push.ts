@@ -33,7 +33,7 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
   if (cuentas.length === 0) return [];
   const fuera: Incidente[] = [];
   const t = ahora.getTime();
-  const { cerradas, reconexiones, sinEntregar, sinAcuses } = await eventosDeSesion(ahora);
+  const { cerradas, reconexiones, sinEntregar, sinAcuses, caidaDesde } = await eventosDeSesion(ahora);
 
   const latidoEn = control?.latidoEn ?? null;
   const workerVivo = Boolean(latidoEn && t - latidoEn.getTime() < LATIDO_MAX_MS);
@@ -104,7 +104,7 @@ export async function incidentesGraves(ahora = new Date()): Promise<Incidente[]>
       c.estado === "DESCONECTADO" &&
       c.llaves.length > 0 &&
       c.ultimaConexion &&
-      t - c.ultimaConexion.getTime() > SESION_CAIDA_MS
+      t - (caidaDesde.get(c.id) ?? c.ultimaConexion).getTime() > SESION_CAIDA_MS
     ) {
       fuera.push({
         clave: `sesion_caida:${c.id}:${c.ultimaConexion.toISOString()}`,

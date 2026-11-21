@@ -491,7 +491,7 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
   );
 
   const alertas: Alerta[] = [];
-  const { cerradas, reconexiones, sinEntregar, sinAcuses } = await eventosDeSesion(new Date(ahora));
+  const { cerradas, reconexiones, sinEntregar, sinAcuses, caidaDesde } = await eventosDeSesion(new Date(ahora));
   if (control?.paroGlobal) alertas.push({ nivel: "error", texto: `Paro global activo (${control.paroPor ?? "?"})` });
   if (cuentas.length > 0 && !workerVivo) {
     alertas.push({ nivel: "error", texto: "Worker caído: sin latido en más de 2 minutos" });
@@ -510,7 +510,8 @@ export async function panelWhatsApp(cuentaSeleccionada?: string) {
   for (const f of filas) {
     const etq = f.owner.nombre ?? f.owner.email;
     if (f.estado === "BLOQUEADO") alertas.push({ nivel: "error", cuentaId: f.id, texto: `${etq}: número restringido — ${f.ultimoError ?? ""}` });
-    if (f.estado === "DESCONECTADO" && f.ultimaConexion && ahora - f.ultimaConexion.getTime() > SESION_CAIDA_MS) {
+    // Desde la última desconexión (no la última conexión): una reconexión de segundos no es "caída".
+    if (f.estado === "DESCONECTADO" && f.ultimaConexion && ahora - (caidaDesde.get(f.id) ?? f.ultimaConexion).getTime() > SESION_CAIDA_MS) {
       alertas.push({ nivel: "error", cuentaId: f.id, texto: `${etq}: sesión caída hace más de 10 min` });
     }
     const cerrada = cerradas.find((x) => x.cuentaId === f.id);
