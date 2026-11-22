@@ -125,3 +125,31 @@ export function claveDeudor(deudorId: string, hoy: Date): string {
   const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   return `deudor:${deudorId}:${ymd}`;
 }
+
+type AvisoEnCola = { id: string; tipo: string; contrataId: string | null; numeroCuota: number | null; creadoEn: Date };
+
+/**
+ * Un aviso por cuota en cada mensaje. Si un recordatorio no alcanzó a salir
+ * su día (se creó tarde o se acabó el horario), al día siguiente queda en la
+ * cola junto al aviso nuevo de la misma cuota ("1 día antes" + "el mismo
+ * día", o "el mismo día" + vencida) y el mensaje repetía la cuota y sumaba el
+ * total al doble (22-nov, 32 mensajes). Se queda el más actual: la vencida
+ * gana a "por vencer"; entre iguales, el más reciente.
+ */
+export function unAvisoPorCuota<T extends AvisoEnCola>(mensajes: T[]): { quedan: T[]; reemplazados: T[] } {
+  const peso = (m: T) => (m.tipo === "VENCIDA" ? 1 : 0);
+  const mejor = new Map<string, T>();
+  for (const m of mensajes) {
+    if (m.contrataId == null || m.numeroCuota == null) continue;
+    const clave = `${m.contrataId}:${m.numeroCuota}`;
+    const actual = mejor.get(clave);
+    if (!actual || peso(m) > peso(actual) || (peso(m) === peso(actual) && m.creadoEn > actual.creadoEn)) mejor.set(clave, m);
+  }
+  const quedan: T[] = [];
+  const reemplazados: T[] = [];
+  for (const m of mensajes) {
+    const elegido = m.contrataId == null || m.numeroCuota == null ? m : mejor.get(`${m.contrataId}:${m.numeroCuota}`);
+    (elegido === m ? quedan : reemplazados).push(m);
+  }
+  return { quedan, reemplazados };
+}
