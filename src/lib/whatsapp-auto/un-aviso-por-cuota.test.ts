@@ -42,4 +42,26 @@ describe("unAvisoPorCuota", () => {
     const r = unAvisoPorCuota([aviso("x", "DEUDOR", null, null, "2026-11-22T15:00:00Z"), aviso("y", "DEUDOR", null, null, "2026-11-22T16:00:00Z")]);
     expect(r.quedan.length).toBe(2);
   });
+
+  it("varias cuotas atrasadas de la misma contrata: se quedan todas, una vez cada una", () => {
+    const r = unAvisoPorCuota([
+      aviso("c4-ayer", "POR_VENCER", "A", 4, "2026-11-21T15:00:00Z"),
+      aviso("c4-hoy", "VENCIDA", "A", 4, "2026-11-22T15:00:00Z"),
+      aviso("c5", "VENCIDA", "A", 5, "2026-11-22T15:00:00Z"),
+      aviso("c6-ayer", "POR_VENCER", "A", 6, "2026-11-21T15:00:00Z"),
+      aviso("c6-hoy", "POR_VENCER", "A", 6, "2026-11-22T15:00:00Z"),
+    ]);
+    expect(r.quedan.map((m) => m.id)).toEqual(["c4-hoy", "c5", "c6-hoy"]);
+    expect(r.reemplazados.map((m) => m.id)).toEqual(["c4-ayer", "c6-ayer"]);
+  });
+
+  it("la misma cuota en contratas distintas (cuota 3 de A y cuota 3 de B) no es repetida", () => {
+    const r = unAvisoPorCuota([
+      aviso("a3", "VENCIDA", "A", 3, "2026-11-22T15:00:00Z"),
+      aviso("b3", "VENCIDA", "B", 3, "2026-11-22T15:00:00Z"),
+      aviso("b3-ayer", "POR_VENCER", "B", 3, "2026-11-21T15:00:00Z"),
+    ]);
+    expect(r.quedan.map((m) => m.id)).toEqual(["a3", "b3"]);
+    expect(r.reemplazados.map((m) => m.id)).toEqual(["b3-ayer"]);
+  });
 });
