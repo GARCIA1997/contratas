@@ -16,6 +16,7 @@ import {
 import { ajustesDe } from "@/lib/whatsapp-auto/ajustes-envio";
 import { SUFIJO_ENTREGA } from "@/lib/whatsapp-auto/recibos";
 import { unirRecibos } from "@/lib/whatsapp-auto/unir-recibos";
+import { unAvisoPorCuota } from "@/lib/whatsapp-auto/planificar";
 import { lineaPresentacion, textoPresentacion } from "@/lib/whatsapp-auto/textos";
 import { normalizarTelefono } from "@/lib/whatsapp-auto/telefono";
 import { diasConEnvioDeCampana, presentacionesHoy } from "./campana";
@@ -304,6 +305,10 @@ async function armarTexto(cuenta: Cuenta, mensajes: MensajeWhatsApp[], nombreApp
   }
 
   if (tipo0 === "POR_VENCER" || tipo0 === "VENCIDA") {
+    // Un aviso por cuota: el atrasado de ayer se reemplaza por el de hoy.
+    const { quedan, reemplazados } = unAvisoPorCuota(mensajes);
+    cancelados.push(...reemplazados.map((m) => ({ id: m.id, motivo: "Reemplazado por un aviso más reciente de la misma cuota" })));
+    mensajes = quedan;
     const cuotas: CuotaPendiente[] = [];
     let nombre = mensajes[0].destinatarioNombre;
     for (const m of mensajes) {
